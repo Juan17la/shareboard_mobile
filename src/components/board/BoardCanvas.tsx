@@ -1,18 +1,31 @@
-import { Canvas, Group, Path } from '@shopify/react-native-skia';
-import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+/**
+ * The board itself: an infinite white canvas, the dot grid, everything drawn on
+ * it, and the gestures that draw and move it.
+ *
+ * One finger is always the active tool and two fingers are always the camera —
+ * the split the design relies on and the reason drawing never fights panning.
+ * The camera lives in the store but never on the wire: pan and zoom are
+ * per-device (docs/05-model-date).
+ */
+import { Canvas, Group } from '@shopify/react-native-skia';
+import { useCallback, useMemo, useState } from 'react';
+import { View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { useSharedValue } from 'react-native-reanimated';
 
-import { simplify, strokeToSvgPath } from '@/features/board/geometry';
-import type { Point, ShapeKind } from '@/features/board/model';
+import { simplify } from '@/features/board/geometry';
+import type { Point } from '@/features/board/model';
 import { visibleSorted } from '@/features/board/ops';
-import { useBoardStore } from '@/features/board/store';
+import { fillFor, useBoardStore } from '@/features/board/store';
+import { useSessionStore } from '@/features/session/store';
+import { tick } from '@/utils/haptics';
 
-import { CursorDot, ElementRenderer } from './ElementRenderer';
+import { DotGrid, ElementRenderer } from './ElementRenderer';
+import { PeerCursors } from './PeerCursors';
 import { TextEditorOverlay } from './TextEditorOverlay';
 
-const DRAW_TOOLS = new Set(['pen', 'rectangle', 'ellipse', 'line', 'arrow']);
+/** Zoom bounds. Matches the design's 25%–600% range. */
+export const MIN_ZOOM = 0.25;
+export const MAX_ZOOM = 6;
 
 function screenToBoard(x: number, y: number): Point {
   const { camera } = useBoardStore.getState();
@@ -21,25 +34,28 @@ function screenToBoard(x: number, y: number): Point {
 
 export function BoardCanvas({ onCursorMove }: { onCursorMove?: (at: Point) => void }) {
   const camera = useBoardStore((s) => s.camera);
-  const tool = useBoardStore((s) => s.tool);
   const config = useBoardStore((s) => s.config);
   const elements = useBoardStore((s) => s.elements);
-  const participants = useBoardStore((s) => s.participants);
-  const you = useBoardStore((s) => s.you);
+  const smooth = useSessionStore((s) => s.settings.smooth);
+  const haptics = useSessionStore((s) => s.settings.haptics);
 
+  const [size, setSize] = useState({ width: 0, height: 0 });
   const [livePoints, setLivePoints] = useState<number[]>([]);
   const [liveShape, setLiveShape] = useState<{ from: Point; to: Point } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const list = useMemo(() => visibleSorted(elements), [elements]);
 
-  // Camera snapshot captured at the start of a pan/pinch gesture.
-  const startCam = useSharedValue({ x: 0, y: 0, scale: 1 });
+  const onLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+  }, []);
 
   const gesture = useMemo(() => {
     const store = () => useBoardStore.getState();
 
     const draw = Gesture.Pan()
+      // Palm rejection: a second finger belongs to the camera, never the tool.
       .maxPointers(1)
       .runOnJS(true)
       .onStart((e) => {
@@ -47,14 +63,16 @@ export function BoardCanvas({ onCursorMove }: { onCursorMove?: (at: Point) => vo
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
         else if (t === 'pen') setLivePoints([p.x, p.y]);
-        else if (DRAW_TOOLS.has(t)) setLiveShape({ from: p, to: p });
+        else if (t === 'shape') setLiveShape({ from: p, to: p });
+        onCursorMove?.(p);
       })
       .onUpdate((e) => {
         const p = screenToBoard(e.x, e.y);
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
         else if (t === 'pen') setLivePoints((prev) => [...prev, p.x, p.y]);
-        else setLiveShape((prev) => (prev ? { from: prev.from, to: p } : prev));
+        else if (t === 'shape') setLiveShape((prev) => (prev ? { from: prev.from, to: p } : prev));
+        onCursorMove?.(p);
       })
       .onEnd(() => {
         const t = store().tool;
@@ -63,7 +81,10 @@ export function BoardCanvas({ onCursorMove }: { onCursorMove?: (at: Point) => vo
           return [];
         });
         setLiveShape((shape) => {
-          if (shape && DRAW_TOOLS.has(t)) store().addShape(t as ShapeKind, shape.from, shape.to);
+          if (!shape || t !== 'shape') return null;
+          // A tap with the shape tool is a mis-hit, not a zero-size rectangle.
+          const dragged = Math.hypot(shape.to.x - shape.from.x, shape.to.y - shape.from.y);
+          if (dragged > 6) store().addShape(store().config.shape, shape.from, shape.to);
           return null;
         });
       });
@@ -78,94 +99,117 @@ export function BoardCanvas({ onCursorMove }: { onCursorMove?: (at: Point) => vo
           if (id) setEditingId(id);
         } else if (t === 'eraser') {
           store().eraseAt(p);
+        } else if (t === 'fill') {
+          if (store().fillAt(p)) tick(haptics);
         }
         onCursorMove?.(p);
       });
 
+    // Both camera gestures work from the per-frame delta rather than from a
+    // snapshot of where the gesture started. That keeps them stateless, and it
+    // means pinch and two-finger pan compose correctly while running together.
     const panCamera = Gesture.Pan()
       .minPointers(2)
       .runOnJS(true)
-      .onStart(() => {
-        startCam.value = { ...store().camera };
-      })
-      .onUpdate((e) => {
+      .onChange((e) => {
         const c = store().camera;
-        store().setCamera({
-          ...c,
-          x: startCam.value.x + e.translationX,
-          y: startCam.value.y + e.translationY,
-        });
+        store().setCamera({ ...c, x: c.x + e.changeX, y: c.y + e.changeY });
       });
 
     const pinch = Gesture.Pinch()
       .runOnJS(true)
-      .onStart(() => {
-        startCam.value = { ...store().camera };
-      })
-      .onUpdate((e) => {
+      .onChange((e) => {
         const c = store().camera;
-        const next = Math.max(0.2, Math.min(5, startCam.value.scale * e.scale));
+        const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, c.scale * e.scaleChange));
+        // Hold the point under the fingers still: convert the focal point to
+        // board space at the old zoom, then re-place it at the new one.
         const bx = (e.focalX - c.x) / c.scale;
         const by = (e.focalY - c.y) / c.scale;
         store().setCamera({ scale: next, x: e.focalX - bx * next, y: e.focalY - by * next });
       });
 
     return Gesture.Simultaneous(pinch, panCamera, Gesture.Exclusive(draw, tap));
-  }, [onCursorMove, startCam]);
+  }, [onCursorMove, haptics]);
 
   const editing = editingId ? elements[editingId] : null;
+  const transform = [
+    { translateX: camera.x },
+    { translateY: camera.y },
+    { scale: camera.scale },
+  ];
 
   return (
-    <View className="flex-1 bg-background dark:bg-background-dark">
+    <View style={{ flex: 1, backgroundColor: '#FFFFFF' }} onLayout={onLayout}>
       <GestureDetector gesture={gesture}>
         <Canvas style={{ flex: 1 }}>
-          <Group transform={[{ translateX: camera.x }, { translateY: camera.y }, { scale: camera.scale }]}>
+          {/* Outside the camera group: the grid is spaced in screen pixels, so
+              it stays crisp instead of being scaled with the drawing. */}
+          <GridLayer width={size.width} height={size.height} camera={camera} />
+
+          <Group transform={transform}>
             {list.map((el) => (
-              <ElementRenderer key={el.id} el={el} />
+              <ElementRenderer key={el.id} el={el} smooth={smooth} />
             ))}
 
-            {livePoints.length >= 2 ? (
-              <Path
-                path={strokeToSvgPath(livePoints)}
-                style="stroke"
-                strokeWidth={config.width}
-                color={config.color}
-                strokeCap="round"
-                strokeJoin="round"
+            {livePoints.length >= 4 ? (
+              <ElementRenderer
+                smooth={smooth}
+                el={{
+                  id: 'live-stroke',
+                  kind: 'stroke',
+                  points: livePoints,
+                  color: config.color,
+                  width: config.width,
+                  createdBy: 'local',
+                  createdAt: 0,
+                  updatedAt: 0,
+                  z: Number.MAX_SAFE_INTEGER,
+                }}
               />
             ) : null}
 
             {liveShape ? (
               <ElementRenderer
                 el={{
-                  id: 'live',
+                  id: 'live-shape',
                   kind: 'shape',
-                  shape: (DRAW_TOOLS.has(tool) ? tool : 'rectangle') as ShapeKind,
+                  shape: config.shape,
                   from: liveShape.from,
                   to: liveShape.to,
                   stroke: config.color,
                   strokeWidth: config.width,
-                  fill: config.fill,
+                  fill: config.filled ? fillFor(config.color) : null,
                   createdBy: 'local',
                   createdAt: 0,
                   updatedAt: 0,
-                  z: 0,
+                  z: Number.MAX_SAFE_INTEGER,
                 }}
               />
             ) : null}
-
-            {participants
-              .filter((p) => p.userId !== you?.userId && p.cursor)
-              .map((p) => (
-                <CursorDot key={p.userId} x={p.cursor!.x} y={p.cursor!.y} color={p.color} />
-              ))}
           </Group>
         </Canvas>
       </GestureDetector>
+
+      <PeerCursors camera={camera} />
 
       {editing && editing.kind === 'text' ? (
         <TextEditorOverlay element={editing} camera={camera} onClose={() => setEditingId(null)} />
       ) : null}
     </View>
   );
+}
+
+/** Split out so toggling the grid off does not re-render the element list. */
+function GridLayer({
+  width,
+  height,
+  camera,
+}: {
+  width: number;
+  height: number;
+  camera: { x: number; y: number; scale: number };
+}) {
+  const grid = useSessionStore((s) => s.settings.grid);
+  if (!grid) return null;
+  return <DotGrid width={width} height={height} camera={camera} />;
 }
