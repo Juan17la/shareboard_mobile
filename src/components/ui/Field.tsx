@@ -1,33 +1,52 @@
-import { Text, TextInput, View, type TextInputProps } from 'react-native';
+import { TextInput, View, type TextInputProps } from 'react-native';
+
+import { Colors, Fonts, Radius } from '@/constants/theme';
+
+import { Txt } from './Text';
 
 export interface FieldProps extends TextInputProps {
   label?: string;
   hint?: string;
   error?: string | null;
+  /** Codes and PINs are typed in JetBrains Mono, spaced out. */
+  mono?: boolean;
 }
 
-export function Field({ label, hint, error, style, ...rest }: FieldProps) {
+export function Field({ label, hint, error, mono = false, style, ...rest }: FieldProps) {
   return (
-    <View className="gap-1.5">
+    <View style={{ gap: 7 }}>
       {label ? (
-        <Text className="text-sm font-medium text-text-secondary dark:text-text-secondary-dark">
-          {label}
-        </Text>
+        <Txt weight="extrabold" size={10.5} tracking={0.9} tone="secondary">
+          {label.toUpperCase()}
+        </Txt>
       ) : null}
       <TextInput
-        placeholderTextColor="#9AA0A6"
-        className={[
-          'h-11 rounded-lg border px-3 text-base text-text dark:text-text-dark',
-          error
-            ? 'border-danger'
-            : 'border-border bg-background dark:border-border-dark dark:bg-background-dark',
-        ].join(' ')}
+        placeholderTextColor="rgba(27,32,48,0.32)"
+        style={[
+          {
+            paddingHorizontal: 13,
+            paddingVertical: 12,
+            borderRadius: Radius.lg,
+            borderWidth: 1,
+            borderColor: error ? Colors.dangerBright : Colors.borderStrong,
+            backgroundColor: '#FFFFFF',
+            color: Colors.text,
+            fontFamily: mono ? Fonts.monoBold : Fonts.semibold,
+            fontSize: mono ? 15 : 16,
+            ...(mono ? { letterSpacing: 1.5 } : null),
+          },
+          style,
+        ]}
         {...rest}
       />
       {error ? (
-        <Text className="text-sm text-danger">{error}</Text>
+        <Txt size={11.5} leading={1.4} tone="danger">
+          {error}
+        </Txt>
       ) : hint ? (
-        <Text className="text-xs text-text-secondary dark:text-text-secondary-dark">{hint}</Text>
+        <Txt size={11.5} leading={1.4} tone="secondary">
+          {hint}
+        </Txt>
       ) : null}
     </View>
   );
