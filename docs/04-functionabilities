@@ -1,0 +1,225 @@
+# Funcionalidades
+
+Cada funcionalidad de `docs/01-introduction` desarrollada como **flujo + criterios
+de aceptación**, con etiqueta de plataforma: **[M]** móvil, **[W]** web,
+**[B]** backend. La app móvil de este repositorio implementa la parte [M]; las
+partes [B]/[W] quedan como contrato.
+
+# Creación y acceso
+
+**Crear una pizarra** — [M][W][B]
+
+1. El usuario toca "Crear pizarra". No hay formulario: `POST /boards` con una
+   pizarra pública, editable por todos y con nombre por defecto.
+2. Se navega a `board/[id]?pickName=1`, que fuerza la pantalla de identidad
+   (nombre + color) aunque el nickname ya se recuerde: crear una pizarra es el
+   momento de elegir cómo vas a aparecer en ella.
+3. Nombre, visibilidad, PIN y política de edición se cambian **desde dentro**
+   de la pizarra (hojas de ajustes y de permisos), donde el creador ve lo que
+   está cambiando.
+
+*Aceptación:* se crea sin registro y en dos toques; el servidor genera `id` y
+`shortCode` únicos; la pizarra queda activa en memoria; el creador entra como
+`role: 'creator'`.
+
+**Entrar por enlace o código** — [M][W][B]
+
+* Código corto de 6 caracteres (base32 sin ambiguos) **o** enlace
+  `https://…/b/<code>` **o** deep link `shareboard://board/<id>`.
+* `parseBoardRef()` normaliza la entrada → `GET /boards/code/:code` si es código.
+* Si no hay nickname, se pide antes de conectar (`phase: 'need-nickname'`).
+
+*Aceptación:* un código inválido muestra error claro; mayúsculas/minúsculas y
+espacios no importan.
+
+**Pizarra privada (PIN)** — [M][W][B]
+
+* `POST /boards/:id/join` sin PIN → `PIN_REQUIRED`; con PIN incorrecto →
+  `PIN_INVALID`. El cliente muestra `phase: 'need-pin'` — un teclado numérico de
+  cuatro dígitos a pantalla completa — y reintenta con `submitPin()`. Se envía
+  solo en cuanto cae el cuarto dígito; un PIN rechazado limpia los puntos.
+* El PIN nunca viaja al cliente; solo se valida en el servidor. Por eso el
+  dispositivo que lo **elige** lo guarda en su propio `sessionStore.pins`: es la
+  única forma de que la hoja de permisos pueda enseñárselo a quien creó la
+  pizarra. En otro dispositivo aparece enmascarado.
+* Al pasar una pizarra a privada se genera un PIN de cuatro dígitos al vuelo
+  (`generatePin()`), en vez de pedirle uno al usuario.
+
+**Nombre y color** — [M]
+
+Antes de entrar se pide un nickname (se recuerda) y un color de identidad. El
+color viaja en el `join` y el servidor lo respeta salvo que ya lo tenga otra
+persona conectada; el valor autoritativo vuelve en `you.color`. Un nickname ya
+usado (`NICKNAME_TAKEN`) devuelve a la pantalla de identidad con el motivo.
+
+# Permisos de edición
+
+Política (`editPolicy`): `everyone` | `selected` | `creator-only`. También
+`access`: `public` | `private`.
+
+* **Doble control**: el cliente **oculta/inhabilita** las herramientas si el rol
+  local no puede editar (`canEditNow()` en `src/features/board/store.ts`) y la
+  cabecera muestra "Solo lectura"; el servidor **rechaza** las ops de un viewer
+  con `error FORBIDDEN` (defensa en profundidad).
+* El creador cambia permisos en la hoja de permisos
+  (`components/sheets/PrivacySheet.tsx`). **No hay botón de guardar**: cada
+  cambio se aplica de forma optimista y se revierte si el servidor lo rechaza
+  (`features/board/use-permissions.ts`). El backend responde con `BoardMeta` y
+  además emite `permissions` por WebSocket a todos, con el `role` recalculado de
+  cada quien.
+* `selected` usa la lista `editors: string[]` de `userId`s. En la hoja de
+  conectados, tocar la píldora de una persona la añade o la quita de esa lista y
+  pasa la pizarra a `selected` de paso — el atajo para el caso común ("quiero
+  que *esta* persona pueda dibujar").
+
+*Aceptación:* al pasar a `creator-only`, el resto pierde las herramientas al
+instante sin recargar; al volver a `everyone`, las recuperan.
+
+# Herramientas de dibujo
+
+Modelo de datos en `docs/05-model-date`. Herramienta activa y su configuración
+viven en el store (`tool`, `config`).
+
+El riel tiene **cinco** herramientas; la figura concreta no es una herramienta
+sino una opción de "Figuras" (`ToolConfig.shape`), que es lo que mantiene el
+riel en cinco botones.
+
+| Herramienta | Parámetros | Comportamiento |
+|---|---|---|
+| Lápiz (`pen`) | color, grosor | traza suavizada (Catmull-Rom, `geometry.ts`); se simplifican puntos muy juntos. El suavizado se puede desactivar en ajustes |
+| Grosor | 2 / 5 / 10 / 20 (rango 1–64) | columna de opciones del riel |
+| Color | 8 presets + "Otro" (rejilla tono × luminosidad) | afecta lápiz, figuras, relleno y texto nuevo |
+| Figuras (`shape`) | rectángulo, círculo, **triángulo**, línea, flecha; relleno sí/no | arrastrar de un punto a otro; un toque sin arrastre no crea nada |
+| Texto (`text`) | tamaño (10–96), negrita, cursiva, color | tocar el lienzo abre un `TextInput` superpuesto en el sitio y al tamaño finales; vacío = se descarta |
+| Relleno (`fill`) | color | **implementado**: toca una figura cerrada y la tiñe (`fillAt()` → `Op` `update`) |
+| Borrador (`eraser`) | radio | hit-test contra elementos visibles → borrado suave (`deleted: true`) |
+
+Los rellenos son un lavado translúcido del color del trazo (`#RRGGBBAA`, ~18%)
+para que la cuadrícula y lo que haya debajo se sigan leyendo. Por eso
+`LIMITS.colorPattern` acepta ahora un canal alfa opcional, en los tres
+proyectos.
+
+*Aceptación:* cada herramienta produce un elemento serializable que se sincroniza
+como una `Op`; el trazo no se ve "entrecortado" a velocidad normal.
+
+# Texto — formato
+
+* Cambiar tamaño (10–96), negrita, cursiva, color.
+* Se escribe sobre el lienzo, en el sitio y al tamaño que tendrá; tocar en otro
+  sitio lo confirma.
+* Ampliable después (alineación, fuentes) sin romper el formato de archivo:
+  el elemento `text` admite campos nuevos opcionales.
+* *Pendiente v2*: volver a abrir un texto ya creado para editarlo requiere la
+  herramienta de selección.
+
+# Interacción táctil
+
+* **1 dedo** = herramienta activa (dibujar / borrar / colocar texto / rellenar).
+* **2 dedos** = mover el lienzo (pan).
+* **Pellizco** = zoom (25 %–600 %), manteniendo fijo el punto focal.
+* La cámara (posición/zoom) es **local**: no se sincroniza. El chip de zoom la
+  devuelve al origen de un toque, que es la única forma de volver después de un
+  desplazamiento largo por un lienzo infinito.
+* Rechazo de palma: se limita el dibujo a `maxPointers(1)`.
+* Vibración háptica opcional al elegir herramienta, tamaño o color
+  (`utils/haptics.ts`), desactivada por defecto.
+* Presupuesto de latencia acción→pintado local: inmediato; acción→otros
+  clientes: **< 200 ms** (ver `docs/07-websockets`).
+
+# Colaboración en tiempo real
+
+Qué se sincroniza y qué no:
+
+| Se sincroniza | No se sincroniza |
+|---|---|
+| Ops (add / update / delete / clear) | Cámara / viewport |
+| Cursores de otros participantes | Herramienta y color propios |
+| Lista de participantes (presencia) | Historial de undo local |
+| Cambios de permisos y de nombre | Idioma y ajustes del dispositivo |
+
+* **Conflictos**: *last-write-wins por elemento*. `update` reemplaza campos;
+  `delete` es suave (marca `deleted`) para que el borrado se propague de forma
+  determinista.
+* **Join/leave**: al entrar se recibe el estado completo (`joined`); al salir, el
+  servidor reemite `participants`.
+* **Colores de presencia**: los propone el cliente y los confirma el servidor.
+* Los cursores ajenos se dibujan como una capa de vistas sobre el lienzo, con el
+  nombre al lado y a tamaño constante sea cual sea el zoom
+  (`components/board/PeerCursors.tsx`). Se pueden ocultar en ajustes.
+
+# Deshacer / rehacer
+
+* Pila local de ops inversas (`src/features/board/ops.ts` → `invertOps`).
+* En modo colaborativo el undo es **local y de mejor esfuerzo**: si otro usuario
+  tocó el mismo elemento, el resultado puede no ser el esperado. Coordinación
+  global de undo → *pendiente*, requiere apoyo del backend.
+
+# Comportamiento sin conexión — [M]
+
+* Las ops locales se encolan en `outbox`; el badge muestra "Offline".
+* Al reconectar (`RealtimeClient` con backoff), se envía la cola y se re-hace
+  `join` (el servidor manda snapshot completo, el cliente reconcilia).
+* Si nunca hubo conexión y no hay snapshot, la pizarra queda en solo lectura.
+* En segundo plano el socket se pausa; vuelve al primer plano vía `AppState`.
+
+# Exportación e importación
+
+* **Exportar** — [M][W]: imagen PNG/JPG (guardar en Fotos o compartir) y archivo
+  `.json` (snapshot editable). Detalle en `docs/06-loading-exporting`.
+* **Importar** — [M][W]: un solo selector de archivo; lo que ocurre lo deciden
+  los bytes, no el nombre.
+* Resuelve el "pendiente" de `docs/01-introduction` —si un archivo importado es
+  solo una imagen o recupera elementos editables— con **las dos cosas**: la
+  imagen exportada **lleva el snapshot dentro** (chunk `tEXt` en PNG, segmentos
+  `COM` en JPG), así que la misma foto se abre como imagen en cualquier visor y
+  vuelve editable en Shareboard. El interruptor "Recuperar trazos y textos
+  editables" permite tratarla como imagen plana a propósito.
+
+# Control de sesiones — [B]
+
+* Una sesión activa por `(userId, boardId)`. Un segundo socket cierra el primero
+  (`close code 4001`).
+* Nickname único por pizarra → `NICKNAME_TAKEN` en el join.
+* Reconexión: reintentos con backoff exponencial + jitter.
+
+# Paridad móvil ↔ web
+
+| Capacidad | Móvil | Web |
+|---|---|---|
+| Crear / entrar / código / PIN | ✔ | ✔ |
+| Lápiz, grosor, color, figuras, texto, borrador | ✔ | ✔ |
+| Relleno tipo bote | ✔ | ✖ (v2) |
+| Triángulo | ✔ | ✔ (contrato) |
+| Mover / redimensionar (`select`) | ✖ (v2) | ✖ (v2) |
+| Idioma ES/EN | ✔ | ✖ (v2) |
+| Tiempo real (ops, cursores, presencia) | ✔ | ✔ |
+| Exportar PNG/JPG/JSON | ✔ | ✔ |
+| Importar JSON / imagen | ✔ | ✔ |
+| Pan/zoom táctil vs. rueda/trackpad | táctil | puntero |
+
+# Ajustes del dispositivo — [M]
+
+Hoja de ajustes, todo local y persistido: cuadrícula de puntos, cursores de
+otros, suavizado del trazo, vibración al tocar, idioma (ES/EN) y el nombre de la
+pizarra (solo el creador).
+
+# Eliminar una pizarra — [M][W][**B pendiente**]
+
+La hoja de ajustes ofrece "Eliminar la pizarra" con su diálogo de confirmación,
+y el cliente llama a `deleteBoard()` → `DELETE /boards/:id`. **El endpoint
+todavía no existe en el servidor**: ver la nota `TODO(backend)` en
+`src/services/api/endpoints.ts`. Mientras tanto el flujo se completa en local
+(sale de la pizarra y la quita de recientes) en vez de dejar al usuario ante un
+error que no puede resolver. Cuando la ruta se implemente —evictar de memoria,
+soltar el `shortCode`, cerrar los sockets con `CloseCode.NOT_FOUND` y borrar el
+documento de Mongo— no hay que cambiar nada de este lado.
+
+# Pendientes
+
+* Qué pasa si el servidor se reinicia antes de persistir (ver
+  `docs/06-loading-exporting`, propuesta de flush periódico).
+* `DELETE /boards/:id` en el backend.
+* Herramienta de selección/transformación (mover y redimensionar).
+* Undo colaborativo coordinado.
+* Más opciones de formato de texto (alineación, fuentes).
+* Paridad de la web con las novedades de móvil (relleno, triángulo, idioma).
