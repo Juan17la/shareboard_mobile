@@ -1,0 +1,185 @@
+# WebSockets (Tiempo Real)
+
+Protocolo de sincronización en vivo entre clientes y el servidor Node.js.
+Implementación de referencia del cliente en `src/services/realtime/`
+(`socket.ts`, `protocol.ts`, `mock-realtime.ts`) y cableado en
+`src/hooks/use-board-sync.ts`.
+
+# Transporte
+
+* **WebSocket "plano" + JSON.** Un socket por (pizarra, pestaña/app).
+* URL: `${WS_URL}?boardId=<id>&token=<boardToken>`.
+* Frames de texto; cada frame es un mensaje JSON con campo `type`.
+* Reconexión: responsabilidad del cliente (backoff exponencial + jitter).
+
+*¿Por qué no Socket.IO?* Paridad exacta entre React Native y web con la API
+`WebSocket` estándar, sin capa extra ni handshake propietario, y un protocolo
+que el equipo de backend puede implementar con cualquier librería `ws`.
+
+# Ciclo de vida de la conexión
+
+```
+connect ──▶ (onopen) ──▶ send {join} ──▶ recv {joined}  ──▶  estado estable
+   ▲                                                            │
+   │                                            heartbeat ping/pong cada 20 s
+   │                                                            │
+   └──────────── (onclose) ◀── backoff + jitter ◀───────────────┘
+                 reintento: re-connect + re-{join}
+```
+
+* **Heartbeat**: el cliente envía `{ type: 'ping', t }` cada **20 s**; el
+  servidor responde `{ type: 'pong', t }`. Si el servidor no ve tráfico de un
+  cliente en **~40 s**, cierra el socket.
+* **Reconexión**: `backoffMinMs 500`, `backoffMaxMs 15000`, factor `2`, más un
+  jitter del 30 %. Al reconectar, el cliente hace `join` otra vez; el servidor
+  responde `joined` con el **estado completo** y el cliente reconcilia
+  (reemplaza su mapa de elementos).
+* **App en segundo plano** (móvil): el socket se pausa; al volver al primer plano
+  se reconecta vía `AppState` (`use-board-sync.ts`).
+
+# Mensajes — Cliente → Servidor (`ClientMessage`)
+
+```ts
+{ type: 'join';   boardId: string; userId: string; nickname: string; pin?: string }
+{ type: 'op';     boardId: string; ops: Op[]; seq: number }   // seq = contador del cliente
+{ type: 'cursor'; boardId: string; at: { x: number; y: number } }
+{ type: 'leave';  boardId: string }
+{ type: 'ping';   t: number }                                 // t = Date.now() del cliente
+```
+
+# Mensajes — Servidor → Cliente (`ServerMessage`)
+
+```ts
+{ type: 'joined';
+  meta: BoardMeta; elements: BoardElement[];
+  participants: Participant[]; you: Participant; seq: number }
+
+{ type: 'op'; ops: Op[]; from: string; seq: number }          // seq = contador del servidor por pizarra
+{ type: 'participants'; participants: Participant[] }
+{ type: 'cursor'; from: string; at: { x: number; y: number } }
+{ type: 'permissions'; meta: BoardMeta; you: Participant }
+{ type: 'error'; code: ServerErrorCode; message: string }
+{ type: 'pong'; t: number }
+```
+
+`Op` y `BoardElement` están definidos en `docs/05-model-date`.
+`ServerErrorCode`: `BOARD_NOT_FOUND | PIN_REQUIRED | PIN_INVALID | FORBIDDEN |
+NICKNAME_TAKEN | RATE_LIMITED | VALIDATION | INTERNAL`.
+
+**Ejemplo — difusión de un trazo**
+
+```
+// cliente A dibuja
+A ──▶ { "type": "op", "boardId": "brd_ab12", "seq": 7,
+        "ops": [ { "t": "add", "el": { "id": "e_9f3k…", "kind": "stroke",
+                   "points": [10,10,12,14,15,20], "color": "#208AEF", "width": 4,
+                   "createdBy": "userA", "createdAt": 1735820100000,
+                   "updatedAt": 1735820100000, "z": 12 } } ] }
+
+// servidor reemite a B (y a A como confirmación con su seq)
+S ──▶ { "type": "op", "from": "userA", "seq": 41, "ops": [ … ] }
+```
+
+El cliente ignora los `op` cuyo `from` es su propio `userId` (ya los aplicó
+localmente) — ver `use-board-sync.ts`.
+
+# Orden y entrega
+
+* El servidor mantiene un `seq` **monótono por pizarra** y lo pone en cada `op`
+  que reemite. El cliente aplica en orden.
+* **Batching**: el cliente vacía su `outbox` como máximo cada **50 ms**
+  (`REALTIME.outboxFlushMs`), agrupando varias ops en un solo mensaje.
+* **Coalescencia de puntos**: un trazo se envía como un único `add` al terminar
+  el gesto, no punto por punto.
+* Reaplicar una op es idempotente (ver `docs/05-model-date`).
+
+# Presencia y cursores
+
+* `participants` se difunde al entrar y salir alguien.
+* `cursor` se envía **throttleado a ~45 ms** (`REALTIME.cursorThrottleMs`) y
+  **no se persiste**. Si un cliente deja de mandar cursor, su punto simplemente
+  deja de actualizarse.
+* El `color` de cada participante lo asigna el servidor en el `join`.
+
+# Autorización en el socket
+
+* El servidor valida el `boardToken` en la conexión y **por cada op de edición**
+  comprueba que el `role` del usuario permite editar (`canEdit`).
+* Una op de un `viewer` se rechaza con `{ type: 'error', code: 'FORBIDDEN' }` y
+  **no** se aplica ni se reemite.
+* Un cambio de permisos (REST `PATCH /permissions`) provoca que el servidor
+  emita `{ type: 'permissions', meta, you }` a todos, con el `role` recalculado.
+  El cliente actualiza la UI al instante (habilita/inhabilita herramientas).
+
+# Deduplicación de sesión
+
+Si llega un segundo socket para el mismo `(userId, boardId)`, el servidor cierra
+el anterior con **close code 4001** y conserva el nuevo. El cliente viejo
+recibirá `onclose` con ese código y **no** debe reintentar automáticamente.
+
+# Backpressure y límites
+
+* Tamaño máximo de mensaje: recomendado 256 KB.
+* Máx. ops/seg por cliente: recomendado ~60; al excederlo, `error RATE_LIMITED`
+  o cierre `4008`.
+* El cliente ya acota trazos (`LIMITS.maxStrokePoints`) y agrupa ops.
+
+# Códigos de cierre de WebSocket
+
+| Código | Constante | Significado | ¿Reintentar? |
+|---|---|---|---|
+| 4000 | `BAD_REQUEST` | mensaje mal formado / token inválido | no |
+| 4001 | `REPLACED` | otra sesión tomó el lugar de esta | no |
+| 4003 | `FORBIDDEN` | sin acceso a la pizarra | no |
+| 4004 | `NOT_FOUND` | la pizarra no existe | no |
+| 4008 | `RATE_LIMITED` | demasiado tráfico | sí, con backoff largo |
+| 4009 | `PIN_REQUIRED` | falta PIN para pizarra privada | no (pedir PIN) |
+
+Constantes en `src/services/realtime/protocol.ts` (`CloseCode`).
+
+# Latencia
+
+* Objetivo acción→otros clientes: **< 200 ms**.
+* Contribuyen: red del emisor, batching (≤ 50 ms), procesamiento del servidor,
+  red del receptor, render.
+* Medición: el cliente puede usar el eco `ping.t → pong.t` para estimar RTT.
+
+# Mapa cliente ↔ código
+
+| Mensaje | Dónde se maneja (`use-board-sync.ts`) |
+|---|---|
+| `joined` | `store.hydrate(...)` + recordar pizarra + `phase = 'ready'` |
+| `op` | si `from !== userId` → `store.applyRemote(ops, seq)` |
+| `participants` | `store.setParticipants(...)` |
+| `cursor` | `store.setRemoteCursor(from, at)` |
+| `permissions` | `store.setMeta(meta, you)` |
+| `error` | mostrar mensaje; `PIN_*` → `phase = 'need-pin'` |
+| cambio de estado | `store.setConnection('online' | 'offline' | ...)` |
+
+Envío desde el store: cada mutación produce una `Op` en `outbox`; el hook
+la vacía throttleada como `{ type: 'op' }`. Los cursores salen por `sendCursor`.
+
+**Modo mock**: con `USE_MOCKS=true`, `MockRealtimeConnection`
+(`mock-realtime.ts`) implementa la misma interfaz con un bus en memoria por
+`boardId`, de modo que dos pantallas de pizarra en el mismo proceso se ven los
+trazos y cursores sin servidor.
+
+# Diagramas de secuencia
+
+**Cambio de permisos**
+
+```
+Creador ──REST PATCH /permissions──▶ Servidor
+                                     Servidor ──WS {permissions}──▶ todos
+   (cada cliente recalcula rol; el viewer pierde herramientas al instante)
+```
+
+**Reconexión**
+
+```
+Cliente  ✗ conexión caída
+Cliente  ⟳ backoff (500ms, 1s, 2s, …, máx 15s) + jitter
+Cliente  ──▶ connect + {join}
+Servidor ──▶ {joined} (estado completo, nuevo seq)
+Cliente  ↺ reemplaza su estado; reenvía la outbox pendiente
+```
