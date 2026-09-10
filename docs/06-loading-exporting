@@ -1,0 +1,162 @@
+# Carga, Persistencia y Exportación
+
+Cubre el ciclo de vida de una pizarra (memoria ↔ MongoDB) y cómo se exporta e
+importa desde el cliente.
+
+# Ciclo de carga de una pizarra
+
+Dos casos:
+
+* **Caliente** — la pizarra ya está activa en memoria del servidor. El `join`
+  responde con el estado actual al instante.
+* **Fría** — no está en memoria. El servidor la lee de MongoDB, la reconstruye
+  como `ActiveBoard` y entonces responde el `join`.
+
+Secuencia al abrir una pizarra desde el cliente
+(`src/hooks/use-board-sync.ts`):
+
+```
+Cliente                         Servidor
+  │  GET /boards/:id             │   (metadata; también valida existencia)
+  │ ───────────────────────────▶ │
+  │  POST /boards/:id/join       │   (valida PIN, asigna rol, emite boardToken)
+  │ ───────────────────────────▶ │
+  │  WS connect ?token=          │   (abre socket, deduplica sesión)
+  │ ───────────────────────────▶ │
+  │  { type: 'join', ... }       │
+  │ ───────────────────────────▶ │
+  │        { type: 'joined',     │   estado COMPLETO: meta + elements +
+  │ ◀─────── participants, seq } │   participants + you + seq
+  │                              │
+  │        { type: 'op', seq }   │   cambios incrementales a partir de aquí
+  │ ◀─────────────────────────── │
+```
+
+Hasta que llega `joined`, el cliente muestra la metadata de REST como estado
+provisional.
+
+# Persistencia (memoria → MongoDB)
+
+Regla base de `docs/01-introduction`: los cambios **no** se escriben en cada
+acción; se mantienen en memoria y se vuelcan cuando la pizarra queda inactiva.
+
+**Disparadores de flush recomendados** (el backend implementa):
+
+1. **Inactividad**: sin actividad durante **5 min** → persistir y liberar de
+   memoria.
+2. **Flush de seguridad periódico**: si `dirty === true`, persistir cada **~2
+   min** aunque siga activa. Esto acota la ventana de pérdida ante un reinicio
+   (responde al "pendiente" de `docs/01-introduction`).
+3. **Apagado ordenado**: al recibir SIGTERM, volcar todas las pizarras `dirty`.
+
+Tras un flush, `dirty = false`. La última versión persistida es la fuente de
+verdad.
+
+**Reinicio / caída del servidor**
+
+* Se pierden como máximo los cambios entre el último flush y la caída (≤ ~2 min
+  con el flush de seguridad).
+* Opción para reducirlo a casi cero (futuro): log append-only `board_events` con
+  cada lote de ops; al arrancar en frío se reproducen los eventos posteriores al
+  último snapshot.
+
+# Exportación (cliente)
+
+**Móvil** — `src/features/board/export.ts` + `components/sheets/ExportSheet.tsx`:
+
+* Se renderiza un `Canvas` de Skia **fuera de pantalla** ajustado a los límites
+  del contenido (`contentBounds` en `geometry.ts`) con un padding de 24 px.
+* `canvasRef.makeImageSnapshot()` → `SkImage.encodeToBase64(PNG|JPEG, calidad)`.
+* El base64 se escribe a un archivo de caché con `expo-file-system` (`File` +
+  `write(base64, { encoding: 'base64' })`).
+* Antes de escribirlo, el snapshot editable se **incrusta dentro de la propia
+  imagen** (`src/features/board/embed.ts`, ver más abajo).
+* Destino:
+  * **Descargar** → `expo-media-library` (`MediaLibrary.Asset.create`, pide
+    permiso). El módulo se carga bajo demanda (`await import`) porque su módulo
+    nativo no existe en todas las plataformas.
+  * **Compartir** → `expo-sharing` (`shareAsync`).
+* Opciones: formato (PNG/JPG) y fondo transparente. El fondo transparente solo
+  se ofrece en PNG: JPG no tiene canal alfa y saldría negro. Los límites se
+  calculan a partir del contenido, no del viewport.
+
+**Web**: equivalente con `canvas.toBlob()` sobre el mismo modelo de elementos.
+
+**Exportar `.json`**: `toSnapshot(name, elements)` → archivo → `shareAsync`.
+No necesita el canvas.
+
+**Nombre de archivo**: `shareboard_<nombre>_<yyyymmdd-hhmm>.<ext>`
+(`exportFileName` en `export.ts`).
+
+# Snapshot incrustado en la imagen
+
+Resuelve el "pendiente" de `docs/01-introduction` (si un archivo importado es
+solo una imagen o recupera elementos editables): **es las dos cosas a la vez**.
+
+Una imagen exportada desde Shareboard lleva su propio `BoardSnapshot` dentro,
+codificado en base64, en el hueco que cada formato reserva para texto privado.
+No afecta a cómo se ve la imagen — cualquier visor la abre como una foto normal:
+
+| Formato | Dónde |
+|---|---|
+| PNG | un chunk `tEXt` con la palabra clave `shareboard`, insertado tras `IHDR` |
+| JPG | uno o varios segmentos `COM` (`0xFFFE`) tras `SOI`, troceados porque un segmento no llega a 64 KB |
+
+`embedSnapshot()` escribe y `extractSnapshot()` lee. Si los bytes no son del
+contenedor que dicen ser, `embedSnapshot` devuelve la imagen intacta: una
+exportación que pierde la parte editable es mucho mejor que una que falla.
+
+# Exportación desde el servidor
+
+* `GET /boards/:id/snapshot` → `BoardSnapshot` en JSON. Útil para copias de
+  seguridad o para que la web exporte sin re-renderizar.
+* Renderizar la imagen en el servidor queda **fuera de alcance**: la imagen la
+  produce siempre el cliente.
+
+# Importación (cliente)
+
+`src/features/board/import.ts` + `components/sheets/ImportSheet.tsx`:
+
+La hoja tiene **un solo botón** ("Elegir archivo") y un interruptor
+("Recuperar trazos y textos editables"). Lo que ocurre después lo deciden los
+**bytes** del archivo, no su nombre — `detectContainer()`:
+
+| Archivo | Resultado |
+|---|---|
+| `.json` de Shareboard | pizarra nueva con todos los elementos editables |
+| PNG/JPG exportado desde Shareboard, interruptor activado | igual: el snapshot se lee de dentro de la imagen |
+| PNG/JPG exportado desde Shareboard, interruptor desactivado | se coloca como imagen plana |
+| cualquier otra imagen | se coloca como imagen plana |
+| otra cosa | error legible |
+
+1. `File.pickFileAsync(...)` → `picked.result.bytes()`.
+2. Snapshot: `parseSnapshot()` valida `format`, `version`, límites y cada
+   elemento (`docs/05-model-date`).
+3. Se crea **una pizarra nueva** (`POST /boards/import`) y se hidrata con los
+   elementos (re-keyeados). Nunca se sobrescribe una pizarra compartida.
+4. Imagen plana: se re-codifica hasta que quepa en un frame del socket
+   (`MAX_IMAGE_BYTES`, 160 KB) y se añade como elemento `image` con `data:` URI.
+   Requiere permiso de edición en la pizarra actual.
+
+También existe "Añadir una imagen", que abre la fototeca (`expo-image-picker`)
+para colocar una foto en la pizarra actual sin pasar por el selector de
+archivos.
+
+**Manejo de errores**
+
+| Situación | Resultado |
+|---|---|
+| JSON malformado | `SnapshotParseError` "File is not valid JSON" |
+| `format` distinto | "Not a Live Whiteboard file" |
+| `version` no soportada | "Unsupported file version N" |
+| Supera `maxElements` | "File exceeds the element limit" |
+| Elemento inválido | error indicando el tipo |
+
+# Permisos del sistema operativo
+
+Declarados en `app.json` (plugins):
+
+* `expo-media-library` → guardar imagen en Fotos.
+* `expo-image-picker` → leer una imagen de la fototeca.
+* `expo-document-picker` → elegir el archivo a importar (`.json`, PNG o JPG).
+* `expo-sharing` → hoja de compartir del SO.
