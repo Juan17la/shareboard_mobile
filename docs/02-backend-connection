@@ -1,0 +1,205 @@
+# Conexión con el Backend
+
+Este documento define **cómo el cliente móvil (React Native) habla con el
+servidor Node.js** y sirve como contrato para el equipo de backend y para la app
+web de React. Todo lo que aquí se describe está reflejado en el código del móvil
+bajo `src/services/`.
+
+El backend ya existe (`../server`, Fastify + TypeScript) y la app apunta a él
+por defecto. Poniendo `EXPO_PUBLIC_USE_MOCKS=true` (ver `src/constants/config.ts`)
+la app vuelve a responder desde `src/services/api/mocks.ts` y
+`src/services/realtime/mock-realtime.ts`, sin tocar más código, para trabajar la
+UI sin servidor. Instrucciones de arranque de los tres proyectos en el
+`README.md` de la raíz.
+
+# Separación de responsabilidades
+
+* **REST** → operaciones que **no** son en tiempo real: crear una pizarra,
+  resolver un código corto, entrar (join), cambiar permisos, renombrar, obtener
+  el snapshot para persistencia/exportación.
+* **WebSocket** → todo lo de tiempo real: estado inicial de la pizarra, cambios
+  (ops), cursores, presencia, cambios de permisos en vivo. Ver
+  `docs/07-websockets`.
+
+```
+Web / Mobile ──REST──▶ Node.js        (crear, join, permisos, snapshot)
+Web / Mobile ──WS────▶ Node.js        (ops, cursores, presencia)
+                       Node.js ──▶ Memoria ──(inactividad)──▶ MongoDB
+```
+
+# Entornos y URLs
+
+| Variable | Origen | Default local |
+|---|---|---|
+| `EXPO_PUBLIC_API_URL` | env / `app.json` → `extra.apiBaseUrl` | `http://localhost:3000` |
+| `EXPO_PUBLIC_WS_URL` | env / `app.json` → `extra.wsUrl` | `ws://localhost:3000/ws` |
+| `EXPO_PUBLIC_USE_MOCKS` | env / `app.json` → `extra.useMocks` | `false` |
+
+La app web debería usar las mismas rutas relativas sobre su propio host.
+
+En un teléfono físico `localhost` es el propio teléfono. Si no se define
+`EXPO_PUBLIC_API_URL`, la app sustituye `localhost` por el host LAN desde el que
+Expo ya se está sirviendo (`Constants.expoConfig.hostUri`), de modo que el
+dispositivo alcanza la máquina de desarrollo sin configurar nada.
+
+# Identidad y sesiones
+
+No hay cuentas. La identidad se maneja así:
+
+* **`userId`** — UUID v4 generado en el dispositivo la primera vez y guardado en
+  `AsyncStorage` (`src/features/session/store.ts`). Es el identificador con el que
+  el servidor asocia presencia y permisos.
+* **`nickname`** — texto corto (máx. 24) que el usuario elige. Se pide una sola
+  vez y se reutiliza. Debe ser único **dentro de una misma pizarra**.
+* **`boardToken`** — token de vida corta devuelto por `POST /boards/:id/join`.
+  Contiene `boardId`, `userId` y `role`. El cliente lo presenta al abrir el
+  WebSocket (`?token=`) y en las llamadas REST que modifican la pizarra
+  (`Authorization: Bearer <boardToken>`).
+
+**Nota:** no se usa la IP como identificador (varias personas comparten IP).
+El backend debe deduplicar sesiones por `(userId, boardId)`: al abrir un segundo
+socket para el mismo par, cierra el anterior con el código `4001` (ver
+`docs/07-websockets`).
+
+**Cabeceras estándar en REST**
+
+* `X-User-Id: <userId>` en toda petición que represente a un usuario.
+* `Authorization: Bearer <boardToken>` en acciones de dueño (renombrar, permisos).
+* `Content-Type: application/json` en peticiones con cuerpo.
+
+# Referencia de endpoints REST
+
+Rutas relativas a `API_BASE_URL`. La lista canónica vive en
+`src/services/api/endpoints.ts` (`ENDPOINTS`).
+
+| Acción | Método y ruta | Cuerpo | Respuesta | Quién |
+|---|---|---|---|---|
+| Salud | `GET /health` | — | `{ ok: true }` | público |
+| Crear pizarra | `POST /boards` | `CreateBoardRequest` | `201 BoardMeta` | cualquiera |
+| Obtener pizarra | `GET /boards/:id` | — | `200 BoardMeta` | cualquiera |
+| Resolver código | `GET /boards/code/:code` | — | `200 { boardId }` | cualquiera |
+| Entrar (join) | `POST /boards/:id/join` | `JoinBoardRequest` | `200 JoinBoardResponse` | cualquiera |
+| Renombrar | `PATCH /boards/:id` | `{ name }` | `200 BoardMeta` | creador |
+| Permisos | `PATCH /boards/:id/permissions` | `UpdatePermissionsRequest` | `200 BoardMeta` | creador |
+| Snapshot | `GET /boards/:id/snapshot` | — | `200 BoardSnapshot` | miembro |
+| Importar | `POST /boards/import` | `{ snapshot, creatorId }` | `201 BoardMeta` | cualquiera |
+
+**Tipos** (ver `src/services/api/types.ts` y `src/features/board/model.ts`):
+
+```ts
+CreateBoardRequest = {
+  name: string;
+  access: 'public' | 'private';
+  editPolicy: 'everyone' | 'selected' | 'creator-only';
+  pin?: string;                 // requerido si access === 'private'
+  creatorId: string;            // userId del dispositivo
+}
+
+JoinBoardRequest = { boardId: string; userId: string; nickname: string; pin?: string }
+
+JoinBoardResponse = {
+  boardToken: string;
+  meta: BoardMeta;
+  you: Participant;
+}
+
+UpdatePermissionsRequest = {
+  access?: 'public' | 'private';
+  editPolicy?: 'everyone' | 'selected' | 'creator-only';
+  editors?: string[];           // userIds; usado con editPolicy 'selected'
+  pin?: string | null;          // string = fijar/cambiar; null = quitar
+}
+```
+
+**Ejemplo — crear**
+
+```
+POST /boards
+X-User-Id: 6b1c…-uuid
+{ "name": "Sprint 12", "access": "public", "editPolicy": "everyone", "creatorId": "6b1c…-uuid" }
+
+201
+{ "id": "brd_ab12…", "shortCode": "K7M2QX", "name": "Sprint 12",
+  "access": "public", "editPolicy": "everyone", "editors": [],
+  "creatorId": "6b1c…-uuid", "hasPin": false,
+  "createdAt": 1735820000000, "updatedAt": 1735820000000 }
+```
+
+**Ejemplo — join a pizarra privada**
+
+```
+POST /boards/brd_ab12/join
+{ "boardId": "brd_ab12", "userId": "…", "nickname": "Sam", "pin": "4821" }
+
+401  { "error": { "code": "PIN_INVALID", "message": "Incorrect PIN" } }
+```
+
+# Formato de error
+
+Todas las respuestas 4xx/5xx usan el mismo sobre:
+
+```json
+{ "error": { "code": "STRING_CONSTANT", "message": "Texto legible" } }
+```
+
+| Código | HTTP | Significado |
+|---|---|---|
+| `VALIDATION` | 400 | cuerpo o parámetros inválidos |
+| `PIN_REQUIRED` | 401 | la pizarra es privada y falta el PIN |
+| `PIN_INVALID` | 401 | PIN incorrecto |
+| `FORBIDDEN` | 403 | el usuario no puede realizar la acción (p. ej. no es el creador) |
+| `BOARD_NOT_FOUND` | 404 | id o código inexistente |
+| `NICKNAME_TAKEN` | 409 | el nickname ya está en uso en esa pizarra |
+| `RATE_LIMITED` | 429 | demasiadas peticiones |
+| `INTERNAL` | 500 | error del servidor |
+
+El cliente los mapea a `ApiError` (`src/services/api/client.ts`).
+
+# Códigos cortos
+
+* Alfabeto: base32 de Crockford sin caracteres ambiguos → sin `I L O U 0 1`.
+  Constante: `SHORT_CODE_ALPHABET` en `src/utils/short-code.ts`.
+* Longitud: **6**. Insensible a mayúsculas (se normaliza a mayúsculas).
+* El **backend genera** el código y garantiza unicidad (reintentar ante colisión).
+* El cliente solo **valida y normaliza** lo que teclea el usuario.
+
+# Enlaces profundos (deep links)
+
+| Forma | Uso |
+|---|---|
+| `shareboard://board/<id>` | abrir la app móvil directamente en una pizarra |
+| `https://<web-host>/b/<code>` | enlace web para compartir (lo abre web o móvil) |
+| `https://<web-host>/board/<id>` | forma canónica interna de la web |
+
+El móvil registra el scheme `shareboard` (`app.json` → `scheme`) y parsea
+cualquiera de estas formas con `parseBoardRef()` (`src/utils/deep-link.ts`).
+Para universal/app links en producción hay que publicar
+`apple-app-site-association` y `assetlinks.json` en el web-host.
+
+# Límites y abuso
+
+* **Crear pizarra**: limitar por IP (p. ej. 10/hora) para evitar spam de códigos.
+* **Join / PIN**: limitar intentos de PIN por `(ip, boardId)` (p. ej. 5/min) para
+  frenar fuerza bruta.
+* **CORS**: el backend debe permitir el origen de la app web para REST y WS.
+* Ver también los límites de contenido en `docs/05-model-date` (`LIMITS`).
+
+# Mapa de placeholders para el backend
+
+El backend debe implementar exactamente estas claves de
+`src/services/api/endpoints.ts`:
+
+```
+HEALTH        GET   /health
+CREATE_BOARD  POST  /boards
+GET_BOARD     GET   /boards/:id
+RESOLVE_CODE  GET   /boards/code/:code
+JOIN          POST  /boards/:id/join
+RENAME        PATCH /boards/:id
+PERMISSIONS   PATCH /boards/:id/permissions
+SNAPSHOT      GET   /boards/:id/snapshot
+IMPORT        POST  /boards/import
+```
+
+El WebSocket y su protocolo están en `docs/07-websockets` y
+`src/services/realtime/protocol.ts`.
