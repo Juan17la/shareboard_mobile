@@ -1,0 +1,180 @@
+# Estilos y Diseño de Interfaz
+
+Define el sistema visual de **Shareboard** en móvil (React Native + NativeWind),
+pensado para copiarse a la web. La fuente de verdad de los tokens es
+`tailwind.config.js`; para código imperativo (el canvas de Skia, cálculos de
+gestos) los mismos valores están en `src/constants/theme.ts`.
+
+Implementa el diseño **Shareboard Mobile App Design** (`Shareboard Mobile.dc.html`
+en la raíz del repositorio), que es la referencia visual definitiva.
+
+# Principios
+
+* Simple, rápida, clara, fácil de aprender.
+* **Enfocada en la pizarra, no en la interfaz.** El lienzo llega de borde a
+  borde; la UI flota encima en paneles esmerilados, sin barras que le roben
+  espacio.
+* Las herramientas más usadas siempre visibles; las menos frecuentes, ocultas
+  hasta que se necesitan. El panel de opciones solo muestra lo que pertenece a
+  la herramienta en la mano: el lápiz nunca enseña un botón de negrita.
+* El usuario puede empezar a dibujar sin aprender nada antes.
+* Público de niños a profesorado mayor: nada de jerga, área táctil generosa,
+  tipografía redondeada.
+
+# Tema
+
+**Solo claro.** El diseño define un único sistema de superficies —cristal blanco
+sobre un fondo ambiental suave— y no trae contraparte oscura. Inventar una
+dejaría los paneles de cristal, que sacan su profundidad de un desenfoque claro
+sobre fondo claro, como cajas grises planas. `app.json` fija
+`userInterfaceStyle: "light"` y `tailwind.config.js` usa `darkMode: 'class'`
+para que NativeWind no lo ate al ajuste del sistema.
+
+# Paleta
+
+**Superficies de UI** (neutras a propósito)
+
+| Token | Valor | Uso |
+|---|---|---|
+| `background` | `#FFFFFF` | fondo de pantalla y del lienzo |
+| `surface` | `#F5F6F8` | tarjetas planas |
+| `surface-selected` | `#EEF0F6` | item presionado |
+| `text` | `#1B2030` | texto principal |
+| `text-secondary` | `#5A6170` | texto de apoyo, labels |
+| `text-tertiary` | `#8B909C` | chevrons, marcas de agua |
+| `line` | `rgba(27,32,48,.10)` | hairlines y bordes de control |
+
+**Marca / intención** (un solo acento hace todo el trabajo)
+
+| Token | Valor | Uso |
+|---|---|---|
+| `accent` | `#6D3FB5` | CTA principal, herramienta activa, selección |
+| `accent-soft` | `rgba(109,63,181,.11)` | fila seleccionada, chip de icono |
+| `danger` | `#C4353A` | eliminar |
+| `danger-bright` | `#E5484D` | borde/realce destructivo |
+| `warn` | `#B4530A` | confirmación reversible (vaciar) |
+
+**Cristal** (`Glass` en `theme.ts`) — la receta de los paneles flotantes: un
+`BlurView` con tinte `rgba(255,255,255,.46)`, hairline `rgba(27,32,48,.10)` y
+un realce superior `rgba(255,255,255,.92)`. En Android el desenfoque exige
+envolver el contenido en un `BlurTargetView`, lo que no funciona con paneles que
+cubren la pantalla entera (hojas, diálogos); allí se usa un tinte casi opaco con
+el mismo contraste de texto (`components/ui/Glass.tsx`).
+
+**Estado de conexión**: `online #0F9E8E`, `connecting #F59E0B`,
+`offline #9AA0A6`.
+
+**Colores de dibujo** (contenido, no UI — vivos a propósito). `DrawingPalette`:
+
+```
+#1B2030 (tinta)  #E5484D (rojo)   #F76808 (naranja)  #FFB224 (ámbar)
+#30A46C (verde)  #0091FF (azul)   #8E4EC6 (morado)   #FF8FAB (rosa)
+```
+
+Más un selector "Otro" (`components/ui/ColorPickerSheet.tsx`): una rejilla de
+tonos × luminosidades, no deslizadores. Se elige de un toque y no hay que saber
+qué es la saturación.
+
+**Colores de identidad** (`NicknameColors`, la pantalla de nombre): `#6D3FB5`,
+`#E5484D`, `#F76808`, `#30A46C`, `#0091FF`, `#8E4EC6`. El color elegido viaja
+en el `join` y el servidor lo respeta salvo que ya lo tenga otra persona.
+
+**Grosores** (`StrokeSizes`): 2, 5, 10, 20.
+
+# Tipografía
+
+* **Nunito** para todo. Sus formas redondeadas son la razón de que la app
+  resulte cercana tanto a un niño como a un profesor.
+* **JetBrains Mono** para lo que se lee carácter a carácter: códigos de pizarra,
+  PIN, porcentaje de zoom.
+* React Native no sintetiza pesos ni cursivas, así que cada corte es un archivo
+  aparte (`hooks/use-app-fonts.ts`) y se pide por nombre a través de
+  `<Txt weight>` (`components/ui/Text.tsx`) — nunca con `fontWeight`.
+* Escala: 10.5 (label), 11.5 (caption), 13 (body), 15 (título de fila), 18
+  (título de hoja), 20–26 (display).
+* El lienzo también dibuja en Nunito: `components/board/BoardFonts.tsx` carga
+  cuatro cortes en el gestor de fuentes de Skia, porque `matchFont` solo mira
+  las fuentes del sistema.
+
+# Espaciado, formas, elevación
+
+* **Espaciado** base 4px (`Spacing`): `half 2, one 4, two 8, three 16, four 24,
+  five 32, six 64`.
+* **Radios** (`Radius`): `sm 8, md 12, lg 16, xl 20, xxl 26, pill 999`.
+* **Elevación** (`Shadow`): sombras muy difusas y de baja opacidad; el CTA y los
+  botones destructivos llevan sombra teñida de su propio color.
+* **Iconos**: trazados a mano en `components/ui/Icon.tsx` (rejilla de 24px,
+  trazo 1.9–2.4, extremos redondos), transcritos del diseño.
+
+# Componentes base
+
+| Componente | Archivo | Notas |
+|---|---|---|
+| `Txt` | `ui/Text.tsx` | peso, tono, mono, cursiva, tracking |
+| `Icon` | `ui/Icon.tsx` | set completo, coloreado por `currentColor` |
+| `GlassPanel` | `ui/Glass.tsx` | la superficie esmerilada de todo lo flotante |
+| `Button` / `IconButton` / `StepperButton` | `ui/Button.tsx` | `primary / secondary / ghost / danger / dashed` |
+| `Field` | `ui/Field.tsx` | label + hint + error, variante mono |
+| `Segmented` | `ui/Segmented.tsx` | elección de una opción |
+| `Toggle` | `ui/Toggle.tsx` | interruptor propio, no el del sistema |
+| `Sheet` / `SheetRow` / `SectionLabel` | `ui/Sheet.tsx` | hoja inferior sobre scrim |
+| `ConfirmDialog` | `ui/ConfirmDialog.tsx` | diálogo de acciones destructivas |
+| `Toast` / `ToastHost` | `ui/Toast.tsx` | píldora de confirmación |
+| `Avatar` | `ui/Avatar.tsx` | iniciales + apilado con desbordamiento |
+| `Backdrop` | `ui/Backdrop.tsx` | fondo decorativo de home / nombre / PIN |
+| `QRCode` | `ui/QRCode.tsx` | código real (`features/qr/encode.ts`) |
+| `ColorPickerSheet` | `ui/ColorPickerSheet.tsx` | rejilla tono × luminosidad |
+
+# Layout
+
+```
+┌──────────────────────────────────────────────┐
+│ ░ cabecera flotante ░                    ▢▢▢ │  nombre · en línea · avatares · ⋯
+│ [código] [permisos]            [Compartir]  ▢│  ▢ = riel de herramientas
+│                                             ▢│
+│                LIENZO INFINITO              ▢│
+│                                              │
+│ [100%]                                       │
+│ [↶ ↷]                                        │
+└──────────────────────────────────────────────┘
+```
+
+* **Cabecera** flotante sobre un degradado blanco → transparente, no una barra:
+  el lienzo llega hasta arriba. El código se copia al tocarlo.
+* **Riel de herramientas** a la derecha (lápiz, borrador, figuras, texto,
+  relleno, color), con su columna de opciones abriéndose a la izquierda.
+* **Zoom y deshacer/rehacer** abajo a la izquierda, en la esquina opuesta al
+  riel: son lo que se toca *mientras* se dibuja, y bajo la mano que dibuja
+  taparían el lienzo.
+* **Todo lo demás** son hojas inferiores (`Sheet`), no pantallas: la pizarra
+  sigue viéndose detrás del scrim mientras se decide quién puede editarla.
+
+**Orientación**: retrato y apaisado son ambos de primera clase (`app.json`
+`orientation: "default"`). En apaisado el riel se compacta, la cabecera se
+acorta y deja libre el borde derecho, la home pasa a dos columnas y el teclado
+del PIN se aplana. Cada pantalla lo decide con `useWindowDimensions()`.
+
+**Breakpoints compartidos** (`Layout` en `theme.ts`): compacto `< 600`, tablet
+`600–900`, escritorio (web) `> 900`.
+
+# Interacción táctil y accesibilidad
+
+* Área mínima táctil: **44 px** (`Layout.minTouchTarget`).
+* **Un dedo** = herramienta activa; **dos dedos** = mover y hacer zoom. El
+  dibujo se limita a `maxPointers(1)`, que es también el rechazo de palma.
+* Contraste de texto AA como mínimo.
+* Todo control lleva `accessibilityRole` y `accessibilityLabel`, y los estados
+  (`selected`, `disabled`, `checked`, `expanded`) se declaran. Los elementos
+  redundantes para lectores de pantalla —el scrim de una hoja, que duplica su
+  botón de cerrar— se ocultan con `accessible={false}`.
+* La vibración al tocar es opcional y viene **desactivada** (hoja de ajustes).
+
+# Idioma
+
+Español por defecto, inglés como alternativa; se cambia desde la home o la hoja
+de ajustes y se recuerda. Todas las cadenas están en
+`src/features/i18n/strings.ts`, tipadas de modo que una clave presente en un
+idioma y ausente en el otro es un error de compilación.
+
+
+Design a mobile app for a sharable white board with basic functionalities such as, custom pencil size, color selectors (with default options), text & its settings,  basic figures (squares, triangles and circles), eraser and tool for fill some figure.The whiteboard should be "infinite" white, with changing cursor depending from the tool the user is using. There should also be a header where the user can see, the code of the white board, the people connected to that whiteboard, the privacy options for set the edition settings (private or public, who can edit, everyone, selected ones [the people online on the whiteboard], only me [only the creator can edit], Thing like the code on the header should be clickable for copying the code )The name of the app it's Shareboard.I want an style that has the light theme as the main one, mid size icons and mid spacing. The style I want it's something glassy, but not fully glassmorphism. The public of this interface can be from children to older professor.  
