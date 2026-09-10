@@ -1,0 +1,209 @@
+# Modelo de Datos
+
+Contrato de datos compartido por móvil, web y backend. La implementación de
+referencia (TypeScript) está en `src/features/board/model.ts` y
+`src/services/realtime/protocol.ts`.
+
+# Sistema de coordenadas
+
+* Espacio de pizarra **ilimitado**, en píxeles lógicos, con origen arriba-izquierda.
+* Coordenadas en `number` (float). No hay límites de lienzo.
+* La **cámara** (pan/zoom) es puramente del cliente y **no** forma parte del
+  modelo ni se sincroniza.
+
+# Elementos
+
+Discriminados por `kind`. Campos comunes (`ElementBase`):
+
+```ts
+{
+  id: string;            // nanoid de 12 (generado por quien crea el elemento)
+  kind: 'stroke' | 'shape' | 'text' | 'image';
+  createdBy: string;     // userId
+  createdAt: number;     // epoch ms (cliente)
+  updatedAt: number;     // epoch ms; el servidor es la autoridad al aplicar ops
+  z: number;             // orden de pintado; mayor = encima. Asignado al hacer 'add'
+  deleted?: boolean;     // borrado suave para propagar de forma determinista
+}
+```
+
+**stroke**
+
+```ts
+{ kind: 'stroke'; points: number[]; color: string; width: number }
+// points: [x0, y0, x1, y1, ...] plano (compacto en el cable)
+```
+
+**shape**
+
+```ts
+{ kind: 'shape'; shape: 'rectangle' | 'ellipse' | 'line' | 'arrow';
+  from: {x,y}; to: {x,y}; stroke: string; strokeWidth: number; fill?: string | null }
+```
+
+**text**
+
+```ts
+{ kind: 'text'; at: {x,y}; text: string; color: string;
+  fontSize: number; bold?: boolean; italic?: boolean }
+```
+
+**image** (importación v1)
+
+```ts
+{ kind: 'image'; at: {x,y}; width: number; height: number; uri: string }
+// uri: URL remota o data: URI (v1 incrusta la imagen en base64)
+```
+
+# Metadatos de pizarra
+
+```ts
+BoardMeta = {
+  id: string;
+  shortCode: string;            // 6 chars, ver docs/02
+  name: string;
+  access: 'public' | 'private';
+  editPolicy: 'everyone' | 'selected' | 'creator-only';
+  editors: string[];            // userIds (con editPolicy 'selected')
+  creatorId: string;
+  hasPin: boolean;              // el PIN en sí nunca sale del servidor
+  createdAt: number;
+  updatedAt: number;
+}
+```
+
+# Participante (presencia)
+
+```ts
+Participant = {
+  userId: string;
+  nickname: string;
+  color: string;                // asignado por el servidor
+  role: 'creator' | 'editor' | 'viewer';
+  cursor?: {x,y};               // última posición; no se persiste
+  lastSeen: number;
+}
+```
+
+Helper de reglas (mismo en cliente y recomendado en servidor):
+`canEdit(meta, userId)` y `roleFor(meta, userId)` en `model.ts`.
+
+# Ops — unidad de cambio
+
+```ts
+Op =
+  | { t: 'add';    el: BoardElement }
+  | { t: 'update'; id: string; patch: Partial<BoardElement>; updatedAt: number }
+  | { t: 'delete'; id: string }
+  | { t: 'clear' }
+```
+
+* Aplicación inmutable: `applyOps(map, ops)` (`src/features/board/ops.ts`).
+* Inverso para undo local: `invertOps(before, ops)`.
+* **Secuencia**: el servidor mantiene un `seq` monótono **por pizarra** y lo
+  incluye en cada mensaje `op` que reemite. El cliente aplica en orden de `seq`.
+* **Idempotencia**: reaplicar un `add` con el mismo `id` es un reemplazo; un
+  `delete` sobre algo ya borrado no hace nada. Recomendado que el backend ignore
+  ops con `seq` que ya procesó de ese cliente.
+
+# Estado en memoria del servidor
+
+```ts
+ActiveBoard = {
+  meta: BoardMeta;
+  elements: Map<string, BoardElement>;
+  participants: Map<string, Participant>;   // por userId
+  seq: number;                              // contador monótono por pizarra
+  lastActivityAt: number;                   // para el flush por inactividad
+  dirty: boolean;                           // hay cambios sin persistir
+}
+```
+
+# Persistencia en MongoDB
+
+Colección **`boards`** (una pizarra = un documento):
+
+```js
+{
+  _id,                       // = BoardMeta.id
+  shortCode,                 // índice único
+  name, access, editPolicy, editors, creatorId,
+  pinHash,                   // hash del PIN (nunca el PIN en claro)
+  elements: [ BoardElement, ... ],
+  createdAt, updatedAt,      // índice en updatedAt
+}
+```
+
+* Índices: `{ shortCode: 1 }` único, `{ updatedAt: -1 }`.
+* Límite de documento de Mongo: **16 MB**. Con `LIMITS.maxElements = 5000` y
+  trazos acotados a 2000 puntos se queda muy por debajo, pero si una pizarra
+  crece demasiado: rechazar nuevas ops con `VALIDATION` o mover a una colección
+  `board_elements` con un documento por elemento (decisión futura).
+* Opcional: colección `board_events` (log append-only de ops) para poder
+  reconstruir el estado tras un crash — ver `docs/06-loading-exporting`.
+
+# Estrategia de IDs
+
+| Entidad | Formato | Generado por |
+|---|---|---|
+| `userId` | UUID v4 | cliente (una vez, en `AsyncStorage`) |
+| `boardId` | opaco (p. ej. `brd_` + nanoid) | backend |
+| `shortCode` | 6 chars base32 sin ambiguos | backend |
+| `elementId` | nanoid 12 | quien crea el elemento (cliente) |
+
+# Formato de archivo (exportar/importar)
+
+```ts
+BoardSnapshot = {
+  format: 'live-whiteboard';
+  version: 1;
+  meta: { name: string };
+  elements: BoardElement[];      // solo visibles, ordenados por z
+  exportedAt: number;
+}
+```
+
+**JSON Schema (resumen)**
+
+```json
+{
+  "type": "object",
+  "required": ["format", "version", "elements"],
+  "properties": {
+    "format": { "const": "live-whiteboard" },
+    "version": { "const": 1 },
+    "meta": { "type": "object", "properties": { "name": { "type": "string" } } },
+    "elements": {
+      "type": "array", "maxItems": 5000,
+      "items": { "type": "object", "required": ["id", "kind"] }
+    },
+    "exportedAt": { "type": "number" }
+  }
+}
+```
+
+Validación real en `src/features/board/serialization.ts` (`parseSnapshot`).
+Al importar, los elementos se **re-keyean** (`rekeyElements`) para no chocar con
+una pizarra viva.
+
+# Límites de validación
+
+Constante `LIMITS` en `model.ts` — **aplicar en cliente y en servidor**:
+
+| Regla | Valor |
+|---|---|
+| Máx. elementos por pizarra | 5000 |
+| Máx. puntos por trazo | 2000 |
+| Máx. caracteres de texto | 2000 |
+| Grosor de trazo | 1 – 64 |
+| Tamaño de fuente | 10 – 96 |
+| Formato de color | `#RRGGBB` (regex `^#[0-9a-fA-F]{6}$`) |
+| Longitud de nickname | ≤ 24 |
+
+# Versionado y migración
+
+* `BoardSnapshot.version` sube cuando cambia la forma de los elementos de manera
+  incompatible.
+* El lector actual acepta solo `version: 1`; un archivo de otra versión produce
+  un error legible.
+* Cambios compatibles (campos nuevos opcionales) **no** suben la versión.
