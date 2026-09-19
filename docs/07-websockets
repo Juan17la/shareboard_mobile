@@ -159,11 +159,6 @@ Constantes en `src/services/realtime/protocol.ts` (`CloseCode`).
 Envío desde el store: cada mutación produce una `Op` en `outbox`; el hook
 la vacía throttleada como `{ type: 'op' }`. Los cursores salen por `sendCursor`.
 
-**Modo mock**: con `USE_MOCKS=true`, `MockRealtimeConnection`
-(`mock-realtime.ts`) implementa la misma interfaz con un bus en memoria por
-`boardId`, de modo que dos pantallas de pizarra en el mismo proceso se ven los
-trazos y cursores sin servidor.
-
 # Diagramas de secuencia
 
 **Cambio de permisos**
