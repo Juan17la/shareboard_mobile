@@ -1,9 +1,9 @@
 # Estilos y Diseño de Interfaz
 
-Define el sistema visual de **Shareboard** en móvil (React Native + NativeWind),
-pensado para copiarse a la web. La fuente de verdad de los tokens es
-`tailwind.config.js`; para código imperativo (el canvas de Skia, cálculos de
-gestos) los mismos valores están en `src/constants/theme.ts`.
+Define el sistema visual de **Shareboard** en móvil (React Native), pensado
+para copiarse a la web. Los tokens viven en `src/constants/theme.ts` (la web los
+refleja en `web/src/index.css`); en móvil no se usa NativeWind: todo el estilo
+va en props `style`.
 
 Implementa el diseño **Shareboard Mobile App Design** (`Shareboard Mobile.dc.html`
 en la raíz del repositorio), que es la referencia visual definitiva.
@@ -27,8 +27,7 @@ en la raíz del repositorio), que es la referencia visual definitiva.
 sobre un fondo ambiental suave— y no trae contraparte oscura. Inventar una
 dejaría los paneles de cristal, que sacan su profundidad de un desenfoque claro
 sobre fondo claro, como cajas grises planas. `app.json` fija
-`userInterfaceStyle: "light"` y `tailwind.config.js` usa `darkMode: 'class'`
-para que NativeWind no lo ate al ajuste del sistema.
+`userInterfaceStyle: "light"`.
 
 # Paleta
 
@@ -56,10 +55,16 @@ para que NativeWind no lo ate al ajuste del sistema.
 
 **Cristal** (`Glass` en `theme.ts`) — la receta de los paneles flotantes: un
 `BlurView` con tinte `rgba(255,255,255,.46)`, hairline `rgba(27,32,48,.10)` y
-un realce superior `rgba(255,255,255,.92)`. En Android el desenfoque exige
-envolver el contenido en un `BlurTargetView`, lo que no funciona con paneles que
-cubren la pantalla entera (hojas, diálogos); allí se usa un tinte casi opaco con
-el mismo contraste de texto (`components/ui/Glass.tsx`).
+un realce superior `rgba(255,255,255,.92)`. iOS desenfoca con `BlurView`. En
+Android el desenfoque de expo-blur (`BlurTargetView`) dibujaba el fondo
+desplazado una pantalla entera, así que cada panel desenfoca con Skia lo que
+tiene detrás: la pantalla declara su fondo en un `GlassScene` (el `Backdrop`
+procedural en home / nombre / PIN; una captura periódica del lienzo en la
+pizarra, `useBoardMirror`) y el panel lo dibuja en su propio canvas, desplazado
+a su posición y con un `Blur` gaussiano. Lo que vive en un `Modal` (hojas,
+diálogos) queda fuera (`NoGlassScene`) y usa un tinte casi opaco
+(`components/ui/Glass.tsx`). El estilo va siempre en props `style`: NativeWind
+no está cableado — su runtime vaciaba las funciones `style` de `Pressable`.
 
 **Estado de conexión**: `online #0F9E8E`, `connecting #F59E0B`,
 `offline #9AA0A6`.
