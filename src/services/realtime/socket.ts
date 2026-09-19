@@ -50,6 +50,8 @@ export class WebSocketConnection {
   private stateListeners = new Set<(s: ConnectionState) => void>();
   private outbox: ClientMessage[] = [];
   private backoff: number = REALTIME.backoffMinMs;
+  private attempt = 0;
+  private lastMessageAt = 0;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private closedByUs = false;
@@ -81,6 +83,8 @@ export class WebSocketConnection {
 
     ws.onopen = () => {
       this.backoff = REALTIME.backoffMinMs;
+      this.attempt = 0;
+      this.lastMessageAt = Date.now();
       this.setState('online');
       this.startHeartbeat();
       // Every socket starts with a `join`; the server answers `joined` with the
@@ -99,6 +103,7 @@ export class WebSocketConnection {
     };
 
     ws.onmessage = (event) => {
+      this.lastMessageAt = Date.now();
       let msg: ServerMessage;
       try {
         msg = JSON.parse(String(event.data)) as ServerMessage;
@@ -112,26 +117,39 @@ export class WebSocketConnection {
       // `onclose` will follow and drive the reconnect.
     };
 
-    ws.onclose = (event) => {
-      this.stopHeartbeat();
-      this.ws = null;
-      if (this.closedByUs) {
-        this.setState('idle');
-        return;
-      }
-      this.setState('offline');
-      // Reconnecting after a fatal code would just loop; with REPLACED it would
-      // also fight the newer session for the (userId, boardId) slot.
-      if (FATAL_CLOSE_CODES.includes(event?.code)) {
-        this.closedByUs = true;
-        return;
-      }
-      this.scheduleReconnect();
-    };
+    ws.onclose = (event) => this.onClosed(event?.code);
+  }
+
+  private onClosed(code: number | undefined) {
+    this.stopHeartbeat();
+    this.ws = null;
+    if (this.closedByUs) {
+      this.setState('idle');
+      return;
+    }
+    this.setState('offline');
+    // Reconnecting after a fatal code would just loop; with REPLACED it would
+    // also fight the newer session for the (userId, boardId) slot.
+    if (code !== undefined && FATAL_CLOSE_CODES.includes(code)) {
+      this.closedByUs = true;
+      return;
+    }
+    // After the last automatic attempt the socket stays offline until the user
+    // taps "retry" — a banner they can act on beats a silent loop.
+    if (this.attempt >= REALTIME.maxReconnects) return;
+    this.scheduleReconnect();
+  }
+
+  /** A user-driven reconnect: starts the backoff over. */
+  retry() {
+    this.attempt = 0;
+    this.backoff = REALTIME.backoffMinMs;
+    this.connect();
   }
 
   private scheduleReconnect() {
     if (this.reconnectTimer) return;
+    this.attempt += 1;
     const jitter = Math.random() * this.backoff * 0.3;
     const wait = Math.min(this.backoff, REALTIME.backoffMaxMs) + jitter;
     this.reconnectTimer = setTimeout(() => {
@@ -144,6 +162,16 @@ export class WebSocketConnection {
   private startHeartbeat() {
     this.stopHeartbeat();
     this.heartbeat = setInterval(() => {
+      // A phone that lost wifi keeps an "open" socket for minutes before the OS
+      // notices. No pong for two beats means it is gone: drop it ourselves so
+      // the reconnect (and the offline banner) start now.
+      const ws = this.ws;
+      if (ws && Date.now() - this.lastMessageAt > REALTIME.heartbeatMs * 2) {
+        ws.onclose = null;
+        ws.close();
+        this.onClosed(1006);
+        return;
+      }
       this.send({ type: 'ping', t: Date.now() });
     }, REALTIME.heartbeatMs);
   }
