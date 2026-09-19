@@ -66,8 +66,7 @@
         "projectId": "5b9cabf0-cd79-4d0b-8693-eb5641cf95b0"
       },
       "apiBaseUrl": "http://localhost:3000",
-      "wsUrl": "ws://localhost:3000/ws",
-      "useMocks": false
+      "wsUrl": "ws://localhost:3000/ws"
     },
     "owner": "juan17las-team"
   }
