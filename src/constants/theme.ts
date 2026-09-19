@@ -1,15 +1,12 @@
 /**
- * Design tokens for imperative code (the Skia canvas, gesture math, anything
- * that cannot use a `className`). Mirrors `tailwind.config.js` — keep them in
- * sync. Full rationale in docs/03-styles.
+ * Design tokens. Mirrors `tailwind.config.js`, which the web app copies —
+ * keep them in sync. Full rationale in docs/03-styles.
  *
  * The palette comes from the Shareboard mobile design: a light, glassy surface
  * system built on frosted white panels over a soft violet/green ambient wash,
  * with one purple accent doing all the "this is active / this is the CTA" work.
  * There is no dark variant on purpose — the design is light-only (docs/03-styles).
  */
-import '@/global.css';
-
 /** UI surfaces. Deliberately restrained: board content is the star. */
 export const Colors = {
   /** Page and canvas background. */
@@ -97,17 +94,6 @@ export const NicknameColors = [
   '#8E4EC6',
 ] as const;
 
-/** 4px base spacing scale. */
-export const Spacing = {
-  half: 2,
-  one: 4,
-  two: 8,
-  three: 16,
-  four: 24,
-  five: 32,
-  six: 64,
-} as const;
-
 /** The design leans on generous, soft corners throughout. */
 export const Radius = { sm: 8, md: 12, lg: 16, xl: 20, xxl: 26, pill: 999 } as const;
 
@@ -125,14 +111,6 @@ export const Fonts = {
   extrabold: 'Nunito_800ExtraBold',
   mono: 'JetBrainsMono_500Medium',
   monoBold: 'JetBrainsMono_700Bold',
-} as const;
-
-/** Layout constants shared with the web app (docs/03-styles). */
-export const Layout = {
-  /** Below this width the board keeps its portrait arrangement. */
-  compactBreakpoint: 600,
-  tabletBreakpoint: 900,
-  minTouchTarget: 44,
 } as const;
 
 /** Soft drop shadows. Elevation is subtle everywhere except the CTA. */
