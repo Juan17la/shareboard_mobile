@@ -80,6 +80,7 @@ Participant = {
   userId: string;
   nickname: string;
   color: string;                // asignado por el servidor
+  avatar?: string;              // emoji elegido en la pantalla de nombre; sin él, la inicial
   role: 'creator' | 'editor' | 'viewer';
   cursor?: {x,y};               // última posición; no se persiste
   lastSeen: number;
