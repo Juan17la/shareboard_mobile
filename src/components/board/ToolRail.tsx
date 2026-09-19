@@ -81,6 +81,10 @@ export function ToolRail({ landscape }: { landscape: boolean }) {
   const toolLabel =
     tool === 'pen' ? t.pencil : tool === 'eraser' ? t.eraser : tool === 'shape' ? t.shapes : tool === 'text' ? t.text : t.fill;
 
+  // A viewer has no tools at all: the design hides them rather than greying
+  // them out, so the board is all there is to look at (docs/04).
+  if (!canEdit) return null;
+
   const showSizes = tool === 'pen' || tool === 'eraser' || tool === 'shape';
   const showShapeKinds = tool === 'shape';
   const showTextOptions = tool === 'text';
@@ -109,7 +113,6 @@ export function ToolRail({ landscape }: { landscape: boolean }) {
                 icon={entry.icon}
                 label={t[entry.labelKey]}
                 active={tool === entry.tool}
-                disabled={!canEdit}
                 size={buttonSize}
                 radius={buttonRadius}
                 onPress={() => pickTool(entry.tool)}
@@ -418,7 +421,6 @@ function RailButton({
   icon,
   label,
   active,
-  disabled,
   size,
   radius,
   onPress,
@@ -426,7 +428,6 @@ function RailButton({
   icon: IconName;
   label: string;
   active: boolean;
-  disabled: boolean;
   size: number;
   radius: number;
   onPress: () => void;
@@ -435,8 +436,7 @@ function RailButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ selected: active, disabled }}
-      disabled={disabled}
+      accessibilityState={{ selected: active }}
       onPress={onPress}
       style={{
         width: size,
@@ -447,7 +447,6 @@ function RailButton({
         borderWidth: 1,
         borderColor: active ? 'transparent' : Colors.border,
         backgroundColor: active ? Colors.accent : 'rgba(255,255,255,0.55)',
-        opacity: disabled ? 0.4 : 1,
         ...(active
           ? {
               shadowColor: Colors.accent,
