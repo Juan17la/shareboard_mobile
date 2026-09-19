@@ -168,6 +168,40 @@ export function resizeShape(el: ShapeElement, h: number, p: Point): Pick<ShapeEl
   return { from: shapeHandles(el)[(h + 2) % 4], to: p };
 }
 
+// --- connection points -----------------------------------------------------
+// Every enclosed shape offers the midpoint of each side of its box as a place a
+// line or an arrow can start or end. Snapping is by proximity at draw time
+// only: the arrow is not bound to the shape, so moving one leaves the other.
+
+/** Anchor points of an enclosed shape, in board coordinates: top, right, bottom, left. */
+export function anchorsOf(el: ShapeElement): Point[] {
+  if (isLineLike(el)) return [];
+  const b = shapeBounds(el);
+  return [
+    { x: b.x + b.width / 2, y: b.y },
+    { x: b.x + b.width, y: b.y + b.height / 2 },
+    { x: b.x + b.width / 2, y: b.y + b.height },
+    { x: b.x, y: b.y + b.height / 2 },
+  ];
+}
+
+/** The nearest anchor within `radius` board units of `at`, or `at` itself. */
+export function snapToAnchor(elements: BoardElement[], at: Point, radius: number): Point {
+  let best = at;
+  let bestD = radius * radius;
+  for (const el of elements) {
+    if (el.kind !== 'shape') continue;
+    for (const a of anchorsOf(el)) {
+      const d = (a.x - at.x) ** 2 + (a.y - at.y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = a;
+      }
+    }
+  }
+  return best;
+}
+
 /** The topmost shape whose box (padded by `pad` board units) contains `at`. */
 export function shapeAt(elements: BoardElement[], at: Point, pad: number): ShapeElement | null {
   for (let i = elements.length - 1; i >= 0; i--) {
