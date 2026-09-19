@@ -1,9 +1,6 @@
 /**
- * The zoom readout and the undo/redo pair, floating at the bottom-left.
- *
- * They are at the opposite corner from the tool rail on purpose: these are the
- * two things a right-handed person reaches for *while* drawing, and putting
- * them under the drawing hand would mean covering the board to undo.
+ * The zoom readout and the undo/redo pair, floating at the bottom-left, just
+ * above the toolbar's row so the two never overlap on a narrow screen.
  *
  * The zoom chip doubles as its own reset — the design's "100%" button snaps the
  * camera home, which is the only way back after a long pan on an infinite
@@ -21,6 +18,7 @@ import { tick } from '@/utils/haptics';
 import { GlassPanel } from '../ui/Glass';
 import { Icon } from '../ui/Icon';
 import { Txt } from '../ui/Text';
+import { TOOLBAR_HEIGHT } from './Toolbar';
 
 export function BottomControls({ landscape }: { landscape: boolean }) {
   const insets = useSafeAreaInsets();
@@ -33,6 +31,8 @@ export function BottomControls({ landscape }: { landscape: boolean }) {
   const undoDepth = useBoardStore((s) => s.undoStack.length);
   const redoDepth = useBoardStore((s) => s.redoStack.length);
   const haptics = useSessionStore((s) => s.settings.haptics);
+  // The toolbar's options strip opens in the same row; step over it.
+  const optionsOpen = useBoardStore((s) => s.railOpen && s.canEditNow());
 
   const zoom = `${Math.round(camera.scale * 100)}%`;
 
@@ -42,9 +42,9 @@ export function BottomControls({ landscape }: { landscape: boolean }) {
       style={{
         position: 'absolute',
         left: Math.max(insets.left, landscape ? 16 : 12),
-        bottom: Math.max(insets.bottom, landscape ? 16 : 28) + (landscape ? 6 : 16),
-        flexDirection: landscape ? 'row' : 'column',
-        alignItems: landscape ? 'center' : 'flex-start',
+        bottom: Math.max(insets.bottom, landscape ? 10 : 16) + TOOLBAR_HEIGHT + 10 + (optionsOpen ? 56 : 0),
+        flexDirection: 'row',
+        alignItems: 'center',
         gap: 10,
       }}
     >
