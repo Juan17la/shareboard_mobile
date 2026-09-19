@@ -60,12 +60,16 @@ export function BoardCanvas({
 
   const gesture = useMemo(() => {
     const store = () => useBoardStore.getState();
+    // Viewers and offline clients get no draft: a stroke that cannot be sent
+    // would only ever exist on this screen, and the banner is what says so.
+    const editable = () => store().canEditNow() && store().connection === 'online';
 
     const draw = Gesture.Pan()
       // Palm rejection: a second finger belongs to the camera, never the tool.
       .maxPointers(1)
       .runOnJS(true)
       .onStart((e) => {
+        if (!editable()) return;
         const p = screenToBoard(e.x, e.y);
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
@@ -74,6 +78,7 @@ export function BoardCanvas({
         onCursorMove?.(p);
       })
       .onUpdate((e) => {
+        if (!editable()) return;
         const p = screenToBoard(e.x, e.y);
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
@@ -102,6 +107,7 @@ export function BoardCanvas({
     const tap = Gesture.Tap()
       .runOnJS(true)
       .onEnd((e) => {
+        if (!editable()) return;
         const p = screenToBoard(e.x, e.y);
         const t = store().tool;
         if (t === 'text') {
