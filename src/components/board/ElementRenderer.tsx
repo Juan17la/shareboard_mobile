@@ -31,11 +31,12 @@ function ArrowHead({
 }) {
   const angle = Math.atan2(to.y - from.y, to.x - from.x);
   const size = Math.max(10, width * 3);
-  const p = Skia.Path.Make();
-  p.moveTo(to.x, to.y);
-  p.lineTo(to.x - size * Math.cos(angle - Math.PI / 6), to.y - size * Math.sin(angle - Math.PI / 6));
-  p.moveTo(to.x, to.y);
-  p.lineTo(to.x - size * Math.cos(angle + Math.PI / 6), to.y - size * Math.sin(angle + Math.PI / 6));
+  const p = Skia.PathBuilder.Make()
+    .moveTo(to.x, to.y)
+    .lineTo(to.x - size * Math.cos(angle - Math.PI / 6), to.y - size * Math.sin(angle - Math.PI / 6))
+    .moveTo(to.x, to.y)
+    .lineTo(to.x - size * Math.cos(angle + Math.PI / 6), to.y - size * Math.sin(angle + Math.PI / 6))
+    .detach();
   return <Path path={p} style="stroke" strokeWidth={width} color={color} strokeCap="round" />;
 }
 
@@ -86,11 +87,12 @@ function ShapeView({ el }: { el: ShapeElement }) {
   if (el.shape === 'triangle') {
     // Apex centred on the top edge, base along the bottom — the shape the tool
     // icon promises, drawn inside the dragged box.
-    const path = Skia.Path.Make();
-    path.moveTo(x + w / 2, y);
-    path.lineTo(x + w, y + h);
-    path.lineTo(x, y + h);
-    path.close();
+    const path = Skia.PathBuilder.Make()
+      .moveTo(x + w / 2, y)
+      .lineTo(x + w, y + h)
+      .lineTo(x, y + h)
+      .close()
+      .detach();
     return (
       <Group>
         {el.fill ? <Path path={path} color={el.fill} /> : null}
@@ -206,14 +208,14 @@ export function DotGrid({
     // Below ~9px apart the dots read as a grey wash, so the grid drops out —
     // the same threshold the design uses when zoomed out.
     if (step <= 9 || width <= 0 || height <= 0) return null;
-    const p = Skia.Path.Make();
+    const p = Skia.PathBuilder.Make();
     const radius = camera.scale > 1.4 ? 1.4 : 1.1;
     const startX = camera.x % step;
     const startY = camera.y % step;
     for (let x = startX; x < width; x += step) {
       for (let y = startY; y < height; y += step) p.addCircle(x, y, radius);
     }
-    return p;
+    return p.detach();
   }, [step, width, height, camera.x, camera.y, camera.scale]);
 
   if (!path) return null;

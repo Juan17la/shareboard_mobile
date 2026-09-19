@@ -17,18 +17,18 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
+import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ImportSheet } from '@/components/sheets/ImportSheet';
 import { Avatar } from '@/components/ui/Avatar';
-import { Backdrop } from '@/components/ui/Backdrop';
+import { Backdrop, BackdropScene } from '@/components/ui/Backdrop';
 import { Button } from '@/components/ui/Button';
-import { GlassPanel } from '@/components/ui/Glass';
+import { GlassPanel, GlassScene, type SceneSize } from '@/components/ui/Glass';
 import { Icon } from '@/components/ui/Icon';
 import { SectionLabel } from '@/components/ui/Sheet';
 import { Txt } from '@/components/ui/Text';
@@ -40,6 +40,10 @@ import { useSessionStore } from '@/features/session/store';
 import { createBoard, importSnapshot, resolveShortCode } from '@/services/api/boards';
 import { parseBoardRef } from '@/utils/deep-link';
 import { thud } from '@/utils/haptics';
+
+const backdropScene = (size: SceneSize) => (
+  <BackdropScene variant="home" width={size.width} height={size.height} />
+);
 
 export default function Home() {
   const insets = useSafeAreaInsets();
@@ -287,14 +291,23 @@ export default function Home() {
     </View>
   );
 
+  // The wash, handed to the glass panels so they can blur it; and how far the
+  // page has scrolled, so the blur follows the panels (ui/Glass).
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollY.value = e.contentOffset.y;
+  });
+
   return (
-    <View style={{ flex: 1 }}>
+    <GlassScene render={backdropScene} scroll={scrollY}>
       <Backdrop variant="home" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView
+        <Animated.ScrollView
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           contentContainerStyle={{
             flexGrow: 1,
             gap: landscape ? 14 : 20,
@@ -316,7 +329,7 @@ export default function Home() {
             {createColumn}
             {joinColumn}
           </View>
-        </ScrollView>
+        </Animated.ScrollView>
       </KeyboardAvoidingView>
 
       <ToastHost bottom={Math.max(insets.bottom, 16) + 24} enabled={!importing} />
@@ -327,6 +340,6 @@ export default function Home() {
         onImportSnapshot={handleImport}
         allowImagePlacement={false}
       />
-    </View>
+    </GlassScene>
   );
 }
