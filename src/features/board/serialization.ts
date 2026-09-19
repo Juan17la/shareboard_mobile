@@ -97,8 +97,3 @@ export function parseSnapshot(text: string): BoardSnapshot {
     exportedAt: typeof obj.exportedAt === 'number' ? obj.exportedAt : Date.now(),
   };
 }
-
-/** Re-key elements so an imported snapshot never collides with a live board. */
-export function rekeyElements(elements: BoardElement[], newId: () => string): BoardElement[] {
-  return elements.map((el, i) => ({ ...el, id: newId(), z: i + 1 }));
-}
