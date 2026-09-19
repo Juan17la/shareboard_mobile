@@ -6,15 +6,16 @@
  * arrow, and that is the tap this layout gives back.
  *
  * What is not a tool (colour, stroke size, fill, font size, bold/italic) lives
- * in an options strip that opens above the bar from the colour swatch and only
- * shows the options belonging to the tool in hand. It closes itself the moment
- * a finger lands on the canvas (`railOpen` in the store).
+ * in an options strip above the bar that only shows the options belonging to
+ * the tool in hand. Picking a tool opens it; tapping the tool you already hold
+ * toggles it; the colour swatch toggles it too. It closes itself the moment a
+ * finger lands on the canvas (`railOpen` in the store).
  *
- * Both strips scroll sideways on a narrow phone rather than wrapping, so the
- * bar never grows into the drawing.
+ * Nothing scrolls: in portrait the tools sit in two rows (tools, then shapes)
+ * and the options wrap, so everything is visible at once on a narrow phone.
  */
 import { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, DrawingPalette, StrokeSizes } from '@/constants/theme';
@@ -55,8 +56,8 @@ const TOOLS: { tool: ToolType; shape?: ShapeKind; icon: IconName; labelKey: Labe
   { tool: 'fill', icon: 'fill', labelKey: 'fill' },
 ];
 
-/** Height of the bar's row, so the bottom controls can sit above it. */
-export const TOOLBAR_HEIGHT = 52;
+/** Height of the bar: one row in landscape, two in portrait. */
+export const toolbarHeight = (landscape: boolean) => (landscape ? 46 : 96);
 
 export function Toolbar({ landscape }: { landscape: boolean }) {
   const insets = useSafeAreaInsets();
@@ -76,18 +77,25 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
 
   const nudge = () => tick(haptics);
 
+  const isActive = (entry: (typeof TOOLS)[number]) =>
+    tool === entry.tool && (!entry.shape || config.shape === entry.shape);
+
   const pick = (entry: (typeof TOOLS)[number]) => {
     nudge();
+    if (isActive(entry)) {
+      setOpen(!open);
+      return;
+    }
     setTool(entry.tool);
     if (entry.shape) setConfig({ shape: entry.shape });
+    // The hand has nothing to configure; an empty strip would just be noise.
+    setOpen(entry.tool !== 'hand');
   };
 
   // A viewer has no tools at all: the design hides them rather than greying
   // them out, so the board is all there is to look at (docs/04).
   if (!canEdit) return null;
 
-  const isActive = (entry: (typeof TOOLS)[number]) =>
-    tool === entry.tool && (!entry.shape || config.shape === entry.shape);
   const showSizes = tool === 'pen' || tool === 'eraser' || tool === 'shape';
   const showFill = tool === 'shape' && config.shape !== 'line' && config.shape !== 'arrow';
   // A selected shape borrows the text tool's size stepper for its label.
@@ -99,6 +107,8 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
 
   const buttonSize = landscape ? 34 : 40;
   const buttonRadius = landscape ? 12 : 14;
+  // Portrait: plain tools on one row, the shape kinds on the next.
+  const rows = landscape ? [TOOLS] : [TOOLS.filter((e) => !e.shape), TOOLS.filter((e) => e.shape)];
 
   return (
     <>
@@ -116,13 +126,12 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
       >
         {open ? (
           <GlassPanel level="panel" radius={16} style={[panelShadow, { maxWidth: '100%' }]}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyboardShouldPersistTaps="always"
-              contentContainerStyle={{
+            <View
+              style={{
                 flexDirection: 'row',
+                flexWrap: 'wrap',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: 8,
                 paddingHorizontal: 10,
                 paddingVertical: 8,
@@ -299,41 +308,64 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Pressable>
                 </Cluster>
               ) : null}
-            </ScrollView>
+            </View>
           </GlassPanel>
         ) : null}
 
         <GlassPanel level="panel" radius={landscape ? 17 : 20} style={[panelShadow, { maxWidth: '100%' }]}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyboardShouldPersistTaps="always"
-            contentContainerStyle={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: landscape ? 3 : 4,
-              padding: landscape ? 5 : 6,
-            }}
+          <View
+            style={{ gap: landscape ? 3 : 4, padding: landscape ? 5 : 6 }}
             accessibilityRole="toolbar"
             accessibilityLabel={t.sheetMenu}
           >
-            {TOOLS.map((entry) => (
-              <ToolButton
-                key={entry.labelKey}
-                icon={entry.icon}
-                label={t[entry.labelKey]}
-                active={isActive(entry)}
-                size={buttonSize}
-                radius={buttonRadius}
-                onPress={() => pick(entry)}
-              />
+            {rows.map((row, i) => (
+              <View
+                key={i}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: landscape ? 3 : 4,
+                }}
+              >
+                {row.map((entry) => (
+                  <ToolButton
+                    key={entry.labelKey}
+                    icon={entry.icon}
+                    label={t[entry.labelKey]}
+                    active={isActive(entry)}
+                    size={buttonSize}
+                    radius={buttonRadius}
+                    onPress={() => pick(entry)}
+                  />
+                ))}
+                {i === 0 ? <Swatch /> : null}
+              </View>
             ))}
+          </View>
+        </GlassPanel>
+      </View>
 
-            <View style={{ width: 1, height: 24, marginHorizontal: 4, backgroundColor: Colors.border }} />
+      <ColorPickerSheet
+        open={picking}
+        value={config.color}
+        onClose={() => setPicking(false)}
+        onPick={(color) => {
+          nudge();
+          setConfig({ color });
+          setPicking(false);
+        }}
+      />
+    </>
+  );
 
-            {/* The swatch doubles as the options toggle: it is both the current
-                colour and the handle for the strip that changes it. */}
-            <Pressable
+  /* The swatch doubles as the options toggle: it is both the current colour
+     and a handle for the strip that changes it. Sits on the first row. */
+  function Swatch() {
+    return (
+      <>
+        <View style={{ width: 1, height: 24, marginHorizontal: 4, backgroundColor: Colors.border }} />
+        <Pressable
               accessibilityRole="button"
               accessibilityLabel={t.color}
               accessibilityState={{ expanded: open }}
@@ -363,22 +395,9 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                 }}
               />
             </Pressable>
-          </ScrollView>
-        </GlassPanel>
-      </View>
-
-      <ColorPickerSheet
-        open={picking}
-        value={config.color}
-        onClose={() => setPicking(false)}
-        onPick={(color) => {
-          nudge();
-          setConfig({ color });
-          setPicking(false);
-        }}
-      />
-    </>
-  );
+      </>
+    );
+  }
 }
 
 const panelShadow = {
