@@ -18,7 +18,7 @@ import { tick } from '@/utils/haptics';
 import { GlassPanel } from '../ui/Glass';
 import { Icon } from '../ui/Icon';
 import { Txt } from '../ui/Text';
-import { TOOLBAR_HEIGHT } from './Toolbar';
+import { toolbarHeight } from './Toolbar';
 
 export function BottomControls({ landscape }: { landscape: boolean }) {
   const insets = useSafeAreaInsets();
@@ -42,7 +42,12 @@ export function BottomControls({ landscape }: { landscape: boolean }) {
       style={{
         position: 'absolute',
         left: Math.max(insets.left, landscape ? 16 : 12),
-        bottom: Math.max(insets.bottom, landscape ? 10 : 16) + TOOLBAR_HEIGHT + 10 + (optionsOpen ? 56 : 0),
+        bottom:
+          Math.max(insets.bottom, landscape ? 10 : 16) +
+          toolbarHeight(landscape) +
+          10 +
+          // ponytail: the strip wraps to two rows in portrait; measured height if a third row ever appears.
+          (optionsOpen ? (landscape ? 56 : 112) : 0),
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
