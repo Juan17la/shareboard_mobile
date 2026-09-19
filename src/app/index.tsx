@@ -31,7 +31,7 @@ import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
 import { GlassPanel, GlassScene, type SceneSize } from '@/components/ui/Glass';
 import { Icon } from '@/components/ui/Icon';
-import { SectionLabel } from '@/components/ui/Sheet';
+import { SectionLabel, Sheet } from '@/components/ui/Sheet';
 import { Txt } from '@/components/ui/Text';
 import { ToastHost, toast } from '@/components/ui/Toast';
 import { Colors, Fonts, Radius, Shadow } from '@/constants/theme';
@@ -63,6 +63,8 @@ export default function Home() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
+  /** The naming step between "Create board" and the board itself. */
+  const [naming, setNaming] = useState(false);
 
   const openBoard = (boardId: string, pickName = false) => {
     router.push({
@@ -180,16 +182,7 @@ export default function Home() {
           {t.homeSub}
         </Txt>
       </View>
-      <Field
-        value={name}
-        onChangeText={setName}
-        placeholder={t.boardNamePlaceholder}
-        maxLength={LIMITS.maxBoardNameLength}
-        accessibilityLabel={t.boardNamePlaceholder}
-        returnKeyType="go"
-        onSubmitEditing={() => !busy && handleCreate()}
-      />
-      <Button label={t.createBoard} icon="plus" onPress={handleCreate} loading={busy} fullWidth />
+      <Button label={t.createBoard} icon="plus" onPress={() => setNaming(true)} fullWidth />
     </View>
   );
 
@@ -343,7 +336,26 @@ export default function Home() {
         </Animated.ScrollView>
       </KeyboardAvoidingView>
 
-      <ToastHost bottom={Math.max(insets.bottom, 16) + 24} enabled={!importing} />
+      <ToastHost bottom={Math.max(insets.bottom, 16) + 24} enabled={!importing && !naming} />
+
+      {/* The name is optional, but the step is not: nobody should discover
+          after the fact that their board is "Untitled". */}
+      <Sheet open={naming} title={t.nameYourBoard} onClose={() => setNaming(false)} closeLabel={t.close}>
+        <View style={{ gap: 14 }}>
+          <Field
+            autoFocus
+            value={name}
+            onChangeText={setName}
+            placeholder={t.boardNamePlaceholder}
+            hint={t.nameYourBoardHint}
+            maxLength={LIMITS.maxBoardNameLength}
+            accessibilityLabel={t.boardNamePlaceholder}
+            returnKeyType="go"
+            onSubmitEditing={() => !busy && handleCreate()}
+          />
+          <Button label={t.createBoard} icon="plus" onPress={handleCreate} loading={busy} fullWidth />
+        </View>
+      </Sheet>
 
       <ImportSheet
         open={importing}
