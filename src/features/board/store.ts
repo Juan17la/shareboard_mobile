@@ -176,7 +176,9 @@ const clampWidth = (w: number) =>
 
 export const useBoardStore = create<BoardState>((set, get) => {
   function commitLocal(ops: Op[]) {
-    if (ops.length === 0) return;
+    // Offline, an edit would only ever exist on this screen — and vanish on
+    // the reconnect's hydrate. Refusing it is what makes the banner honest.
+    if (ops.length === 0 || get().connection !== 'online') return;
     const { elements, undoStack, outbox, clientSeq } = get();
     // The inverse has to be computed against the state the ops are about to
     // change, so this runs before they are applied.
@@ -444,7 +446,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     undo() {
       const { undoStack, redoStack, elements, outbox } = get();
       const entry = undoStack[undoStack.length - 1];
-      if (!entry) return;
+      if (!entry || get().connection !== 'online') return;
       set({
         elements: applyOps(elements, entry.undo),
         outbox: [...outbox, ...entry.undo],
@@ -456,7 +458,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     redo() {
       const { undoStack, redoStack, elements, outbox } = get();
       const entry = redoStack[redoStack.length - 1];
-      if (!entry) return;
+      if (!entry || get().connection !== 'online') return;
       set({
         elements: applyOps(elements, entry.redo),
         outbox: [...outbox, ...entry.redo],
