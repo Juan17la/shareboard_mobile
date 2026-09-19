@@ -1,6 +1,5 @@
 import { API_BASE_URL } from '@/constants/config';
 
-import { resolveEndpoint, type EndpointKey } from './endpoints';
 import type { ApiErrorBody } from './types';
 
 export class ApiError extends Error {
@@ -15,7 +14,6 @@ export class ApiError extends Error {
 }
 
 export interface RequestOptions {
-  params?: Record<string, string | number>;
   body?: unknown;
   /** The caller's persistent user id -> `X-User-Id`. */
   userId?: string;
@@ -28,8 +26,11 @@ export interface RequestOptions {
  * Typed fetch wrapper. Throws `ApiError` for non-2xx responses, decoding the
  * `{ error: { code, message } }` envelope documented in docs/02-backend-connection.
  */
-export async function request<T>(endpoint: EndpointKey, opts: RequestOptions = {}): Promise<T> {
-  const { method, path } = resolveEndpoint(endpoint, opts.params);
+export async function request<T>(
+  method: string,
+  path: string,
+  opts: RequestOptions = {},
+): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
   if (opts.userId) headers['X-User-Id'] = opts.userId;
