@@ -11,7 +11,7 @@ import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors, NicknameColors, Radius } from '@/constants/theme';
+import { Avatars, Colors, NicknameColors, Radius } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
 import { LIMITS } from '@/features/board/model';
 import { useSessionStore } from '@/features/session/store';
@@ -40,6 +40,8 @@ export function NicknameScreen({
   const storedNickname = useSessionStore((s) => s.nickname);
   const nickColor = useSessionStore((s) => s.nickColor);
   const setNickColor = useSessionStore((s) => s.setNickColor);
+  const avatar = useSessionStore((s) => s.avatar);
+  const setAvatar = useSessionStore((s) => s.setAvatar);
 
   const [draft, setDraft] = useState(storedNickname);
   const ready = draft.trim().length > 0;
@@ -81,7 +83,7 @@ export function NicknameScreen({
 
           <GlassPanel level="row" radius={Radius.xl} border={Colors.border}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 }}>
-              <Avatar name={draft || '?'} color={nickColor} size={46} />
+              <Avatar name={draft || '?'} color={nickColor} avatar={avatar} size={46} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Field
                   value={draft}
@@ -139,6 +141,41 @@ export function NicknameScreen({
                         borderWidth: active ? 3 : 1,
                         borderColor: active ? '#FFFFFF' : 'rgba(27,32,48,0.12)',
                       }}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={{ gap: 9 }}>
+            <SectionLabel>{t.yourIcon}</SectionLabel>
+            {/* The initial is the first option: not everyone wants a mascot. */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginLeft: -4 }}>
+              {['', ...Avatars].map((icon) => {
+                const active = avatar === icon;
+                return (
+                  <Pressable
+                    key={icon || 'initial'}
+                    accessibilityRole="radio"
+                    accessibilityLabel={icon || t.nickPlaceholder}
+                    accessibilityState={{ selected: active }}
+                    onPress={() => setAvatar(icon)}
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 21,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: 2,
+                      borderColor: active ? nickColor : 'transparent',
+                    }}
+                  >
+                    <Avatar
+                      name={draft || '?'}
+                      color={icon ? '#FFFFFF' : nickColor}
+                      avatar={icon}
+                      size={32}
                     />
                   </Pressable>
                 );

@@ -83,6 +83,7 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
         nickname,
         pin: pinRef.current,
         color: useSessionStore.getState().nickColor,
+        avatar: useSessionStore.getState().avatar || undefined,
       });
       if (attempt !== attemptRef.current) return; // superseded
 

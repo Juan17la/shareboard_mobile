@@ -285,7 +285,14 @@ export function BoardHeader({
             </View>
           ) : (
             shown.map((p, i) => (
-              <Avatar key={p.userId} name={p.nickname} color={p.color} size={26} overlap={i > 0} />
+              <Avatar
+                key={p.userId}
+                name={p.nickname}
+                color={p.color}
+                avatar={p.avatar}
+                size={26}
+                overlap={i > 0}
+              />
             ))
           )}
           {overflow > 0 ? <AvatarOverflow count={overflow} /> : null}

@@ -95,6 +95,12 @@ export const NicknameColors = [
 ] as const;
 
 /** The design leans on generous, soft corners throughout. */
+/** Presence icons to pick from on the identity screen. */
+export const Avatars = [
+  '🦊', '🐼', '🐸', '🐙', '🦄', '🐝', '🦋', '🐢',
+  '🐬', '🦉', '🐨', '🐯', '🦁', '🐧', '🦕', '🚀',
+] as const;
+
 export const Radius = { sm: 8, md: 12, lg: 16, xl: 20, xxl: 26, pill: 999 } as const;
 
 /**
