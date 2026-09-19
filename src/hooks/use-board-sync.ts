@@ -15,7 +15,7 @@ import { useBoardStore } from '@/features/board/store';
 import { useSessionStore } from '@/features/session/store';
 import { ApiError } from '@/services/api/client';
 import { getBoard, joinBoard } from '@/services/api/boards';
-import { createRealtimeConnection, type RealtimeConnection } from '@/services/realtime';
+import { WebSocketConnection } from '@/services/realtime/socket';
 import type { Point } from '@/features/board/model';
 import { throttle } from '@/utils/throttle';
 
@@ -55,7 +55,7 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
   const [connectPhase, setPhase] = useState<SyncPhase>('loading');
   const [error, setError] = useState<string | null>(null);
   const pinRef = useRef<string | undefined>(undefined);
-  const connRef = useRef<RealtimeConnection | null>(null);
+  const connRef = useRef<WebSocketConnection | null>(null);
   const attemptRef = useRef(0);
 
   const phase: SyncPhase = !sessionHydrated
@@ -84,7 +84,7 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
       });
       if (attempt !== attemptRef.current) return; // superseded
 
-      const conn = createRealtimeConnection({
+      const conn = new WebSocketConnection({
         boardId,
         userId,
         nickname,
