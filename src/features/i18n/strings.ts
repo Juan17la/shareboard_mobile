@@ -55,6 +55,8 @@ const es = {
   createBoard: 'Crear pizarra',
   newBoardName: 'Pizarra sin título',
   boardNamePlaceholder: 'Nombre de la pizarra (opcional)',
+  nameYourBoard: 'Ponle nombre a tu pizarra',
+  nameYourBoardHint: 'Puedes dejarlo vacío y cambiarlo después desde Ajustes.',
   importedBoardName: 'Pizarra importada',
   joinTitle: 'Entrar con un código',
   codeFieldLabel: 'Código de la pizarra',
@@ -74,7 +76,6 @@ const es = {
   nickTitle: '¿Cómo te llamamos?',
   nickSub: 'Tu nombre aparecerá junto a tu cursor en la pizarra.',
   nickPlaceholder: 'Tu nombre',
-  yourColor: 'Tu color',
   yourIcon: 'Tu icono',
   continue: 'Continuar',
 
@@ -247,6 +248,8 @@ const en: Record<keyof typeof es, string> = {
   createBoard: 'Create board',
   newBoardName: 'Untitled board',
   boardNamePlaceholder: 'Board name (optional)',
+  nameYourBoard: 'Name your board',
+  nameYourBoardHint: 'You can leave it empty and change it later from Settings.',
   importedBoardName: 'Imported board',
   joinTitle: 'Join with a code',
   codeFieldLabel: 'Board code',
@@ -265,7 +268,6 @@ const en: Record<keyof typeof es, string> = {
   nickTitle: 'What should we call you?',
   nickSub: 'Your name shows next to your cursor on the board.',
   nickPlaceholder: 'Your name',
-  yourColor: 'Your colour',
   yourIcon: 'Your icon',
   continue: 'Continue',
 

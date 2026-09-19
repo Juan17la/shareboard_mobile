@@ -11,7 +11,7 @@ import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Avatars, Colors, NicknameColors, Radius } from '@/constants/theme';
+import { Avatars, Colors, Radius } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
 import { LIMITS } from '@/features/board/model';
 import { useSessionStore } from '@/features/session/store';
@@ -39,7 +39,6 @@ export function NicknameScreen({
   const t = useT();
   const storedNickname = useSessionStore((s) => s.nickname);
   const nickColor = useSessionStore((s) => s.nickColor);
-  const setNickColor = useSessionStore((s) => s.setNickColor);
   const avatar = useSessionStore((s) => s.avatar);
   const setAvatar = useSessionStore((s) => s.setAvatar);
 
@@ -108,75 +107,29 @@ export function NicknameScreen({
           </GlassPanel>
 
           <View style={{ gap: 9 }}>
-            <SectionLabel>{t.yourColor}</SectionLabel>
+            {/* One choice, not two: every icon brings its own colour. */}
+            <SectionLabel>{t.yourIcon}</SectionLabel>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginLeft: -4 }}>
-              {NicknameColors.map((color) => {
-                const active = nickColor === color;
+              {Avatars.map(({ icon, color }) => {
+                const active = avatar === icon;
                 return (
-                  // The selected swatch gets a coloured ring around a white
-                  // gap. Two nested views rather than a shadow: a zero-radius
-                  // shadow reads as a ring only on iOS.
                   <Pressable
-                    key={color}
+                    key={icon}
                     accessibilityRole="radio"
-                    accessibilityLabel={color}
+                    accessibilityLabel={icon}
                     accessibilityState={{ selected: active }}
-                    onPress={() => setNickColor(color)}
+                    onPress={() => setAvatar(icon)}
                     style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: 21,
+                      width: 46,
+                      height: 46,
+                      borderRadius: 23,
                       alignItems: 'center',
                       justifyContent: 'center',
                       borderWidth: 2,
                       borderColor: active ? color : 'transparent',
                     }}
                   >
-                    <View
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 16,
-                        backgroundColor: color,
-                        borderWidth: active ? 3 : 1,
-                        borderColor: active ? '#FFFFFF' : 'rgba(27,32,48,0.12)',
-                      }}
-                    />
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
-          <View style={{ gap: 9 }}>
-            <SectionLabel>{t.yourIcon}</SectionLabel>
-            {/* The initial is the first option: not everyone wants a mascot. */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginLeft: -4 }}>
-              {['', ...Avatars].map((icon) => {
-                const active = avatar === icon;
-                return (
-                  <Pressable
-                    key={icon || 'initial'}
-                    accessibilityRole="radio"
-                    accessibilityLabel={icon || t.nickPlaceholder}
-                    accessibilityState={{ selected: active }}
-                    onPress={() => setAvatar(icon)}
-                    style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: 21,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderWidth: 2,
-                      borderColor: active ? nickColor : 'transparent',
-                    }}
-                  >
-                    <Avatar
-                      name={draft || '?'}
-                      color={icon ? '#FFFFFF' : nickColor}
-                      avatar={icon}
-                      size={32}
-                    />
+                    <Avatar name={draft || '?'} color={color} avatar={icon} size={36} />
                   </Pressable>
                 );
               })}
