@@ -12,12 +12,15 @@ export function initialsOf(name: string): string {
 export function Avatar({
   name,
   color,
+  avatar,
   size = 36,
   overlap = false,
   label,
 }: {
   name: string;
   color: string;
+  /** An emoji shown instead of the initial. */
+  avatar?: string;
   size?: number;
   /** Pulls the avatar left so a row of them reads as a stack. */
   overlap?: boolean;
@@ -41,11 +44,11 @@ export function Avatar({
     >
       <Txt
         weight="extrabold"
-        size={Math.round(size * 0.42)}
+        size={Math.round(size * (avatar ? 0.5 : 0.42))}
         tone="inverse"
         style={{ fontFamily: Fonts.extrabold }}
       >
-        {initialsOf(name)}
+        {avatar || initialsOf(name)}
       </Txt>
     </View>
   );

@@ -32,6 +32,8 @@ export interface JoinBoardRequest {
    * value that comes back in `you.color` is the one to trust.
    */
   color?: string;
+  /** Presence icon picked on the nickname screen. */
+  avatar?: string;
 }
 
 export interface JoinBoardResponse {

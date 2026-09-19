@@ -46,6 +46,8 @@ interface SessionState {
   nickname: string;
   /** Preferred presence colour; the server may still assign a different one. */
   nickColor: string;
+  /** Presence icon; '' shows the nickname's initial instead. */
+  avatar: string;
   lang: Lang;
   settings: AppSettings;
   recent: RecentBoard[];
@@ -56,6 +58,7 @@ interface SessionState {
 
   setNickname(nickname: string): void;
   setNickColor(color: string): void;
+  setAvatar(avatar: string): void;
   setLang(lang: Lang): void;
   toggleLang(): void;
   setSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void;
@@ -93,6 +96,7 @@ export const useSessionStore = create<SessionState>()(
       userId: newUserId(),
       nickname: '',
       nickColor: NicknameColors[0],
+      avatar: '',
       lang: 'es',
       settings: DEFAULT_SETTINGS,
       recent: [],
@@ -105,6 +109,10 @@ export const useSessionStore = create<SessionState>()(
 
       setNickColor(nickColor) {
         set({ nickColor });
+      },
+
+      setAvatar(avatar) {
+        set({ avatar });
       },
 
       setLang(lang) {
@@ -152,6 +160,7 @@ export const useSessionStore = create<SessionState>()(
         userId: s.userId,
         nickname: s.nickname,
         nickColor: s.nickColor,
+        avatar: s.avatar,
         lang: s.lang,
         settings: s.settings,
         recent: s.recent,
