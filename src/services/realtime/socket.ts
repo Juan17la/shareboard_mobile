@@ -8,7 +8,7 @@
  *   - exponential-backoff reconnect with jitter
  *   - queue outbound messages while offline, flush on reconnect
  *
- * It does NOT know about the board store — `sync.ts` wires the two together.
+ * It does NOT know about the board store — `hooks/use-board-sync.ts` wires the two together.
  * Behavior spec: docs/07-websockets.
  */
 import { REALTIME, WS_URL } from '@/constants/config';
@@ -34,18 +34,6 @@ export type ConnectionState = 'idle' | 'connecting' | 'online' | 'offline';
 
 type Listener<T extends ServerMessage = ServerMessage> = (msg: T) => void;
 
-export interface RealtimeConnection {
-  connect(): void;
-  close(): void;
-  send(msg: ClientMessage): void;
-  on<T extends ServerMessageType>(
-    type: T,
-    cb: (msg: Extract<ServerMessage, { type: T }>) => void,
-  ): () => void;
-  onStateChange(cb: (state: ConnectionState) => void): () => void;
-  getState(): ConnectionState;
-}
-
 export interface SocketParams {
   boardId: string;
   token: string;
@@ -55,7 +43,7 @@ export interface SocketParams {
   pin?: string;
 }
 
-export class WebSocketConnection implements RealtimeConnection {
+export class WebSocketConnection {
   private ws: WebSocket | null = null;
   private state: ConnectionState = 'idle';
   private listeners = new Map<string, Set<Listener>>();
