@@ -38,7 +38,8 @@ Discriminados por `kind`. Campos comunes (`ElementBase`):
 
 ```ts
 { kind: 'shape'; shape: 'rectangle' | 'ellipse' | 'line' | 'arrow';
-  from: {x,y}; to: {x,y}; stroke: string; strokeWidth: number; fill?: string | null }
+  from: {x,y}; to: {x,y}; stroke: string; strokeWidth: number; fill?: string | null;
+  text?: string; fontSize?: number }   // etiqueta centrada dentro de la figura
 ```
 
 **text**
