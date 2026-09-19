@@ -43,6 +43,10 @@ export const joinBoard = (body: JoinBoardRequest) =>
 export const renameBoard = (boardId: string, name: string, auth: Auth) =>
   request<BoardMeta>('PATCH', `/boards/${id(boardId)}`, { body: { name }, ...auth });
 
+/** Creator only. Everyone else on the board is disconnected by the server. */
+export const deleteBoard = (boardId: string, auth: Auth) =>
+  request<void>('DELETE', `/boards/${id(boardId)}`, auth);
+
 /** Creator only. */
 export const updatePermissions = (boardId: string, patch: UpdatePermissionsRequest, auth: Auth) =>
   request<BoardMeta>('PATCH', `/boards/${id(boardId)}/permissions`, { body: patch, ...auth });
