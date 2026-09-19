@@ -70,6 +70,9 @@ export function BoardCanvas({
       .runOnJS(true)
       .onStart((e) => {
         if (!editable()) return;
+        // Drawing is what the options were for; fold them away to give the
+        // board back its width the moment the gesture starts.
+        store().setRailOpen(false);
         const p = screenToBoard(e.x, e.y);
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
@@ -108,6 +111,7 @@ export function BoardCanvas({
       .runOnJS(true)
       .onEnd((e) => {
         if (!editable()) return;
+        store().setRailOpen(false);
         const p = screenToBoard(e.x, e.y);
         const t = store().tool;
         if (t === 'text') {

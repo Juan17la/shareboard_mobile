@@ -100,6 +100,11 @@ interface BoardState {
   config: ToolConfig;
   camera: Camera;
   /**
+   * Whether the tool rail's options column is open. Store state rather than
+   * rail state because the canvas closes it the moment a gesture starts.
+   */
+  railOpen: boolean;
+  /**
    * The stroke / shape under the finger right now, before it becomes an
    * element. Store state rather than canvas state so the gesture that ends it
    * can read the final value synchronously and commit it in one step.
@@ -130,6 +135,7 @@ interface BoardState {
   setTool(tool: ToolType): void;
   setConfig(patch: Partial<ToolConfig>): void;
   setCamera(camera: Camera): void;
+  setRailOpen(open: boolean): void;
   setLiveStroke(points: number[]): void;
   setLiveShape(shape: { from: Point; to: Point } | null): void;
 
@@ -230,6 +236,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     tool: 'pen',
     config: DEFAULT_CONFIG,
     camera: DEFAULT_CAMERA,
+    railOpen: true,
     liveStroke: [],
     liveShape: null,
 
@@ -314,6 +321,10 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     setCamera(camera) {
       set({ camera });
+    },
+
+    setRailOpen(railOpen) {
+      set({ railOpen });
     },
 
     setLiveStroke(points) {
