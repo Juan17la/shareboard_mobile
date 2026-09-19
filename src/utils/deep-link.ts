@@ -49,8 +49,3 @@ export function parseBoardRef(raw: string): ParsedBoardRef {
 export function boardShareLink(webBaseUrl: string, shortCode: string): string {
   return `${webBaseUrl.replace(/\/$/, '')}/b/${shortCode}`;
 }
-
-/** Build the app deep link for a board. */
-export function boardDeepLink(boardId: string): string {
-  return `shareboard://board/${boardId}`;
-}
