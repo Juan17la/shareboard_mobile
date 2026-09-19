@@ -99,6 +99,13 @@ interface BoardState {
   tool: ToolType;
   config: ToolConfig;
   camera: Camera;
+  /**
+   * The stroke / shape under the finger right now, before it becomes an
+   * element. Store state rather than canvas state so the gesture that ends it
+   * can read the final value synchronously and commit it in one step.
+   */
+  liveStroke: number[];
+  liveShape: { from: Point; to: Point } | null;
 
   // sync / history
   outbox: Op[];
@@ -123,6 +130,8 @@ interface BoardState {
   setTool(tool: ToolType): void;
   setConfig(patch: Partial<ToolConfig>): void;
   setCamera(camera: Camera): void;
+  setLiveStroke(points: number[]): void;
+  setLiveShape(shape: { from: Point; to: Point } | null): void;
 
   addStroke(points: number[]): void;
   addShape(shape: ShapeKind, from: Point, to: Point): void;
@@ -215,6 +224,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
     tool: 'pen',
     config: DEFAULT_CONFIG,
     camera: DEFAULT_CAMERA,
+    liveStroke: [],
+    liveShape: null,
 
     outbox: [],
     clientSeq: 0,
@@ -260,6 +271,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
         undoStack: [],
         redoStack: [],
         camera: DEFAULT_CAMERA,
+        liveStroke: [],
+        liveShape: null,
       });
     },
 
@@ -295,6 +308,14 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     setCamera(camera) {
       set({ camera });
+    },
+
+    setLiveStroke(points) {
+      set({ liveStroke: points });
+    },
+
+    setLiveShape(shape) {
+      set({ liveShape: shape });
     },
 
     // --- editing -----------------------------------------------------------

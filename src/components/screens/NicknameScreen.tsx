@@ -7,7 +7,8 @@
  * sees their own name already filled in and one tap gets them through.
  */
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
+import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, NicknameColors, Radius } from '@/constants/theme';
@@ -16,12 +17,16 @@ import { LIMITS } from '@/features/board/model';
 import { useSessionStore } from '@/features/session/store';
 
 import { Avatar } from '../ui/Avatar';
-import { Backdrop } from '../ui/Backdrop';
+import { Backdrop, BackdropScene } from '../ui/Backdrop';
 import { Button } from '../ui/Button';
 import { Field } from '../ui/Field';
-import { GlassPanel } from '../ui/Glass';
+import { GlassPanel, GlassScene, type SceneSize } from '../ui/Glass';
 import { SectionLabel } from '../ui/Sheet';
 import { Txt } from '../ui/Text';
+
+const backdropScene = (size: SceneSize) => (
+  <BackdropScene variant="nickname" width={size.width} height={size.height} />
+);
 
 export function NicknameScreen({
   landscape,
@@ -39,14 +44,23 @@ export function NicknameScreen({
   const [draft, setDraft] = useState(storedNickname);
   const ready = draft.trim().length > 0;
 
+  // The wash, handed to the glass panels so they can blur it; and how far the
+  // page has scrolled, so the blur follows the panels (ui/Glass).
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollY.value = e.contentOffset.y;
+  });
+
   return (
-    <View style={{ flex: 1 }}>
+    <GlassScene render={backdropScene} scroll={scrollY}>
       <Backdrop variant="nickname" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView
+        <Animated.ScrollView
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           contentContainerStyle={{
             flexGrow: 1,
             gap: 22,
@@ -140,8 +154,8 @@ export function NicknameScreen({
             disabled={!ready}
             fullWidth
           />
-        </ScrollView>
+        </Animated.ScrollView>
       </KeyboardAvoidingView>
-    </View>
+    </GlassScene>
   );
 }
