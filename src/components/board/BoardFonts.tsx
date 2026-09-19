@@ -1,21 +1,28 @@
 /**
- * Nunito, loaded into Skia's font manager and shared with the whole canvas.
+ * Nunito for the canvas, loaded straight into Skia and shared with every text
+ * node on the board.
  *
- * `matchFont` looks in the *system* font list, which does not contain a font
- * bundled with the app, so text drawn on the board would silently fall back to
- * the platform default while every label around it rendered in Nunito. Loading
- * the four cuts into a `SkTypefaceFontProvider` and handing that provider to
- * `matchFont` is what keeps a heading typed on the board the same shape as the
- * heading above it.
+ * The four cuts are loaded as typefaces and a `SkFont` is built from the one a
+ * node needs (`useBoardFont`). No family-name matching is involved: Skia's
+ * `matchFont` looks a family up in a font manager, and a lookup that misses
+ * hands back a font with no typeface, which draws nothing at all. A typeface
+ * held directly cannot miss.
  *
- * It is a context rather than a hook per element: `useFonts` is a hook, and a
- * board can hold hundreds of text elements.
+ * It is a context rather than a hook per element: `useTypeface` is a hook, and
+ * a board can hold hundreds of text elements. Until the files have decoded the
+ * context is null and text nodes render nothing for a frame or two.
  */
-import { useFonts } from '@shopify/react-native-skia';
-import type { SkTypefaceFontProvider } from '@shopify/react-native-skia/lib/typescript/src/skia/types';
+import { Skia, useTypeface, type SkFont, type SkTypeface } from '@shopify/react-native-skia';
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
-const BoardFontsContext = createContext<SkTypefaceFontProvider | null>(null);
+interface Typefaces {
+  medium: SkTypeface;
+  extrabold: SkTypeface;
+  italic: SkTypeface;
+  extraboldItalic: SkTypeface;
+}
+
+const BoardFontsContext = createContext<Typefaces | null>(null);
 
 /**
  * What `require()` hands back for an asset differs by platform: a numeric
@@ -23,35 +30,52 @@ const BoardFontsContext = createContext<SkTypefaceFontProvider | null>(null);
  * `{ uri }` object, and throws outright on a bare string — so the string case
  * is wrapped rather than passed through.
  */
-type DataModule = Parameters<typeof useFonts>[0][string][number];
+type DataSource = Parameters<typeof useTypeface>[0];
 
-function asDataModule(asset: unknown): DataModule {
-  return (typeof asset === 'string' ? { uri: asset } : asset) as DataModule;
+function asSource(asset: unknown): DataSource {
+  return (typeof asset === 'string' ? { uri: asset } : asset) as DataSource;
 }
 
 export function BoardFontsProvider({ children }: { children: ReactNode }) {
-  const sources = useMemo(
-    () => ({
-      Nunito: [
-        asDataModule(require('@expo-google-fonts/nunito/500Medium/Nunito_500Medium.ttf')),
-        asDataModule(require('@expo-google-fonts/nunito/800ExtraBold/Nunito_800ExtraBold.ttf')),
-        asDataModule(
-          require('@expo-google-fonts/nunito/400Regular_Italic/Nunito_400Regular_Italic.ttf'),
-        ),
-        asDataModule(
-          require('@expo-google-fonts/nunito/800ExtraBold_Italic/Nunito_800ExtraBold_Italic.ttf'),
-        ),
-      ],
-    }),
-    [],
+  const medium = useTypeface(asSource(require('@expo-google-fonts/nunito/500Medium/Nunito_500Medium.ttf')));
+  const extrabold = useTypeface(
+    asSource(require('@expo-google-fonts/nunito/800ExtraBold/Nunito_800ExtraBold.ttf')),
+  );
+  const italic = useTypeface(
+    asSource(require('@expo-google-fonts/nunito/400Regular_Italic/Nunito_400Regular_Italic.ttf')),
+  );
+  const extraboldItalic = useTypeface(
+    asSource(require('@expo-google-fonts/nunito/800ExtraBold_Italic/Nunito_800ExtraBold_Italic.ttf')),
   );
 
-  const provider = useFonts(sources);
+  const value = useMemo(
+    () =>
+      medium && extrabold && italic && extraboldItalic
+        ? { medium, extrabold, italic, extraboldItalic }
+        : null,
+    [medium, extrabold, italic, extraboldItalic],
+  );
 
-  return <BoardFontsContext.Provider value={provider}>{children}</BoardFontsContext.Provider>;
+  return <BoardFontsContext.Provider value={value}>{children}</BoardFontsContext.Provider>;
 }
 
-/** Null until the typefaces have been decoded; callers fall back to the system. */
-export function useBoardFonts(): SkTypefaceFontProvider | null {
-  return useContext(BoardFontsContext);
+/** A Skia font in the app's typeface, or null until the typefaces have decoded. */
+export function useBoardFont(size: number, bold = false, italic = false): SkFont | null {
+  const faces = useContext(BoardFontsContext);
+  return useMemo(() => {
+    if (!faces) return null;
+    const face = italic
+      ? bold
+        ? faces.extraboldItalic
+        : faces.italic
+      : bold
+        ? faces.extrabold
+        : faces.medium;
+    return Skia.Font(face, size);
+  }, [faces, size, bold, italic]);
+}
+
+/** Advance width of `text`, the distance the next glyph would start at. */
+export function textWidth(font: SkFont, text: string): number {
+  return font.getGlyphWidths(font.getGlyphIDs(text)).reduce((sum, w) => sum + w, 0);
 }
