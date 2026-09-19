@@ -21,7 +21,7 @@ import {
   shapeBounds,
   shapeHandles,
   simplify,
-  snapToAnchor,
+  linkEndpoints,
 } from '@/features/board/geometry';
 import type { Point, ShapeElement } from '@/features/board/model';
 import { visibleSorted } from '@/features/board/ops';
@@ -44,18 +44,19 @@ function screenToBoard(x: number, y: number): Point {
   return { x: (x - camera.x) / camera.scale, y: (y - camera.y) / camera.scale };
 }
 
-/** A line/arrow endpoint snaps to the nearest connection point in reach. */
-function snapLine(shape: string, p: Point): Point {
-  if (shape !== 'line' && shape !== 'arrow') return p;
+/** A line's ends link to the shapes they land in; other shapes pass through. */
+function snapLine(shape: string, from: Point, to: Point): { from: Point; to: Point } {
+  if (shape !== 'line' && shape !== 'arrow') return { from, to };
   const store = useBoardStore.getState();
-  return snapToAnchor(store.visibleElements(), p, 18 / store.camera.scale);
+  return linkEndpoints(store.visibleElements(), from, to, 18 / store.camera.scale);
 }
 
-/** `from`/`to` of an edit dragged to `p`. */
+/** `from`/`to` of an edit dragged to `p`. A line's ends are re-linked after. */
 function dragShape(edit: ShapeEdit, base: ShapeElement, p: Point) {
   const el = { ...base, ...edit.origin };
   if (edit.mode === 'resize') {
-    return resizeShape(el, edit.handle, isLineLike(el) ? snapLine(el.shape, p) : p);
+    const next = resizeShape(el, edit.handle, p);
+    return isLineLike(el) ? snapLine(el.shape, next.from, next.to) : next;
   }
   const dx = p.x - edit.start.x;
   const dy = p.y - edit.start.y;
@@ -138,6 +139,8 @@ export function BoardCanvas({
     // One finger moves the camera for the hand tool, and for anyone who has
     // no tools — the one gesture the board still owes a viewer.
     const panning = () => store().tool === 'hand' || !store().canEditNow();
+    // Where a line was started, unsnapped: its anchor can change as the end moves.
+    const lineStart = { x: 0, y: 0 };
 
     const draw = Gesture.Pan()
       // Palm rejection: a second finger belongs to the camera, never the tool.
@@ -158,8 +161,16 @@ export function BoardCanvas({
         if (t === 'eraser') store().eraseAt(p);
         else if (t === 'pen') store().setLiveStroke([p.x, p.y]);
         else if (t === 'shape' && !beginShapeEdit(p)) {
-          const from = snapLine(store().config.shape, p);
-          store().setLiveShape({ from, to: from });
+          Object.assign(lineStart, p);
+          store().setLiveShape(snapLine(store().config.shape, p, p));
+        }
+        // A finger rarely lands perfectly still: the slightest movement makes
+        // this a pan rather than a tap, and the one-shot tools must still fire.
+        else if (t === 'text') {
+          const id = store().addText(p);
+          if (id) setEditingId(id);
+        } else if (t === 'fill') {
+          if (store().fillAt(p)) tick(haptics);
         }
         onCursorMove?.(p);
       })
@@ -175,10 +186,7 @@ export function BoardCanvas({
             const base = store().elements[edit.id] as ShapeElement;
             store().setLiveEdit({ ...edit, ...dragShape(edit, base, p) });
           } else {
-            const shape = store().liveShape;
-            if (shape) {
-              store().setLiveShape({ from: shape.from, to: snapLine(store().config.shape, p) });
-            }
+            if (store().liveShape) store().setLiveShape(snapLine(store().config.shape, lineStart, p));
           }
         }
         onCursorMove?.(p);
