@@ -7,20 +7,25 @@ import {
   Path,
   Rect,
   RoundedRect,
+  Circle,
   Skia,
   Text as SkText,
-  matchFont,
   useImage,
   vec,
-  type SkFont,
 } from '@shopify/react-native-skia';
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 
 import { Colors } from '@/constants/theme';
-import { isLineLike, shapeBounds, shapeHandles, strokeToSvgPath } from '@/features/board/geometry';
+import {
+  anchorsOf,
+  isLineLike,
+  shapeBounds,
+  shapeHandles,
+  strokeToSvgPath,
+} from '@/features/board/geometry';
 import { SHAPE_TEXT_SIZE, type BoardElement, type Point, type ShapeElement } from '@/features/board/model';
 
-import { useBoardFonts } from './BoardFonts';
+import { textWidth, useBoardFont } from './BoardFonts';
 
 function ArrowHead({
   from,
@@ -46,17 +51,9 @@ function ArrowHead({
 
 /** A shape's label: centred in its box, or floating just above a line's midpoint. */
 function ShapeLabel({ el }: { el: ShapeElement }) {
-  const provider = useBoardFonts();
   const fontSize = el.fontSize ?? SHAPE_TEXT_SIZE;
-  const font: SkFont = useMemo(
-    () =>
-      matchFont(
-        { fontFamily: provider ? 'Nunito' : 'system', fontSize, fontWeight: '500' },
-        provider ?? undefined,
-      ),
-    [provider, fontSize],
-  );
-  if (!el.text) return null;
+  const font = useBoardFont(fontSize);
+  if (!el.text || !font) return null;
   const { x, y, width, height } = shapeBounds(el);
   const step = fontSize * 1.25;
   const lines = el.text.split('\n');
@@ -71,7 +68,7 @@ function ShapeLabel({ el }: { el: ShapeElement }) {
       {lines.map((line, i) => (
         <SkText
           key={i}
-          x={cx - font.measureText(line).width / 2}
+          x={cx - textWidth(font, line) / 2}
           y={top + i * step}
           text={line}
           font={font}
@@ -251,38 +248,76 @@ function ImageView({
 }
 
 function TextView({ el }: { el: Extract<BoardElement, { kind: 'text' }> }) {
-  const provider = useBoardFonts();
-  const font = useMemo(
-    () =>
-      matchFont(
-        {
-          fontFamily: provider ? 'Nunito' : 'system',
-          fontSize: el.fontSize,
-          fontWeight: el.bold ? '800' : '500',
-          fontStyle: el.italic ? 'italic' : 'normal',
-        },
-        provider ?? undefined,
-      ),
-    [provider, el.fontSize, el.bold, el.italic],
-  );
+  const font = useBoardFont(el.fontSize, !!el.bold, !!el.italic);
+  if (!font) return null;
   // Skia draws text from the baseline; nudge down by ~the font size.
   return <SkText x={el.at.x} y={el.at.y + el.fontSize} text={el.text} font={font} color={el.color} />;
 }
 
-/** Renders one board element with Skia primitives. */
-export function ElementRenderer({ el, smooth = true }: { el: BoardElement; smooth?: boolean }) {
+/**
+ * The path is memoised on the points: while a stroke is being drawn the canvas
+ * re-renders on every touch sample, and rebuilding the SVG string of every
+ * other stroke on the board each time is what made the JS thread drop samples.
+ */
+function StrokeView({ el, smooth }: { el: Extract<BoardElement, { kind: 'stroke' }>; smooth: boolean }) {
+  const path = useMemo(() => strokeToSvgPath(el.points, smooth), [el.points, smooth]);
+  return (
+    <Path
+      path={path}
+      style="stroke"
+      strokeWidth={el.width}
+      color={el.color}
+      strokeCap="round"
+      strokeJoin="round"
+    />
+  );
+}
+
+/**
+ * Connection points on every enclosed shape, shown while a line or an arrow is
+ * being drawn so the snap targets are visible. Screen-space dots.
+ */
+export function Anchors({
+  elements,
+  camera,
+}: {
+  elements: BoardElement[];
+  camera: { x: number; y: number; scale: number };
+}) {
+  return (
+    <Group>
+      {elements.map((el) =>
+        el.kind === 'shape'
+          ? anchorsOf(el).map((a, i) => (
+              <Group key={`${el.id}-${i}`}>
+                <Circle cx={a.x * camera.scale + camera.x} cy={a.y * camera.scale + camera.y} r={4} color="#FFFFFF" />
+                <Circle
+                  cx={a.x * camera.scale + camera.x}
+                  cy={a.y * camera.scale + camera.y}
+                  r={4}
+                  color={Colors.accent}
+                  style="stroke"
+                  strokeWidth={1.5}
+                />
+              </Group>
+            ))
+          : null,
+      )}
+    </Group>
+  );
+}
+
+/** Renders one board element with Skia primitives. Memoised: see `StrokeView`. */
+export const ElementRenderer = memo(function ElementRenderer({
+  el,
+  smooth = true,
+}: {
+  el: BoardElement;
+  smooth?: boolean;
+}) {
   switch (el.kind) {
     case 'stroke':
-      return (
-        <Path
-          path={strokeToSvgPath(el.points, smooth)}
-          style="stroke"
-          strokeWidth={el.width}
-          color={el.color}
-          strokeCap="round"
-          strokeJoin="round"
-        />
-      );
+      return <StrokeView el={el} smooth={smooth} />;
     case 'shape':
       return <ShapeView el={el} />;
     case 'image':
@@ -292,7 +327,7 @@ export function ElementRenderer({ el, smooth = true }: { el: BoardElement; smoot
     default:
       return null;
   }
-}
+});
 
 /**
  * The dot grid the settings sheet can turn off.
