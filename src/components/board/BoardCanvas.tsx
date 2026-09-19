@@ -9,19 +9,22 @@
  */
 import { Canvas, Group, type CanvasRef } from '@shopify/react-native-skia';
 import { useCallback, useMemo, useState, type RefObject } from 'react';
-import { View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
-import { simplify } from '@/features/board/geometry';
-import type { Point } from '@/features/board/model';
+import { Colors, Shadow } from '@/constants/theme';
+import { resizeShape, shapeAt, shapeBounds, shapeHandles, simplify } from '@/features/board/geometry';
+import type { Point, ShapeElement } from '@/features/board/model';
 import { visibleSorted } from '@/features/board/ops';
-import { fillFor, useBoardStore } from '@/features/board/store';
+import { fillFor, useBoardStore, type ShapeEdit } from '@/features/board/store';
+import { useT } from '@/features/i18n/store';
 import { useSessionStore } from '@/features/session/store';
 import { tick } from '@/utils/haptics';
 
-import { DotGrid, ElementRenderer } from './ElementRenderer';
+import { DotGrid, ElementRenderer, SelectionFrame } from './ElementRenderer';
 import { PeerCursors } from './PeerCursors';
 import { TextEditorOverlay } from './TextEditorOverlay';
+import { Txt } from '../ui/Text';
 
 /** Zoom bounds. Matches the design's 25%–600% range. */
 export const MIN_ZOOM = 0.25;
@@ -30,6 +33,18 @@ export const MAX_ZOOM = 6;
 function screenToBoard(x: number, y: number): Point {
   const { camera } = useBoardStore.getState();
   return { x: (x - camera.x) / camera.scale, y: (y - camera.y) / camera.scale };
+}
+
+/** `from`/`to` of an edit dragged to `p`. */
+function dragShape(edit: ShapeEdit, base: ShapeElement, p: Point) {
+  const el = { ...base, ...edit.origin };
+  if (edit.mode === 'resize') return resizeShape(el, edit.handle, p);
+  const dx = p.x - edit.start.x;
+  const dy = p.y - edit.start.y;
+  return {
+    from: { x: el.from.x + dx, y: el.from.y + dy },
+    to: { x: el.to.x + dx, y: el.to.y + dy },
+  };
 }
 
 export function BoardCanvas({
@@ -41,8 +56,12 @@ export function BoardCanvas({
   canvasRef?: RefObject<CanvasRef | null>;
 }) {
   const camera = useBoardStore((s) => s.camera);
+  const tool = useBoardStore((s) => s.tool);
   const config = useBoardStore((s) => s.config);
   const elements = useBoardStore((s) => s.elements);
+  const selectedId = useBoardStore((s) => s.selectedId);
+  const liveEdit = useBoardStore((s) => s.liveEdit);
+  const t = useT();
   const smooth = useSessionStore((s) => s.settings.smooth);
   const haptics = useSessionStore((s) => s.settings.haptics);
 
@@ -51,7 +70,18 @@ export function BoardCanvas({
   const liveShape = useBoardStore((s) => s.liveShape);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const list = useMemo(() => visibleSorted(elements), [elements]);
+  const list = useMemo(() => {
+    const sorted = visibleSorted(elements);
+    if (!liveEdit) return sorted;
+    return sorted.map((el) =>
+      el.id === liveEdit.id ? { ...el, from: liveEdit.from, to: liveEdit.to } : el,
+    );
+  }, [elements, liveEdit]);
+
+  const selected = useMemo(() => {
+    const el = selectedId ? list.find((e) => e.id === selectedId) : null;
+    return el && el.kind === 'shape' && tool === 'shape' ? el : null;
+  }, [list, selectedId, tool]);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -64,6 +94,28 @@ export function BoardCanvas({
     // Viewers and offline clients get no draft: a stroke that cannot be sent
     // would only ever exist on this screen, and the banner is what says so.
     const editable = () => store().canEditNow() && store().connection === 'online';
+
+    // With the shape tool, a finger landing on the selected shape drags it
+    // rather than drawing: a handle reshapes, the body moves.
+    const beginShapeEdit = (p: Point): boolean => {
+      const el = store().selectedShape();
+      if (!el) return false;
+      const scale = store().camera.scale;
+      const hitR = 18 / scale;
+      const handle = shapeHandles(el).findIndex((h) => Math.hypot(h.x - p.x, h.y - p.y) <= hitR);
+      const mode = handle >= 0 ? 'resize' : shapeAt([el], p, 6 / scale) ? 'move' : null;
+      if (!mode) return false;
+      store().setLiveEdit({
+        id: el.id,
+        mode,
+        handle,
+        start: p,
+        origin: { from: el.from, to: el.to },
+        from: el.from,
+        to: el.to,
+      });
+      return true;
+    };
 
     const draw = Gesture.Pan()
       // Palm rejection: a second finger belongs to the camera, never the tool.
@@ -78,7 +130,7 @@ export function BoardCanvas({
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
         else if (t === 'pen') store().setLiveStroke([p.x, p.y]);
-        else if (t === 'shape') store().setLiveShape({ from: p, to: p });
+        else if (t === 'shape' && !beginShapeEdit(p)) store().setLiveShape({ from: p, to: p });
         onCursorMove?.(p);
       })
       .onUpdate((e) => {
@@ -88,8 +140,14 @@ export function BoardCanvas({
         if (t === 'eraser') store().eraseAt(p);
         else if (t === 'pen') store().setLiveStroke([...store().liveStroke, p.x, p.y]);
         else if (t === 'shape') {
-          const shape = store().liveShape;
-          if (shape) store().setLiveShape({ from: shape.from, to: p });
+          const edit = store().liveEdit;
+          if (edit) {
+            const base = store().elements[edit.id] as ShapeElement;
+            store().setLiveEdit({ ...edit, ...dragShape(edit, base, p) });
+          } else {
+            const shape = store().liveShape;
+            if (shape) store().setLiveShape({ from: shape.from, to: p });
+          }
         }
         onCursorMove?.(p);
       })
@@ -97,12 +155,20 @@ export function BoardCanvas({
         // Read from the store, not through a `setState` updater: an updater
         // runs during the next render, and a store write from there is React's
         // "cannot update a component while rendering a different component".
-        const { tool: t, liveStroke: pts, liveShape: shape } = store();
+        const { tool: t, liveStroke: pts, liveShape: shape, liveEdit: edit } = store();
         if (t === 'pen' && pts.length >= 4) store().addStroke(simplify(pts));
-        if (t === 'shape' && shape) {
+        if (t === 'shape' && edit) {
+          // One op for the whole drag, so undo takes it back in one step.
+          if (edit.from !== edit.origin.from || edit.to !== edit.origin.to) {
+            store().updateShape(edit.id, { from: edit.from, to: edit.to });
+          }
+          store().setLiveEdit(null);
+        } else if (t === 'shape' && shape) {
           // A tap with the shape tool is a mis-hit, not a zero-size rectangle.
           const dragged = Math.hypot(shape.to.x - shape.from.x, shape.to.y - shape.from.y);
-          if (dragged > 6) store().addShape(store().config.shape, shape.from, shape.to);
+          // A new shape comes up selected, handles ready, so it can be sized
+          // right away.
+          if (dragged > 6) store().select(store().addShape(store().config.shape, shape.from, shape.to));
         }
         store().setLiveStroke([]);
         store().setLiveShape(null);
@@ -122,6 +188,11 @@ export function BoardCanvas({
           store().eraseAt(p);
         } else if (t === 'fill') {
           if (store().fillAt(p)) tick(haptics);
+        } else if (t === 'shape') {
+          // A tap with the shape tool picks the shape under it (or nothing).
+          const hit = shapeAt(store().visibleElements(), p, 8 / store().camera.scale);
+          store().select(hit?.id ?? null);
+          if (hit) tick(haptics);
         }
         onCursorMove?.(p);
       });
@@ -153,6 +224,17 @@ export function BoardCanvas({
   }, [onCursorMove, haptics]);
 
   const editing = editingId ? elements[editingId] : null;
+
+  // The label button floats just above the selected shape.
+  const labelAt = useMemo(() => {
+    if (!selected) return null;
+    const b = shapeBounds(selected);
+    return {
+      x: (b.x + b.width / 2) * camera.scale + camera.x,
+      y: b.y * camera.scale + camera.y,
+    };
+  }, [selected, camera]);
+
   const transform = [
     { translateX: camera.x },
     { translateY: camera.y },
@@ -208,12 +290,38 @@ export function BoardCanvas({
               />
             ) : null}
           </Group>
+
+          {selected ? <SelectionFrame el={selected} camera={camera} /> : null}
         </Canvas>
       </GestureDetector>
 
       <PeerCursors camera={camera} />
 
-      {editing && editing.kind === 'text' ? (
+      {labelAt && selected && !editing ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t.text}
+          onPress={() => setEditingId(selected.id)}
+          style={{
+            position: 'absolute',
+            left: labelAt.x - 24,
+            top: labelAt.y - 46,
+            paddingHorizontal: 11,
+            paddingVertical: 5,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: Colors.accent,
+            backgroundColor: '#FFFFFF',
+            ...Shadow.panel,
+          }}
+        >
+          <Txt weight="extrabold" size={12} tone="accent">
+            Aa
+          </Txt>
+        </Pressable>
+      ) : null}
+
+      {editing && (editing.kind === 'text' || editing.kind === 'shape') ? (
         <TextEditorOverlay element={editing} camera={camera} onClose={() => setEditingId(null)} />
       ) : null}
     </View>
