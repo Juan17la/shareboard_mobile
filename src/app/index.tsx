@@ -28,6 +28,7 @@ import { ImportSheet } from '@/components/sheets/ImportSheet';
 import { Avatar } from '@/components/ui/Avatar';
 import { Backdrop, BackdropScene } from '@/components/ui/Backdrop';
 import { Button } from '@/components/ui/Button';
+import { Field } from '@/components/ui/Field';
 import { GlassPanel, GlassScene, type SceneSize } from '@/components/ui/Glass';
 import { Icon } from '@/components/ui/Icon';
 import { SectionLabel } from '@/components/ui/Sheet';
@@ -35,7 +36,7 @@ import { Txt } from '@/components/ui/Text';
 import { ToastHost, toast } from '@/components/ui/Toast';
 import { Colors, Fonts, Radius, Shadow } from '@/constants/theme';
 import { relativeTime, useT, useToggleLang } from '@/features/i18n/store';
-import type { BoardSnapshot } from '@/features/board/model';
+import { LIMITS, type BoardSnapshot } from '@/features/board/model';
 import { useSessionStore } from '@/features/session/store';
 import { createBoard, importSnapshot, resolveShortCode } from '@/services/api/boards';
 import { parseBoardRef } from '@/utils/deep-link';
@@ -58,6 +59,7 @@ export default function Home() {
   const forgetBoard = useSessionStore((s) => s.forgetBoard);
   const haptics = useSessionStore((s) => s.settings.haptics);
 
+  const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -76,7 +78,7 @@ export default function Home() {
     setBusy(true);
     try {
       const meta = await createBoard({
-        name: t.newBoardName,
+        name: name.trim() || t.newBoardName,
         access: 'public',
         editPolicy: 'everyone',
         creatorId: userId,
@@ -178,6 +180,15 @@ export default function Home() {
           {t.homeSub}
         </Txt>
       </View>
+      <Field
+        value={name}
+        onChangeText={setName}
+        placeholder={t.boardNamePlaceholder}
+        maxLength={LIMITS.maxBoardNameLength}
+        accessibilityLabel={t.boardNamePlaceholder}
+        returnKeyType="go"
+        onSubmitEditing={() => !busy && handleCreate()}
+      />
       <Button label={t.createBoard} icon="plus" onPress={handleCreate} loading={busy} fullWidth />
     </View>
   );
