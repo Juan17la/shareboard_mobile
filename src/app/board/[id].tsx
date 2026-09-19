@@ -12,6 +12,7 @@
  * already remembered. Creating a board is the moment to choose how you appear
  * on it.
  */
+import { useCanvasRef } from '@shopify/react-native-skia';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -20,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BoardCanvas } from '@/components/board/BoardCanvas';
 import { BoardFontsProvider } from '@/components/board/BoardFonts';
+import { useBoardMirror } from '@/components/board/BoardMirror';
 import { BottomControls } from '@/components/board/BottomControls';
 import { ToolRail } from '@/components/board/ToolRail';
 import { BoardHeader, HeaderScrim } from '@/components/header/BoardHeader';
@@ -35,6 +37,7 @@ import { ShareSheet } from '@/components/sheets/ShareSheet';
 import { Backdrop } from '@/components/ui/Backdrop';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { GlassScene } from '@/components/ui/Glass';
 import { Txt } from '@/components/ui/Text';
 import { ToastHost, toast } from '@/components/ui/Toast';
 import { API_BASE_URL } from '@/constants/config';
@@ -44,7 +47,7 @@ import type { BoardSnapshot } from '@/features/board/model';
 import { useBoardStore } from '@/features/board/store';
 import { useSessionStore } from '@/features/session/store';
 import { useBoardSync } from '@/hooks/use-board-sync';
-import { deleteBoard, importSnapshot } from '@/services/api/boards';
+import { importSnapshot } from '@/services/api/boards';
 import { boardShareLink } from '@/utils/deep-link';
 import { notify, thud } from '@/utils/haptics';
 
@@ -68,7 +71,6 @@ export default function BoardScreen() {
   const haptics = useSessionStore((s) => s.settings.haptics);
 
   const meta = useBoardStore((s) => s.meta);
-  const boardToken = useBoardStore((s) => s.boardToken);
   const clearBoard = useBoardStore((s) => s.clearBoard);
 
   // Satisfied once the identity step has been passed for this board, either by
@@ -76,11 +78,14 @@ export default function BoardScreen() {
   const [identityDone, setIdentityDone] = useState(pickName !== '1');
   const [sheet, setSheet] = useState<SheetName | null>(null);
   const [confirm, setConfirm] = useState<ConfirmName | null>(null);
-  const [confirmBusy, setConfirmBusy] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sync = useBoardSync(id, { paused: !identityDone });
+
+  // What the glass panels blur: the canvas itself, via throttled snapshots.
+  const canvasRef = useCanvasRef();
+  const mirror = useBoardMirror(canvasRef);
 
   useEffect(() => () => {
     if (copyTimer.current) clearTimeout(copyTimer.current);
@@ -108,7 +113,7 @@ export default function BoardScreen() {
     [t, userId],
   );
 
-  async function runConfirm() {
+  function runConfirm() {
     if (confirm === 'clear') {
       clearBoard();
       thud(haptics);
@@ -119,25 +124,14 @@ export default function BoardScreen() {
     }
 
     if (confirm !== 'delete' || !meta) return;
-    setConfirmBusy(true);
-    try {
-      await deleteBoard(meta.id, { userId, token: boardToken ?? '' });
-      notify(haptics, true);
-      toast(t.toastDeleted);
-    } catch (error) {
-      // The endpoint is still a placeholder server-side (see `DELETE_BOARD` in
-      // services/api/endpoints.ts). Until it lands, deleting is honoured
-      // locally — the board leaves the recent list and this device leaves the
-      // session — rather than dead-ending on an error the user cannot act on.
-      console.warn('[shareboard] deleteBoard failed, removing locally only:', error);
-      toast(t.toastDeleted);
-    } finally {
-      setConfirmBusy(false);
-      forgetBoard(meta.id);
-      setConfirm(null);
-      setSheet(null);
-      router.replace('/');
-    }
+    // There is no delete endpoint: "deleting" means this device forgets the
+    // board and leaves the session. The board itself lives on for everyone else.
+    notify(haptics, true);
+    forgetBoard(meta.id);
+    setConfirm(null);
+    setSheet(null);
+    toast(t.toastDeleted);
+    router.replace('/');
   }
 
   // --- gates -------------------------------------------------------------
@@ -173,12 +167,15 @@ export default function BoardScreen() {
   // --- the board ----------------------------------------------------------
 
   const link = meta ? boardShareLink(WEB_BASE_URL, meta.shortCode) : '';
-  const headerHeight = insets.top + (landscape ? 84 : 112);
+  // Portrait: 6 + 34 (title row) + 6 + 30 (action strip) + 6; landscape is the
+  // one row: 6 + 34 + 4. Plus a little run-out for the scrim's fade so the
+  // header never sits on its edge.
+  const headerHeight = insets.top + (landscape ? 58 : 104);
 
   return (
     <BoardFontsProvider>
-      <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-        <BoardCanvas onCursorMove={sync.sendCursor} />
+      <GlassScene render={mirror} style={{ backgroundColor: '#FFFFFF' }}>
+        <BoardCanvas onCursorMove={sync.sendCursor} canvasRef={canvasRef} />
 
         <HeaderScrim height={headerHeight} />
         <BoardHeader
@@ -246,11 +243,10 @@ export default function BoardScreen() {
           }
           confirmLabel={confirm === 'delete' ? t.deleteCta : t.clearCta}
           cancelLabel={t.cancel}
-          busy={confirmBusy}
           onConfirm={runConfirm}
           onCancel={() => setConfirm(null)}
         />
-      </View>
+      </GlassScene>
     </BoardFontsProvider>
   );
 }
