@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { NicknameColors } from '@/constants/theme';
+import { Avatars, avatarColor } from '@/constants/theme';
 import type { Lang } from '@/features/i18n/strings';
 import { newUserId } from '@/utils/id';
 
@@ -46,7 +46,7 @@ interface SessionState {
   nickname: string;
   /** Preferred presence colour; the server may still assign a different one. */
   nickColor: string;
-  /** Presence icon; '' shows the nickname's initial instead. */
+  /** Presence icon; its colour is `nickColor`. */
   avatar: string;
   lang: Lang;
   settings: AppSettings;
@@ -57,7 +57,6 @@ interface SessionState {
   hydrated: boolean;
 
   setNickname(nickname: string): void;
-  setNickColor(color: string): void;
   setAvatar(avatar: string): void;
   setLang(lang: Lang): void;
   toggleLang(): void;
@@ -95,8 +94,8 @@ export const useSessionStore = create<SessionState>()(
     (set) => ({
       userId: newUserId(),
       nickname: '',
-      nickColor: NicknameColors[0],
-      avatar: '',
+      nickColor: Avatars[0].color,
+      avatar: Avatars[0].icon,
       lang: 'es',
       settings: DEFAULT_SETTINGS,
       recent: [],
@@ -107,12 +106,9 @@ export const useSessionStore = create<SessionState>()(
         set({ nickname: nickname.trim().slice(0, 24) });
       },
 
-      setNickColor(nickColor) {
-        set({ nickColor });
-      },
-
+      /** The icon brings its colour along: one choice, not two. */
       setAvatar(avatar) {
-        set({ avatar });
+        set({ avatar, nickColor: avatarColor(avatar) });
       },
 
       setLang(lang) {
@@ -170,9 +166,12 @@ export const useSessionStore = create<SessionState>()(
       // a new toggle does not come back `undefined` and render as "off".
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<SessionState>;
+        const avatar = saved.avatar || Avatars[0].icon;
         return {
           ...current,
           ...saved,
+          avatar,
+          nickColor: avatarColor(avatar),
           settings: { ...DEFAULT_SETTINGS, ...(saved.settings ?? {}) },
         };
       },
