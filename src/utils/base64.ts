@@ -1,81 +1,40 @@
 /**
  * base64 <-> bytes.
  *
- * Hermes has no `atob`/`btoa` and no Node `Buffer`, but every image that
- * crosses this app's boundaries is base64: Skia hands back an encoded snapshot
- * as base64, `expo-file-system` reads and writes it as base64, and an inline
- * image element carries a `data:` URI. Turning that into real bytes is what
- * lets `features/board/embed.ts` reach inside a PNG or JPEG.
+ * Every image that crosses this app's boundaries is base64: Skia hands back an
+ * encoded snapshot as base64, `expo-file-system` reads and writes it as base64,
+ * and an inline image element carries a `data:` URI. Turning that into real
+ * bytes is what lets `features/board/embed.ts` reach inside a PNG or JPEG.
+ *
+ * Hermes ships `atob`/`btoa` and `TextEncoder` (React Native ≥ 0.74), so only
+ * the decoder is still written by hand.
  */
 
-const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
-const LOOKUP = (() => {
-  const table = new Uint8Array(128).fill(255);
-  for (let i = 0; i < ALPHABET.length; i++) table[ALPHABET.charCodeAt(i)] = i;
-  return table;
-})();
-
 export function bytesToBase64(bytes: Uint8Array): string {
-  let out = '';
-  let i = 0;
-  for (; i + 2 < bytes.length; i += 3) {
-    const n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
-    out += ALPHABET[(n >> 18) & 63] + ALPHABET[(n >> 12) & 63] + ALPHABET[(n >> 6) & 63] + ALPHABET[n & 63];
+  let binary = '';
+  // Chunked: `String.fromCharCode(...bytes)` blows the argument limit on a
+  // multi-megabyte image.
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   }
-  const rest = bytes.length - i;
-  if (rest === 1) {
-    const n = bytes[i] << 16;
-    out += ALPHABET[(n >> 18) & 63] + ALPHABET[(n >> 12) & 63] + '==';
-  } else if (rest === 2) {
-    const n = (bytes[i] << 16) | (bytes[i + 1] << 8);
-    out += ALPHABET[(n >> 18) & 63] + ALPHABET[(n >> 12) & 63] + ALPHABET[(n >> 6) & 63] + '=';
-  }
-  return out;
+  return btoa(binary);
 }
 
 export function base64ToBytes(base64: string): Uint8Array {
   // Tolerate whitespace and the URL-safe alphabet; a base64 string that has
   // been through a file, a data: URI and a JSON round trip picks up both.
   const clean = base64.replace(/[^A-Za-z0-9+/=_-]/g, '').replace(/-/g, '+').replace(/_/g, '/');
-  const padding = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0;
-  const length = Math.floor((clean.length * 3) / 4) - padding;
-  const out = new Uint8Array(Math.max(0, length));
-
-  let outIndex = 0;
-  for (let i = 0; i < clean.length; i += 4) {
-    const a = LOOKUP[clean.charCodeAt(i)] ?? 0;
-    const b = LOOKUP[clean.charCodeAt(i + 1)] ?? 0;
-    const c = LOOKUP[clean.charCodeAt(i + 2)] ?? 0;
-    const d = LOOKUP[clean.charCodeAt(i + 3)] ?? 0;
-    const n = (a << 18) | (b << 12) | (c << 6) | d;
-    if (outIndex < out.length) out[outIndex++] = (n >> 16) & 255;
-    if (outIndex < out.length) out[outIndex++] = (n >> 8) & 255;
-    if (outIndex < out.length) out[outIndex++] = n & 255;
-  }
-  return out;
+  return Uint8Array.from(atob(clean), (c) => c.charCodeAt(0));
 }
 
 /** UTF-8 text -> bytes. */
-export function textToBytes(text: string): Uint8Array {
-  const out: number[] = [];
-  for (const char of text) {
-    const cp = char.codePointAt(0)!;
-    if (cp < 0x80) out.push(cp);
-    else if (cp < 0x800) out.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
-    else if (cp < 0x10000) out.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
-    else
-      out.push(
-        0xf0 | (cp >> 18),
-        0x80 | ((cp >> 12) & 0x3f),
-        0x80 | ((cp >> 6) & 0x3f),
-        0x80 | (cp & 0x3f),
-      );
-  }
-  return Uint8Array.from(out);
-}
+export const textToBytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 
-/** bytes -> UTF-8 text. Invalid sequences become U+FFFD rather than throwing. */
+/**
+ * bytes -> UTF-8 text. Invalid sequences become U+FFFD rather than throwing.
+ * ponytail: hand-rolled because `TextDecoder` is not guaranteed on Hermes;
+ * swap for `new TextDecoder().decode(bytes)` once the RN target ships it.
+ */
 export function bytesToText(bytes: Uint8Array): string {
   let out = '';
   for (let i = 0; i < bytes.length; ) {
@@ -111,14 +70,8 @@ export function bytesToText(bytes: Uint8Array): string {
 }
 
 /** ASCII/Latin-1 text -> bytes, for the fixed markers inside image containers. */
-export function asciiToBytes(text: string): Uint8Array {
-  const out = new Uint8Array(text.length);
-  for (let i = 0; i < text.length; i++) out[i] = text.charCodeAt(i) & 0xff;
-  return out;
-}
+export const asciiToBytes = (text: string): Uint8Array =>
+  Uint8Array.from(text, (c) => c.charCodeAt(0) & 0xff);
 
-export function bytesToAscii(bytes: Uint8Array): string {
-  let out = '';
-  for (const byte of bytes) out += String.fromCharCode(byte);
-  return out;
-}
+export const bytesToAscii = (bytes: Uint8Array): string =>
+  Array.from(bytes, (b) => String.fromCharCode(b)).join('');
