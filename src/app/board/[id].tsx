@@ -20,6 +20,7 @@ import { ActivityIndicator, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BoardCanvas } from '@/components/board/BoardCanvas';
+import { ConnectionBanner } from '@/components/board/ConnectionBanner';
 import { BoardFontsProvider } from '@/components/board/BoardFonts';
 import { useBoardMirror } from '@/components/board/BoardMirror';
 import { BottomControls } from '@/components/board/BottomControls';
@@ -190,6 +191,7 @@ export default function BoardScreen() {
 
         <ToolRail landscape={landscape} />
         <BottomControls landscape={landscape} />
+        <ConnectionBanner top={headerHeight + 6} onRetry={sync.retry} />
 
         <ToastHost
           bottom={Math.max(insets.bottom, 16) + 96}
