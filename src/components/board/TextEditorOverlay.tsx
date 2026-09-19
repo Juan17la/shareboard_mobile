@@ -12,7 +12,8 @@ import { Pressable, TextInput, View } from 'react-native';
 
 import { Colors, Fonts } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
-import type { TextElement } from '@/features/board/model';
+import { shapeBounds } from '@/features/board/geometry';
+import { SHAPE_TEXT_SIZE, type ShapeElement, type TextElement } from '@/features/board/model';
 import type { Camera } from '@/features/board/store';
 import { useBoardStore } from '@/features/board/store';
 
@@ -21,22 +22,38 @@ export function TextEditorOverlay({
   camera,
   onClose,
 }: {
-  element: TextElement;
+  /** A text element, or a shape whose label is being typed. */
+  element: TextElement | ShapeElement;
   camera: Camera;
   onClose: () => void;
 }) {
   const t = useT();
   const updateText = useBoardStore((s) => s.updateText);
-  const [value, setValue] = useState(element.text);
+  const updateShape = useBoardStore((s) => s.updateShape);
+  const [value, setValue] = useState(element.text ?? '');
 
   const commit = () => {
-    updateText(element.id, { text: value });
+    if (element.kind === 'text') updateText(element.id, { text: value });
+    else updateShape(element.id, { text: value.trim() });
     onClose();
   };
 
-  const left = element.at.x * camera.scale + camera.x;
-  const top = element.at.y * camera.scale + camera.y - 4;
-  const fontSize = element.fontSize * camera.scale;
+  const fontSize = (element.fontSize ?? SHAPE_TEXT_SIZE) * camera.scale;
+  const width = 160;
+  let left: number;
+  let top: number;
+  if (element.kind === 'text') {
+    left = element.at.x * camera.scale + camera.x;
+    top = element.at.y * camera.scale + camera.y - 4;
+  } else {
+    // A shape's label sits centred in its box, so the editor does too.
+    const b = shapeBounds(element);
+    left = (b.x + b.width / 2) * camera.scale + camera.x - width / 2;
+    top = (b.y + b.height / 2) * camera.scale + camera.y - fontSize * 0.75 - 4;
+  }
+  const color = element.kind === 'text' ? element.color : element.stroke;
+  const bold = element.kind === 'text' && element.bold;
+  const italic = element.kind === 'text' && element.italic;
 
   return (
     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
@@ -62,8 +79,9 @@ export function TextEditorOverlay({
           position: 'absolute',
           left,
           top,
-          minWidth: 120,
+          minWidth: element.kind === 'shape' ? width : 120,
           maxWidth: 240,
+          textAlign: element.kind === 'shape' ? 'center' : 'left',
           paddingHorizontal: 4,
           paddingVertical: 2,
           borderRadius: 6,
@@ -71,12 +89,12 @@ export function TextEditorOverlay({
           borderStyle: 'dashed',
           borderColor: Colors.accent,
           backgroundColor: 'rgba(255,255,255,0.9)',
-          color: element.color,
-          fontFamily: element.italic
-            ? element.bold
+          color,
+          fontFamily: italic
+            ? bold
               ? Fonts.extraboldItalic
               : Fonts.italic
-            : element.bold
+            : bold
               ? Fonts.extrabold
               : Fonts.medium,
           fontSize,
