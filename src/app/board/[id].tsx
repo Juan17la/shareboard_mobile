@@ -24,7 +24,7 @@ import { ConnectionBanner } from '@/components/board/ConnectionBanner';
 import { BoardFontsProvider } from '@/components/board/BoardFonts';
 import { useBoardMirror } from '@/components/board/BoardMirror';
 import { BottomControls } from '@/components/board/BottomControls';
-import { ToolRail } from '@/components/board/ToolRail';
+import { Toolbar } from '@/components/board/Toolbar';
 import { BoardHeader, HeaderScrim } from '@/components/header/BoardHeader';
 import { NicknameScreen } from '@/components/screens/NicknameScreen';
 import { PinScreen } from '@/components/screens/PinScreen';
@@ -48,7 +48,7 @@ import type { BoardSnapshot } from '@/features/board/model';
 import { useBoardStore } from '@/features/board/store';
 import { useSessionStore } from '@/features/session/store';
 import { useBoardSync } from '@/hooks/use-board-sync';
-import { importSnapshot } from '@/services/api/boards';
+import { deleteBoard, importSnapshot } from '@/services/api/boards';
 import { boardShareLink } from '@/utils/deep-link';
 import { notify, thud } from '@/utils/haptics';
 
@@ -79,6 +79,7 @@ export default function BoardScreen() {
   const [identityDone, setIdentityDone] = useState(pickName !== '1');
   const [sheet, setSheet] = useState<SheetName | null>(null);
   const [confirm, setConfirm] = useState<ConfirmName | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -114,7 +115,7 @@ export default function BoardScreen() {
     [t, userId],
   );
 
-  function runConfirm() {
+  async function runConfirm() {
     if (confirm === 'clear') {
       clearBoard();
       thud(haptics);
@@ -125,8 +126,16 @@ export default function BoardScreen() {
     }
 
     if (confirm !== 'delete' || !meta) return;
-    // There is no delete endpoint: "deleting" means this device forgets the
-    // board and leaves the session. The board itself lives on for everyone else.
+    // The server drops the board and disconnects everyone else on it; only then
+    // does this device forget it and leave.
+    setDeleting(true);
+    try {
+      await deleteBoard(meta.id, { userId, token: useBoardStore.getState().boardToken ?? '' });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : t.errDelete);
+      setDeleting(false);
+      return;
+    }
     notify(haptics, true);
     forgetBoard(meta.id);
     setConfirm(null);
@@ -189,12 +198,12 @@ export default function BoardScreen() {
           onOpenShare={() => setSheet('share')}
         />
 
-        <ToolRail landscape={landscape} />
+        <Toolbar landscape={landscape} />
         <BottomControls landscape={landscape} />
         <ConnectionBanner top={headerHeight + 6} onRetry={sync.retry} />
 
         <ToastHost
-          bottom={Math.max(insets.bottom, 16) + 96}
+          bottom={Math.max(insets.bottom, 16) + 128}
           enabled={sheet === null && confirm === null}
         />
 
@@ -245,7 +254,8 @@ export default function BoardScreen() {
           }
           confirmLabel={confirm === 'delete' ? t.deleteCta : t.clearCta}
           cancelLabel={t.cancel}
-          onConfirm={runConfirm}
+          busy={deleting}
+          onConfirm={() => void runConfirm()}
           onCancel={() => setConfirm(null)}
         />
       </GlassScene>
