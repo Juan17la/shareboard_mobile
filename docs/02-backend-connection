@@ -78,6 +78,7 @@ Rutas relativas a `API_BASE_URL`. Una función por endpoint en
 | Entrar (join) | `POST /boards/:id/join` | `JoinBoardRequest` | `200 JoinBoardResponse` | cualquiera |
 | Renombrar | `PATCH /boards/:id` | `{ name }` | `200 BoardMeta` | creador |
 | Permisos | `PATCH /boards/:id/permissions` | `UpdatePermissionsRequest` | `200 BoardMeta` | creador |
+| Eliminar | `DELETE /boards/:id` | — | `204` (los demás reciben `error BOARD_NOT_FOUND` y cierre `4004`) | creador |
 | Snapshot | `GET /boards/:id/snapshot` | — | `200 BoardSnapshot` | miembro |
 | Importar | `POST /boards/import` | `{ snapshot, creatorId }` | `201 BoardMeta` | cualquiera |
 
@@ -193,6 +194,7 @@ RESOLVE_CODE  GET   /boards/code/:code
 JOIN          POST  /boards/:id/join
 RENAME        PATCH /boards/:id
 PERMISSIONS   PATCH /boards/:id/permissions
+DELETE        DELETE /boards/:id
 SNAPSHOT      GET   /boards/:id/snapshot
 IMPORT        POST  /boards/import
 ```
