@@ -25,6 +25,7 @@ const es = {
   deleteDigit: 'Borrar un dígito',
 
   // tools
+  hand: 'Mano',
   pencil: 'Lápiz',
   eraser: 'Borrador',
   shapes: 'Figuras',
@@ -53,6 +54,7 @@ const es = {
   homeSub: 'Crea una pizarra y comparte el código. Sin registro.',
   createBoard: 'Crear pizarra',
   newBoardName: 'Pizarra sin título',
+  boardNamePlaceholder: 'Nombre de la pizarra (opcional)',
   importedBoardName: 'Pizarra importada',
   joinTitle: 'Entrar con un código',
   codeFieldLabel: 'Código de la pizarra',
@@ -73,6 +75,7 @@ const es = {
   nickSub: 'Tu nombre aparecerá junto a tu cursor en la pizarra.',
   nickPlaceholder: 'Tu nombre',
   yourColor: 'Tu color',
+  yourIcon: 'Tu icono',
   continue: 'Continuar',
 
   // pin
@@ -215,6 +218,7 @@ const en: Record<keyof typeof es, string> = {
   retry: 'Try again',
   deleteDigit: 'Delete a digit',
 
+  hand: 'Hand',
   pencil: 'Pencil',
   eraser: 'Eraser',
   shapes: 'Shapes',
@@ -242,6 +246,7 @@ const en: Record<keyof typeof es, string> = {
   homeSub: 'Create a board and share the code. No sign-up.',
   createBoard: 'Create board',
   newBoardName: 'Untitled board',
+  boardNamePlaceholder: 'Board name (optional)',
   importedBoardName: 'Imported board',
   joinTitle: 'Join with a code',
   codeFieldLabel: 'Board code',
@@ -261,6 +266,7 @@ const en: Record<keyof typeof es, string> = {
   nickSub: 'Your name shows next to your cursor on the board.',
   nickPlaceholder: 'Your name',
   yourColor: 'Your colour',
+  yourIcon: 'Your icon',
   continue: 'Continue',
 
   pinTitle: 'Private board',
