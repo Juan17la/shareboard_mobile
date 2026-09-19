@@ -95,11 +95,29 @@ export const NicknameColors = [
 ] as const;
 
 /** The design leans on generous, soft corners throughout. */
-/** Presence icons to pick from on the identity screen. */
+/** Presence icons to pick from on the identity screen; each carries its own colour. */
 export const Avatars = [
-  '🦊', '🐼', '🐸', '🐙', '🦄', '🐝', '🦋', '🐢',
-  '🐬', '🦉', '🐨', '🐯', '🦁', '🐧', '🦕', '🚀',
+  { icon: '🦊', color: '#F76808' },
+  { icon: '🐼', color: '#1B2030' },
+  { icon: '🐸', color: '#30A46C' },
+  { icon: '🐙', color: '#8E4EC6' },
+  { icon: '🦄', color: '#E93D82' },
+  { icon: '🐝', color: '#F5B301' },
+  { icon: '🦋', color: '#208AEF' },
+  { icon: '🐢', color: '#3E9B4F' },
+  { icon: '🐬', color: '#0EA5E9' },
+  { icon: '🦉', color: '#8B5E3C' },
+  { icon: '🐨', color: '#6B7280' },
+  { icon: '🐯', color: '#E5484D' },
+  { icon: '🦁', color: '#D97706' },
+  { icon: '🐧', color: '#1E3A8A' },
+  { icon: '🦕', color: '#0F766E' },
+  { icon: '🚀', color: '#7C3AED' },
 ] as const;
+
+/** The colour an icon carries; the first icon's when unknown. */
+export const avatarColor = (icon: string): string =>
+  (Avatars.find((a) => a.icon === icon) ?? Avatars[0]).color;
 
 export const Radius = { sm: 8, md: 12, lg: 16, xl: 20, xxl: 26, pill: 999 } as const;
 
