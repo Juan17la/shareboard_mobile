@@ -113,9 +113,9 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
         });
         setPhase('ready');
       });
-      conn.on('op', (msg) => {
-        if (msg.from !== userId) useBoardStore.getState().applyRemote(msg.ops, msg.seq);
-      });
+      conn.on('op', (msg) =>
+        useBoardStore.getState().applyRemote(msg.ops, msg.seq, msg.from === userId),
+      );
       conn.on('participants', (msg) => useBoardStore.getState().setParticipants(msg.participants));
       conn.on('cursor', (msg) => useBoardStore.getState().setRemoteCursor(msg.from, msg.at));
       conn.on('permissions', (msg) => useBoardStore.getState().setMeta(msg.meta, msg.you));
