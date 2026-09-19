@@ -203,16 +203,11 @@ Hoja de ajustes, todo local y persistido: cuadrícula de puntos, cursores de
 otros, suavizado del trazo, vibración al tocar, idioma (ES/EN) y el nombre de la
 pizarra (solo el creador).
 
-# Eliminar una pizarra — [M][W][**B pendiente**]
+# Eliminar una pizarra — [M][W]
 
-La hoja de ajustes ofrece "Eliminar la pizarra" con su diálogo de confirmación,
-y el cliente llama a `deleteBoard()` → `DELETE /boards/:id`. **El endpoint
-todavía no existe en el servidor**: ver la nota `TODO(backend)` en
-`src/services/api/endpoints.ts`. Mientras tanto el flujo se completa en local
-(sale de la pizarra y la quita de recientes) en vez de dejar al usuario ante un
-error que no puede resolver. Cuando la ruta se implemente —evictar de memoria,
-soltar el `shortCode`, cerrar los sockets con `CloseCode.NOT_FOUND` y borrar el
-documento de Mongo— no hay que cambiar nada de este lado.
+La hoja de ajustes ofrece "Eliminar la pizarra" con su diálogo de confirmación.
+No hay endpoint de borrado: "eliminar" significa que este dispositivo sale de la
+pizarra y la quita de recientes; la pizarra sigue existiendo para los demás.
 
 # Pendientes
 
