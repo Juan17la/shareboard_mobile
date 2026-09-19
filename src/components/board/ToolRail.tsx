@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, DrawingPalette, Radius, StrokeSizes } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
-import { LIMITS, type ShapeKind, type ToolType } from '@/features/board/model';
+import { LIMITS, SHAPE_TEXT_SIZE, type ShapeKind, type ToolType } from '@/features/board/model';
 import { useBoardStore } from '@/features/board/store';
 import { useSessionStore } from '@/features/session/store';
 import { tick } from '@/utils/haptics';
@@ -52,6 +52,8 @@ export function ToolRail({ landscape }: { landscape: boolean }) {
   const config = useBoardStore((s) => s.config);
   const setTool = useBoardStore((s) => s.setTool);
   const setConfig = useBoardStore((s) => s.setConfig);
+  const updateShape = useBoardStore((s) => s.updateShape);
+  const selected = useBoardStore((s) => s.selectedShape());
   const canEdit = useBoardStore((s) => s.canEditNow());
   const haptics = useSessionStore((s) => s.settings.haptics);
 
@@ -88,7 +90,11 @@ export function ToolRail({ landscape }: { landscape: boolean }) {
 
   const showSizes = tool === 'pen' || tool === 'eraser' || tool === 'shape';
   const showShapeKinds = tool === 'shape';
-  const showTextOptions = tool === 'text';
+  // A selected shape borrows the text tool's size stepper for its label.
+  const showTextOptions = tool === 'text' || selected !== null;
+  const fontSize = selected ? (selected.fontSize ?? SHAPE_TEXT_SIZE) : config.fontSize;
+  const setFontSize = (next: number) =>
+    selected ? updateShape(selected.id, { fontSize: next }) : setConfig({ fontSize: next });
 
   return (
     <>
@@ -274,7 +280,7 @@ export function ToolRail({ landscape }: { landscape: boolean }) {
                       column's width without the "+" sliding off the edge. */}
                   <View style={{ alignItems: 'center', gap: 5 }}>
                     <Txt weight="extrabold" size={11} mono>
-                      {config.fontSize}px
+                      {fontSize}px
                     </Txt>
                     <View style={{ flexDirection: 'row', gap: 5 }}>
                       <StepperButton
@@ -282,9 +288,7 @@ export function ToolRail({ landscape }: { landscape: boolean }) {
                         label={t.smaller}
                         onPress={() => {
                           nudge();
-                          setConfig({
-                            fontSize: Math.max(LIMITS.minFontSize, config.fontSize - 4),
-                          });
+                          setFontSize(Math.max(LIMITS.minFontSize, fontSize - 4));
                         }}
                       />
                       <StepperButton
@@ -292,13 +296,12 @@ export function ToolRail({ landscape }: { landscape: boolean }) {
                         label={t.bigger}
                         onPress={() => {
                           nudge();
-                          setConfig({
-                            fontSize: Math.min(LIMITS.maxFontSize, config.fontSize + 4),
-                          });
+                          setFontSize(Math.min(LIMITS.maxFontSize, fontSize + 4));
                         }}
                       />
                     </View>
                   </View>
+                  {selected ? null : (
                   <View style={{ flexDirection: 'row', gap: 5, justifyContent: 'center' }}>
                     <MiniButton
                       glyph="B"
@@ -323,6 +326,7 @@ export function ToolRail({ landscape }: { landscape: boolean }) {
                       }}
                     />
                   </View>
+                  )}
                   <Hairline />
                 </>
               ) : null}

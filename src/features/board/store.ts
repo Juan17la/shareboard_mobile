@@ -70,6 +70,17 @@ export function fillFor(color: string): string {
   return color.length === 9 ? color : color + FILL_ALPHA;
 }
 
+export interface ShapeEdit {
+  id: ElementId;
+  mode: 'move' | 'resize';
+  /** Corner index (endpoint index for a line) when resizing. */
+  handle: number;
+  start: Point;
+  origin: { from: Point; to: Point };
+  from: Point;
+  to: Point;
+}
+
 interface HistoryEntry {
   undo: Op[];
   redo: Op[];
@@ -104,6 +115,12 @@ interface BoardState {
    * rail state because the canvas closes it the moment a gesture starts.
    */
   railOpen: boolean;
+  /**
+   * The shape tool's selection: tap a shape to get its handles, the options
+   * column then restyles it and `Aa` labels it. Never synced — selection is a
+   * cursor, not content.
+   */
+  selectedId: ElementId | null;
   /** CSS-pixel size of the canvas, reported by the canvas itself. */
   viewport: { width: number; height: number };
   /** False until the first layout has put the board origin at screen centre. */
@@ -115,6 +132,12 @@ interface BoardState {
    */
   liveStroke: number[];
   liveShape: { from: Point; to: Point } | null;
+  /**
+   * The selected shape while a finger drags it: `from`/`to` are the box on
+   * screen right now, `origin` the box the drag started from. The element
+   * itself only changes (one op) when the finger lifts.
+   */
+  liveEdit: ShapeEdit | null;
 
   // sync / history
   outbox: Op[];
@@ -145,9 +168,20 @@ interface BoardState {
   homeCamera(): Camera;
   setLiveStroke(points: number[]): void;
   setLiveShape(shape: { from: Point; to: Point } | null): void;
+  setLiveEdit(edit: ShapeEdit | null): void;
 
   addStroke(points: number[]): void;
-  addShape(shape: ShapeKind, from: Point, to: Point): void;
+  /** Returns the new id so the caller can select it for resizing. */
+  addShape(shape: ShapeKind, from: Point, to: Point): ElementId | null;
+  select(id: ElementId | null): void;
+  /** The selected shape, if it is still on the board. */
+  selectedShape(): ShapeElement | null;
+  updateShape(
+    id: ElementId,
+    patch: Partial<
+      Pick<ShapeElement, 'from' | 'to' | 'text' | 'fontSize' | 'stroke' | 'strokeWidth' | 'fill' | 'shape'>
+    >,
+  ): void;
   /** Paint bucket: tint the topmost enclosed shape under `at`. */
   fillAt(at: Point): boolean;
   addText(at: Point): ElementId | null;
@@ -244,10 +278,12 @@ export const useBoardStore = create<BoardState>((set, get) => {
     config: DEFAULT_CONFIG,
     camera: DEFAULT_CAMERA,
     railOpen: true,
+    selectedId: null,
     viewport: { width: 0, height: 0 },
     cameraPlaced: false,
     liveStroke: [],
     liveShape: null,
+    liveEdit: null,
 
     outbox: [],
     clientSeq: 0,
@@ -296,8 +332,10 @@ export const useBoardStore = create<BoardState>((set, get) => {
         // reconnects), so re-home on the size already known.
         camera: get().homeCamera(),
         cameraPlaced: get().viewport.width > 0,
+        selectedId: null,
         liveStroke: [],
         liveShape: null,
+        liveEdit: null,
       });
     },
 
@@ -324,11 +362,28 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     setTool(tool) {
-      set({ tool });
+      // The selection belongs to the shape tool; any other tool drops it.
+      set({ tool, selectedId: null });
     },
 
     setConfig(patch) {
       set((s) => ({ config: { ...s.config, ...patch } }));
+      // With a shape selected the options column edits *it*, not just the next
+      // shape: colour, width, kind and fill all land on the board.
+      const selected = get().selectedShape();
+      if (!selected) return;
+      const { config } = get();
+      const restyle: Parameters<BoardState['updateShape']>[1] = {};
+      if (patch.color !== undefined) {
+        restyle.stroke = patch.color;
+        if (selected.fill) restyle.fill = fillFor(patch.color);
+      }
+      if (patch.width !== undefined) restyle.strokeWidth = clampWidth(patch.width);
+      if (patch.shape !== undefined) restyle.shape = patch.shape;
+      if (patch.filled !== undefined) {
+        restyle.fill = patch.filled && isFillable(selected.shape) ? fillFor(config.color) : null;
+      }
+      if (Object.keys(restyle).length) get().updateShape(selected.id, restyle);
     },
 
     setCamera(camera) {
@@ -361,6 +416,10 @@ export const useBoardStore = create<BoardState>((set, get) => {
       set({ liveShape: shape });
     },
 
+    setLiveEdit(liveEdit) {
+      set({ liveEdit });
+    },
+
     // --- editing -----------------------------------------------------------
     // Each of these turns a gesture into ops. They all no-op without edit
     // rights, so a viewer's gestures die here rather than being drawn locally
@@ -381,7 +440,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     addShape(shape, from, to) {
-      if (!get().canEditNow()) return;
+      if (!get().canEditNow()) return null;
       const { config } = get();
       const el: ShapeElement = {
         ...baseFields(),
@@ -394,6 +453,29 @@ export const useBoardStore = create<BoardState>((set, get) => {
         fill: config.filled && isFillable(shape) ? fillFor(config.color) : null,
       };
       commitLocal([{ t: 'add', el }]);
+      return el.id;
+    },
+
+    select(selectedId) {
+      set({ selectedId });
+    },
+
+    selectedShape() {
+      const { selectedId, elements } = get();
+      const el = selectedId ? elements[selectedId] : null;
+      return el && el.kind === 'shape' && !el.deleted ? el : null;
+    },
+
+    updateShape(id, patch) {
+      const current = get().elements[id];
+      if (!current || current.kind !== 'shape' || !get().canEditNow()) return;
+      const clean = { ...patch };
+      if (clean.text !== undefined) clean.text = clean.text.slice(0, LIMITS.maxTextLength);
+      // A fill only makes sense on a shape that encloses something.
+      if (clean.shape && !isFillable(clean.shape)) clean.fill = null;
+      commitLocal([
+        { t: 'update', id, patch: clean as Partial<BoardElement>, updatedAt: Date.now() },
+      ]);
     },
 
     /**
