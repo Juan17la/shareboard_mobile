@@ -13,15 +13,7 @@ import Constants from 'expo-constants';
 const extra = (Constants.expoConfig?.extra ?? {}) as {
   apiBaseUrl?: string;
   wsUrl?: string;
-  useMocks?: boolean;
 };
-
-function bool(value: string | boolean | undefined, fallback: boolean): boolean {
-  if (typeof value === 'boolean') return value;
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  return fallback;
-}
 
 /**
  * Host of the Expo dev server, e.g. "192.168.1.20" — the LAN address of the
@@ -48,16 +40,6 @@ export const API_BASE_URL: string = process.env.EXPO_PUBLIC_API_URL
 /** WebSocket endpoint for realtime board sync. */
 export const WS_URL: string =
   process.env.EXPO_PUBLIC_WS_URL ?? withDevHost(extra.wsUrl ?? 'ws://localhost:3000/ws');
-
-/**
- * When true, the whole app runs against in-memory mocks and never touches the
- * network (`services/api/mocks.ts`, `services/realtime/mock-realtime.ts`).
- * Set it to true to work on the UI with no server running.
- */
-export const USE_MOCKS: boolean = bool(
-  process.env.EXPO_PUBLIC_USE_MOCKS ?? extra.useMocks,
-  false,
-);
 
 /** Tunables shared by the realtime layer. Documented in docs/07-websockets. */
 export const REALTIME = {
