@@ -10,7 +10,7 @@
  * to the cubic Beziers SVG understands), which is what keeps freehand lines
  * smooth: the "minimizar líneas entrecortadas" requirement in docs/01.
  */
-import type { BoardElement, Point } from './model';
+import type { BoardElement, Point, ShapeElement } from './model';
 
 export interface Bounds {
   x: number;
@@ -131,4 +131,57 @@ export function contentBounds(elements: BoardElement[]): Bounds | null {
 
   if (!Number.isFinite(minX)) return null;
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+// --- selecting and reshaping a shape ---------------------------------------
+// A selected shape shows one handle per corner (two, the endpoints, for a line
+// or an arrow). Dragging a handle moves that corner and pins the opposite one;
+// for a line each handle simply moves its own endpoint, so the arrow head keeps
+// pointing the way it was drawn.
+
+export const isLineLike = (el: ShapeElement): boolean =>
+  el.shape === 'line' || el.shape === 'arrow';
+
+/** Normalised box of a shape. A line's box may have zero width or height. */
+export function shapeBounds(el: Pick<ShapeElement, 'from' | 'to'>): Bounds {
+  const x = Math.min(el.from.x, el.to.x);
+  const y = Math.min(el.from.y, el.to.y);
+  return { x, y, width: Math.abs(el.to.x - el.from.x), height: Math.abs(el.to.y - el.from.y) };
+}
+
+/** Handle positions, in board coordinates: TL, TR, BR, BL — or from, to. */
+export function shapeHandles(el: ShapeElement): Point[] {
+  if (isLineLike(el)) return [el.from, el.to];
+  const b = shapeBounds(el);
+  return [
+    { x: b.x, y: b.y },
+    { x: b.x + b.width, y: b.y },
+    { x: b.x + b.width, y: b.y + b.height },
+    { x: b.x, y: b.y + b.height },
+  ];
+}
+
+/** The shape's `from`/`to` after handle `h` is dragged to `p`. */
+export function resizeShape(el: ShapeElement, h: number, p: Point): Pick<ShapeElement, 'from' | 'to'> {
+  if (isLineLike(el)) return h === 0 ? { from: p, to: el.to } : { from: el.from, to: p };
+  // Box shapes are drawn from their normalised bounds, so any corner order works.
+  return { from: shapeHandles(el)[(h + 2) % 4], to: p };
+}
+
+/** The topmost shape whose box (padded by `pad` board units) contains `at`. */
+export function shapeAt(elements: BoardElement[], at: Point, pad: number): ShapeElement | null {
+  for (let i = elements.length - 1; i >= 0; i--) {
+    const el = elements[i];
+    if (el.kind !== 'shape') continue;
+    const b = shapeBounds(el);
+    if (
+      at.x >= b.x - pad &&
+      at.x <= b.x + b.width + pad &&
+      at.y >= b.y - pad &&
+      at.y <= b.y + b.height + pad
+    ) {
+      return el;
+    }
+  }
+  return null;
 }
