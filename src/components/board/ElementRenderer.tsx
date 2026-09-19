@@ -1,20 +1,24 @@
 import {
+  DashPathEffect,
   Group,
   Image,
   Line,
   Oval,
   Path,
+  Rect,
   RoundedRect,
   Skia,
   Text as SkText,
   matchFont,
   useImage,
   vec,
+  type SkFont,
 } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
 
-import { strokeToSvgPath } from '@/features/board/geometry';
-import type { BoardElement, Point, ShapeElement } from '@/features/board/model';
+import { Colors } from '@/constants/theme';
+import { isLineLike, shapeBounds, shapeHandles, strokeToSvgPath } from '@/features/board/geometry';
+import { SHAPE_TEXT_SIZE, type BoardElement, type Point, type ShapeElement } from '@/features/board/model';
 
 import { useBoardFonts } from './BoardFonts';
 
@@ -40,7 +44,110 @@ function ArrowHead({
   return <Path path={p} style="stroke" strokeWidth={width} color={color} strokeCap="round" />;
 }
 
+/** A shape's label: centred in its box, or floating just above a line's midpoint. */
+function ShapeLabel({ el }: { el: ShapeElement }) {
+  const provider = useBoardFonts();
+  const fontSize = el.fontSize ?? SHAPE_TEXT_SIZE;
+  const font: SkFont = useMemo(
+    () =>
+      matchFont(
+        { fontFamily: provider ? 'Nunito' : 'system', fontSize, fontWeight: '500' },
+        provider ?? undefined,
+      ),
+    [provider, fontSize],
+  );
+  if (!el.text) return null;
+  const { x, y, width, height } = shapeBounds(el);
+  const step = fontSize * 1.25;
+  const lines = el.text.split('\n');
+  const cx = x + width / 2;
+  const cy = isLineLike(el)
+    ? y + height / 2 - (lines.length * step) / 2 - fontSize * 0.4
+    : y + height / 2;
+  // Skia draws from the baseline: centre the block, then sit each line on it.
+  const top = cy - ((lines.length - 1) * step) / 2 + fontSize * 0.35;
+  return (
+    <Group>
+      {lines.map((line, i) => (
+        <SkText
+          key={i}
+          x={cx - font.measureText(line).width / 2}
+          y={top + i * step}
+          text={line}
+          font={font}
+          color={el.stroke}
+        />
+      ))}
+    </Group>
+  );
+}
+
+/**
+ * The selection frame: a dashed box and a handle on each corner (each endpoint
+ * for a line). Rendered in screen space — outside the camera group — so the
+ * handles stay finger-sized at any zoom.
+ */
+export const HANDLE_SIZE = 12;
+
+export function SelectionFrame({
+  el,
+  camera,
+}: {
+  el: ShapeElement;
+  camera: { x: number; y: number; scale: number };
+}) {
+  const sx = (v: number) => v * camera.scale + camera.x;
+  const sy = (v: number) => v * camera.scale + camera.y;
+  const b = shapeBounds(el);
+  return (
+    <Group>
+      {isLineLike(el) ? null : (
+        <Rect
+          x={sx(b.x) - 4}
+          y={sy(b.y) - 4}
+          width={b.width * camera.scale + 8}
+          height={b.height * camera.scale + 8}
+          color={Colors.accent}
+          style="stroke"
+          strokeWidth={1.5}
+        >
+          <DashPathEffect intervals={[5, 4]} />
+        </Rect>
+      )}
+      {shapeHandles(el).map((h, i) => (
+        <Group key={i}>
+          <Rect
+            x={sx(h.x) - HANDLE_SIZE / 2}
+            y={sy(h.y) - HANDLE_SIZE / 2}
+            width={HANDLE_SIZE}
+            height={HANDLE_SIZE}
+            color="#FFFFFF"
+          />
+          <Rect
+            x={sx(h.x) - HANDLE_SIZE / 2}
+            y={sy(h.y) - HANDLE_SIZE / 2}
+            width={HANDLE_SIZE}
+            height={HANDLE_SIZE}
+            color={Colors.accent}
+            style="stroke"
+            strokeWidth={1.5}
+          />
+        </Group>
+      ))}
+    </Group>
+  );
+}
+
 function ShapeView({ el }: { el: ShapeElement }) {
+  return (
+    <Group>
+      <ShapeGeometry el={el} />
+      <ShapeLabel el={el} />
+    </Group>
+  );
+}
+
+function ShapeGeometry({ el }: { el: ShapeElement }) {
   const x = Math.min(el.from.x, el.to.x);
   const y = Math.min(el.from.y, el.to.y);
   const w = Math.abs(el.to.x - el.from.x);
