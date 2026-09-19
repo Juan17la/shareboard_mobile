@@ -13,6 +13,7 @@
  */
 import { useState } from 'react';
 import { Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, DrawingPalette, Radius, StrokeSizes } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
@@ -45,6 +46,7 @@ const SHAPE_KINDS: { kind: ShapeKind; icon: IconName; labelKey: 'shapeRectangle'
 
 export function ToolRail({ landscape }: { landscape: boolean }) {
   const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const t = useT();
   const tool = useBoardStore((s) => s.tool);
   const config = useBoardStore((s) => s.config);
@@ -58,7 +60,10 @@ export function ToolRail({ landscape }: { landscape: boolean }) {
 
   // Leave the bottom controls and the safe area clear rather than picking a
   // fixed height that overflows on a small phone and wastes space on a tablet.
-  const railTop = landscape ? 96 : 154;
+  // In landscape the rail sits just under the header, which runs to the right
+  // edge — so it has to follow the header down on devices that keep a status
+  // bar in landscape (BoardHeader pads by `insets.top`).
+  const railTop = insets.top + (landscape ? 54 : 96);
   const optionsMaxHeight = Math.max(200, height - railTop - (landscape ? 60 : 140));
 
   const buttonSize = landscape ? 34 : 40;
@@ -85,7 +90,10 @@ export function ToolRail({ landscape }: { landscape: boolean }) {
       <View
         style={{
           position: 'absolute',
-          right: landscape ? 16 : 10,
+          // The same right edge as the header (BoardHeader `paddingRight`),
+          // so the two line up. `insets.right` matters in landscape on Android:
+          // it is the three-button nav bar, or the camera cutout on that side.
+          right: Math.max(insets.right, landscape ? 16 : 10),
           top: railTop,
           flexDirection: 'row-reverse',
           alignItems: 'flex-start',
