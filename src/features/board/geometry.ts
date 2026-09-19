@@ -185,21 +185,48 @@ export function anchorsOf(el: ShapeElement): Point[] {
   ];
 }
 
-/** The nearest anchor within `radius` board units of `at`, or `at` itself. */
-export function snapToAnchor(elements: BoardElement[], at: Point, radius: number): Point {
-  let best = at;
-  let bestD = radius * radius;
-  for (const el of elements) {
-    if (el.kind !== 'shape') continue;
-    for (const a of anchorsOf(el)) {
-      const d = (a.x - at.x) ** 2 + (a.y - at.y) ** 2;
+/**
+ * Where the two ends of a line land. An end inside (or within `radius` of) an
+ * enclosed shape goes to that shape's anchor facing the other end — so an
+ * arrow dragged from somewhere in box A to somewhere in box B links the two
+ * without aiming at a dot, and the start slides round A as the end moves.
+ * An end near nobody snaps to the nearest anchor within `radius`, or stays.
+ */
+export function linkEndpoints(
+  elements: BoardElement[],
+  from: Point,
+  to: Point,
+  radius: number,
+): { from: Point; to: Point } {
+  const nearest = (anchors: Point[], target: Point, limit: number): Point | null => {
+    let best: Point | null = null;
+    let bestD = limit;
+    for (const a of anchors) {
+      const d = (a.x - target.x) ** 2 + (a.y - target.y) ** 2;
       if (d < bestD) {
         bestD = d;
         best = a;
       }
     }
-  }
-  return best;
+    return best;
+  };
+  const enclosed = elements.filter((el) => el.kind === 'shape' && !isLineLike(el));
+  const all = enclosed.flatMap((el) => anchorsOf(el as ShapeElement));
+  const centre = (el: ShapeElement) => {
+    const b = shapeBounds(el);
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  };
+  const a = shapeAt(enclosed, from, radius);
+  const b = shapeAt(enclosed, to, radius);
+  // Face the other shape's centre when both ends are bound: the anchors then
+  // stay put while the pointer wanders inside the box.
+  const from2 = a
+    ? nearest(anchorsOf(a), b && b !== a ? centre(b) : to, Infinity)!
+    : (nearest(all, from, radius * radius) ?? from);
+  const to2 = b
+    ? nearest(anchorsOf(b), a && a !== b ? centre(a) : from2, Infinity)!
+    : (nearest(all, to, radius * radius) ?? to);
+  return { from: from2, to: to2 };
 }
 
 /** The topmost shape whose box (padded by `pad` board units) contains `at`. */
