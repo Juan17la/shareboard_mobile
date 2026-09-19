@@ -34,7 +34,6 @@ export type ServerMessage =
   | { type: 'error'; code: ServerErrorCode; message: string }
   | { type: 'pong'; t: number };
 
-export type ClientMessageType = ClientMessage['type'];
 export type ServerMessageType = ServerMessage['type'];
 
 export type ServerErrorCode =
@@ -56,13 +55,4 @@ export const CloseCode = {
   NOT_FOUND: 4004,
   RATE_LIMITED: 4008,
   PIN_REQUIRED: 4009,
-} as const;
-
-export type CloseCodeValue = (typeof CloseCode)[keyof typeof CloseCode];
-
-/** Server-side limits the client stays under. */
-export const REALTIME_LIMITS = {
-  idleTimeoutMs: 40_000,
-  maxMessageBytes: 256 * 1024,
-  maxOpsPerSecond: 60,
 } as const;
