@@ -35,6 +35,7 @@ export type IconName =
   | 'trash'
   | 'x-circle'
   | 'warning'
+  | 'hand'
   | 'pencil'
   | 'eraser'
   | 'shapes'
@@ -231,6 +232,17 @@ const PATHS: Record<IconName, { s?: number; fill?: boolean; body: ReactElement }
       <>
         <Path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z" />
         <Path d="M14.5 6.5l3 3" />
+      </>
+    ),
+  },
+  hand: {
+    s: 1.9,
+    body: (
+      <>
+        <Path d="M8 11V5.5a1.5 1.5 0 0 1 3 0V11" />
+        <Path d="M11 10V4.5a1.5 1.5 0 0 1 3 0V11" />
+        <Path d="M14 10.5V6a1.5 1.5 0 0 1 3 0v7.5" />
+        <Path d="M8 11.5V8.5a1.5 1.5 0 0 0-3 0V14c0 3.6 2.4 6.5 6 6.5h2c3.4 0 5.8-2.4 6-5.9" />
       </>
     ),
   },
