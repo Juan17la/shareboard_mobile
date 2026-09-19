@@ -55,7 +55,8 @@ export function ToolRail({ landscape }: { landscape: boolean }) {
   const canEdit = useBoardStore((s) => s.canEditNow());
   const haptics = useSessionStore((s) => s.settings.haptics);
 
-  const [open, setOpen] = useState(true);
+  const open = useBoardStore((s) => s.railOpen);
+  const setOpen = useBoardStore((s) => s.setRailOpen);
   const [picking, setPicking] = useState(false);
 
   // Leave the bottom controls and the safe area clear rather than picking a
@@ -127,7 +128,7 @@ export function ToolRail({ landscape }: { landscape: boolean }) {
               accessibilityState={{ expanded: open }}
               onPress={() => {
                 nudge();
-                setOpen((v) => !v);
+                setOpen(!open);
               }}
               style={{
                 width: buttonSize,
