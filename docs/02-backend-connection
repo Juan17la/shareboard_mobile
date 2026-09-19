@@ -6,10 +6,8 @@ web de React. Todo lo que aquí se describe está reflejado en el código del m�
 bajo `src/services/`.
 
 El backend ya existe (`../server`, Fastify + TypeScript) y la app apunta a él
-por defecto. Poniendo `EXPO_PUBLIC_USE_MOCKS=true` (ver `src/constants/config.ts`)
-la app vuelve a responder desde `src/services/api/mocks.ts` y
-`src/services/realtime/mock-realtime.ts`, sin tocar más código, para trabajar la
-UI sin servidor. Instrucciones de arranque de los tres proyectos en el
+por defecto; `npm run dev` en `server/` lo levanta en memoria, sin base de datos,
+para trabajar la UI. Instrucciones de arranque de los tres proyectos en el
 `README.md` de la raíz.
 
 # Separación de responsabilidades
@@ -33,7 +31,6 @@ Web / Mobile ──WS────▶ Node.js        (ops, cursores, presencia)
 |---|---|---|
 | `EXPO_PUBLIC_API_URL` | env / `app.json` → `extra.apiBaseUrl` | `http://localhost:3000` |
 | `EXPO_PUBLIC_WS_URL` | env / `app.json` → `extra.wsUrl` | `ws://localhost:3000/ws` |
-| `EXPO_PUBLIC_USE_MOCKS` | env / `app.json` → `extra.useMocks` | `false` |
 
 La app web debería usar las mismas rutas relativas sobre su propio host.
 
@@ -69,8 +66,8 @@ socket para el mismo par, cierra el anterior con el código `4001` (ver
 
 # Referencia de endpoints REST
 
-Rutas relativas a `API_BASE_URL`. La lista canónica vive en
-`src/services/api/endpoints.ts` (`ENDPOINTS`).
+Rutas relativas a `API_BASE_URL`. Una función por endpoint en
+`src/services/api/boards.ts`.
 
 | Acción | Método y ruta | Cuerpo | Respuesta | Quién |
 |---|---|---|---|---|
@@ -186,8 +183,7 @@ Para universal/app links en producción hay que publicar
 
 # Mapa de placeholders para el backend
 
-El backend debe implementar exactamente estas claves de
-`src/services/api/endpoints.ts`:
+El backend implementa exactamente estas rutas (`src/services/api/boards.ts`):
 
 ```
 HEALTH        GET   /health
