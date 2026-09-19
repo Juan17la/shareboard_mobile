@@ -4,6 +4,7 @@
  *
  * One finger is always the active tool and two fingers are always the camera —
  * the split the design relies on and the reason drawing never fights panning.
+ * The hand tool, and a viewer with no tools at all, get one-finger panning.
  * The camera lives in the store but never on the wire: pan and zoom are
  * per-device (docs/05-model-date).
  */
@@ -13,7 +14,15 @@ import { Pressable, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { Colors, Shadow } from '@/constants/theme';
-import { resizeShape, shapeAt, shapeBounds, shapeHandles, simplify } from '@/features/board/geometry';
+import {
+  isLineLike,
+  resizeShape,
+  shapeAt,
+  shapeBounds,
+  shapeHandles,
+  simplify,
+  snapToAnchor,
+} from '@/features/board/geometry';
 import type { Point, ShapeElement } from '@/features/board/model';
 import { visibleSorted } from '@/features/board/ops';
 import { fillFor, useBoardStore, type ShapeEdit } from '@/features/board/store';
@@ -21,7 +30,7 @@ import { useT } from '@/features/i18n/store';
 import { useSessionStore } from '@/features/session/store';
 import { tick } from '@/utils/haptics';
 
-import { DotGrid, ElementRenderer, SelectionFrame } from './ElementRenderer';
+import { Anchors, DotGrid, ElementRenderer, SelectionFrame } from './ElementRenderer';
 import { PeerCursors } from './PeerCursors';
 import { TextEditorOverlay } from './TextEditorOverlay';
 import { Txt } from '../ui/Text';
@@ -35,10 +44,19 @@ function screenToBoard(x: number, y: number): Point {
   return { x: (x - camera.x) / camera.scale, y: (y - camera.y) / camera.scale };
 }
 
+/** A line/arrow endpoint snaps to the nearest connection point in reach. */
+function snapLine(shape: string, p: Point): Point {
+  if (shape !== 'line' && shape !== 'arrow') return p;
+  const store = useBoardStore.getState();
+  return snapToAnchor(store.visibleElements(), p, 18 / store.camera.scale);
+}
+
 /** `from`/`to` of an edit dragged to `p`. */
 function dragShape(edit: ShapeEdit, base: ShapeElement, p: Point) {
   const el = { ...base, ...edit.origin };
-  if (edit.mode === 'resize') return resizeShape(el, edit.handle, p);
+  if (edit.mode === 'resize') {
+    return resizeShape(el, edit.handle, isLineLike(el) ? snapLine(el.shape, p) : p);
+  }
   const dx = p.x - edit.start.x;
   const dy = p.y - edit.start.y;
   return {
@@ -117,12 +135,21 @@ export function BoardCanvas({
       return true;
     };
 
+    // One finger moves the camera for the hand tool, and for anyone who has
+    // no tools — the one gesture the board still owes a viewer.
+    const panning = () => store().tool === 'hand' || !store().canEditNow();
+
     const draw = Gesture.Pan()
       // Palm rejection: a second finger belongs to the camera, never the tool.
       .maxPointers(1)
       .runOnJS(true)
+      .onChange((e) => {
+        if (!panning()) return;
+        const c = store().camera;
+        store().setCamera({ ...c, x: c.x + e.changeX, y: c.y + e.changeY });
+      })
       .onStart((e) => {
-        if (!editable()) return;
+        if (panning() || !editable()) return;
         // Drawing is what the options were for; fold them away to give the
         // board back its width the moment the gesture starts.
         store().setRailOpen(false);
@@ -130,11 +157,14 @@ export function BoardCanvas({
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
         else if (t === 'pen') store().setLiveStroke([p.x, p.y]);
-        else if (t === 'shape' && !beginShapeEdit(p)) store().setLiveShape({ from: p, to: p });
+        else if (t === 'shape' && !beginShapeEdit(p)) {
+          const from = snapLine(store().config.shape, p);
+          store().setLiveShape({ from, to: from });
+        }
         onCursorMove?.(p);
       })
       .onUpdate((e) => {
-        if (!editable()) return;
+        if (panning() || !editable()) return;
         const p = screenToBoard(e.x, e.y);
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
@@ -146,7 +176,9 @@ export function BoardCanvas({
             store().setLiveEdit({ ...edit, ...dragShape(edit, base, p) });
           } else {
             const shape = store().liveShape;
-            if (shape) store().setLiveShape({ from: shape.from, to: p });
+            if (shape) {
+              store().setLiveShape({ from: shape.from, to: snapLine(store().config.shape, p) });
+            }
           }
         }
         onCursorMove?.(p);
@@ -292,6 +324,10 @@ export function BoardCanvas({
           </Group>
 
           {selected ? <SelectionFrame el={selected} camera={camera} /> : null}
+          {/* Connection points show whenever a line or arrow could land on them. */}
+          {tool === 'shape' && (config.shape === 'line' || config.shape === 'arrow') ? (
+            <Anchors elements={list} camera={camera} />
+          ) : null}
         </Canvas>
       </GestureDetector>
 

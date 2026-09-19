@@ -23,11 +23,11 @@ export type Role = 'creator' | 'editor' | 'viewer';
 export type ShapeKind = 'rectangle' | 'ellipse' | 'triangle' | 'line' | 'arrow';
 
 /**
- * The active tool. The shape *kind* is not a tool — the rail has one "shapes"
- * button and the kind is picked in its options panel (`ToolConfig.shape`),
- * which is how the design lays it out and what keeps the rail to five buttons.
+ * The active tool. The shape *kind* is not a tool: it lives in
+ * `ToolConfig.shape`, though the toolbar shows one button per kind so any of
+ * them is a single tap away. `hand` only moves the camera.
  */
-export type ToolType = 'pen' | 'eraser' | 'shape' | 'text' | 'fill';
+export type ToolType = 'hand' | 'pen' | 'eraser' | 'shape' | 'text' | 'fill';
 
 /** Shape kinds that enclose an area, and so can carry a fill. */
 export const FILLABLE_SHAPES: ShapeKind[] = ['rectangle', 'ellipse', 'triangle'];
@@ -116,6 +116,8 @@ export interface Participant {
   nickname: string;
   /** Presence color, assigned by the server on join. */
   color: string;
+  /** Presence icon (an emoji) picked on the identity screen; the initial when absent. */
+  avatar?: string;
   role: Role;
   /** Latest known position; never persisted. */
   cursor?: Point;
