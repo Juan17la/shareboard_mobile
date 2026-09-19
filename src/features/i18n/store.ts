@@ -10,15 +10,11 @@ import { useCallback } from 'react';
 
 import { useSessionStore } from '@/features/session/store';
 
-import { STRINGS, fill, type Lang, type StringKey, type Strings } from './strings';
+import { STRINGS, fill, type StringKey, type Strings } from './strings';
 
 /** The active language table. */
 export function useT(): Strings {
   return STRINGS[useSessionStore((s) => s.lang)];
-}
-
-export function useLang(): Lang {
-  return useSessionStore((s) => s.lang);
 }
 
 export function useToggleLang(): () => void {
