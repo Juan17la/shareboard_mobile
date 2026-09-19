@@ -7,7 +7,7 @@
  * return) is what makes tapping elsewhere on the board finish the text
  * naturally; an empty value deletes the element the tap created.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
 import { Colors, Fonts } from '@/constants/theme';
@@ -31,8 +31,13 @@ export function TextEditorOverlay({
   const updateText = useBoardStore((s) => s.updateText);
   const updateShape = useBoardStore((s) => s.updateShape);
   const [value, setValue] = useState(element.text ?? '');
+  const committed = useRef(false);
 
   const commit = () => {
+    // Blur fires after the backdrop tap has already committed; without the
+    // guard the second call would send the same op twice.
+    if (committed.current) return;
+    committed.current = true;
     if (element.kind === 'text') updateText(element.id, { text: value });
     else updateShape(element.id, { text: value.trim() });
     onClose();
