@@ -148,7 +148,11 @@ interface BoardState {
 
   undo(): void;
   redo(): void;
-  applyRemote(ops: Op[], seq: number): void;
+  /**
+   * Ops from the server. `own` marks this client's echo: those were applied by
+   * `commitLocal` already, so only the server-assigned paint order is taken.
+   */
+  applyRemote(ops: Op[], seq: number, own?: boolean): void;
   drainOutbox(): { ops: Op[]; seq: number } | null;
 
   canEditNow(): boolean;
@@ -461,8 +465,28 @@ export const useBoardStore = create<BoardState>((set, get) => {
       });
     },
 
-    applyRemote(ops, seq) {
-      set((s) => ({ elements: applyOps(s.elements, ops), serverSeq: Math.max(s.serverSeq, seq) }));
+    applyRemote(ops, seq, own = false) {
+      set((s) => {
+        let elements = s.elements;
+        if (own) {
+          // The server owns `z` (model/ops.ts): without taking it back here a
+          // local element keeps its provisional z and sits under everything
+          // drawn later by others, however long ago it was actually drawn.
+          const next = { ...elements };
+          for (const op of ops) {
+            if (op.t !== 'add') continue;
+            const current = next[op.el.id];
+            if (current) next[op.el.id] = { ...current, z: op.el.z };
+          }
+          elements = next;
+        } else {
+          elements = applyOps(elements, ops);
+        }
+        // New local elements must land above everything seen so far, remote too.
+        let zCounter = s.zCounter;
+        for (const op of ops) if (op.t === 'add' && op.el.z > zCounter) zCounter = op.el.z;
+        return { elements, zCounter, serverSeq: Math.max(s.serverSeq, seq) };
+      });
     },
 
     /** Hands the queued ops to the caller and clears them in one step. */
