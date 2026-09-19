@@ -27,6 +27,7 @@ export function BottomControls({ landscape }: { landscape: boolean }) {
   const t = useT();
   const camera = useBoardStore((s) => s.camera);
   const setCamera = useBoardStore((s) => s.setCamera);
+  const homeCamera = useBoardStore((s) => s.homeCamera);
   const undo = useBoardStore((s) => s.undo);
   const redo = useBoardStore((s) => s.redo);
   const undoDepth = useBoardStore((s) => s.undoStack.length);
@@ -53,7 +54,7 @@ export function BottomControls({ landscape }: { landscape: boolean }) {
           accessibilityLabel={`${t.resetZoom} (${zoom})`}
           onPress={() => {
             tick(haptics);
-            setCamera({ x: 0, y: 0, scale: 1 });
+            setCamera(homeCamera());
           }}
           style={{
             flexDirection: 'row',

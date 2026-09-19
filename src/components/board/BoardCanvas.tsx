@@ -56,6 +56,7 @@ export function BoardCanvas({
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
     setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+    useBoardStore.getState().setViewport({ width, height });
   }, []);
 
   const gesture = useMemo(() => {
