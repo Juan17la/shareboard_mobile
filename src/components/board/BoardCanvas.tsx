@@ -7,8 +7,8 @@
  * The camera lives in the store but never on the wire: pan and zoom are
  * per-device (docs/05-model-date).
  */
-import { Canvas, Group } from '@shopify/react-native-skia';
-import { useCallback, useMemo, useState } from 'react';
+import { Canvas, Group, type CanvasRef } from '@shopify/react-native-skia';
+import { useCallback, useMemo, useState, type RefObject } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
@@ -32,7 +32,14 @@ function screenToBoard(x: number, y: number): Point {
   return { x: (x - camera.x) / camera.scale, y: (y - camera.y) / camera.scale };
 }
 
-export function BoardCanvas({ onCursorMove }: { onCursorMove?: (at: Point) => void }) {
+export function BoardCanvas({
+  onCursorMove,
+  canvasRef,
+}: {
+  onCursorMove?: (at: Point) => void;
+  /** Handed out so the glass panels can snapshot the board (`useBoardMirror`). */
+  canvasRef?: RefObject<CanvasRef | null>;
+}) {
   const camera = useBoardStore((s) => s.camera);
   const config = useBoardStore((s) => s.config);
   const elements = useBoardStore((s) => s.elements);
@@ -40,8 +47,8 @@ export function BoardCanvas({ onCursorMove }: { onCursorMove?: (at: Point) => vo
   const haptics = useSessionStore((s) => s.settings.haptics);
 
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [livePoints, setLivePoints] = useState<number[]>([]);
-  const [liveShape, setLiveShape] = useState<{ from: Point; to: Point } | null>(null);
+  const livePoints = useBoardStore((s) => s.liveStroke);
+  const liveShape = useBoardStore((s) => s.liveShape);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const list = useMemo(() => visibleSorted(elements), [elements]);
@@ -62,31 +69,34 @@ export function BoardCanvas({ onCursorMove }: { onCursorMove?: (at: Point) => vo
         const p = screenToBoard(e.x, e.y);
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
-        else if (t === 'pen') setLivePoints([p.x, p.y]);
-        else if (t === 'shape') setLiveShape({ from: p, to: p });
+        else if (t === 'pen') store().setLiveStroke([p.x, p.y]);
+        else if (t === 'shape') store().setLiveShape({ from: p, to: p });
         onCursorMove?.(p);
       })
       .onUpdate((e) => {
         const p = screenToBoard(e.x, e.y);
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
-        else if (t === 'pen') setLivePoints((prev) => [...prev, p.x, p.y]);
-        else if (t === 'shape') setLiveShape((prev) => (prev ? { from: prev.from, to: p } : prev));
+        else if (t === 'pen') store().setLiveStroke([...store().liveStroke, p.x, p.y]);
+        else if (t === 'shape') {
+          const shape = store().liveShape;
+          if (shape) store().setLiveShape({ from: shape.from, to: p });
+        }
         onCursorMove?.(p);
       })
       .onEnd(() => {
-        const t = store().tool;
-        setLivePoints((pts) => {
-          if (t === 'pen' && pts.length >= 4) store().addStroke(simplify(pts));
-          return [];
-        });
-        setLiveShape((shape) => {
-          if (!shape || t !== 'shape') return null;
+        // Read from the store, not through a `setState` updater: an updater
+        // runs during the next render, and a store write from there is React's
+        // "cannot update a component while rendering a different component".
+        const { tool: t, liveStroke: pts, liveShape: shape } = store();
+        if (t === 'pen' && pts.length >= 4) store().addStroke(simplify(pts));
+        if (t === 'shape' && shape) {
           // A tap with the shape tool is a mis-hit, not a zero-size rectangle.
           const dragged = Math.hypot(shape.to.x - shape.from.x, shape.to.y - shape.from.y);
           if (dragged > 6) store().addShape(store().config.shape, shape.from, shape.to);
-          return null;
-        });
+        }
+        store().setLiveStroke([]);
+        store().setLiveShape(null);
       });
 
     const tap = Gesture.Tap()
@@ -141,7 +151,7 @@ export function BoardCanvas({ onCursorMove }: { onCursorMove?: (at: Point) => vo
   return (
     <View style={{ flex: 1, backgroundColor: '#FFFFFF' }} onLayout={onLayout}>
       <GestureDetector gesture={gesture}>
-        <Canvas style={{ flex: 1 }}>
+        <Canvas ref={canvasRef} style={{ flex: 1 }}>
           {/* Outside the camera group: the grid is spaced in screen pixels, so
               it stays crisp instead of being scaled with the drawing. */}
           <GridLayer width={size.width} height={size.height} camera={camera} />

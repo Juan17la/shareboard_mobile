@@ -5,7 +5,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useAppFonts } from '@/hooks/use-app-fonts';
-import '@/global.css';
 
 /**
  * The app is light-only. The design specifies a single frosted-white surface
