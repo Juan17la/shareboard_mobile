@@ -22,8 +22,10 @@ Discriminados por `kind`. Campos comunes (`ElementBase`):
   createdBy: string;     // userId
   createdAt: number;     // epoch ms (cliente)
   updatedAt: number;     // epoch ms; el servidor es la autoridad al aplicar ops
-  z: number;             // orden de pintado; mayor = encima. Asignado al hacer 'add'
+  z: number;             // orden de pintado; mayor = encima. Asignado al hacer 'add';
+                         // un 'update' puede cambiarlo (enviar al fondo / al frente)
   deleted?: boolean;     // borrado suave para propagar de forma determinista
+  group?: string | null; // los elementos con el mismo id de grupo se seleccionan y mueven juntos
 }
 ```
 
@@ -37,9 +39,18 @@ Discriminados por `kind`. Campos comunes (`ElementBase`):
 **shape**
 
 ```ts
-{ kind: 'shape'; shape: 'rectangle' | 'ellipse' | 'line' | 'arrow';
+{ kind: 'shape'; shape: 'rectangle' | 'ellipse' | 'triangle' | 'line' | 'arrow';
   from: {x,y}; to: {x,y}; stroke: string; strokeWidth: number; fill?: string | null;
-  text?: string; fontSize?: number }   // etiqueta centrada dentro de la figura
+  text?: string; fontSize?: number;    // etiqueta centrada dentro de la figura
+  // solo línea/flecha (ausente: sin marcador al inicio; 'arrow' al final de una flecha)
+  headStart?: Marker; headEnd?: Marker;
+  route?: 'straight' | 'curved' | 'elbow'; dash?: 'solid' | 'dashed' | 'dotted';
+  fromLink?: Link | null; toLink?: Link | null }
+// Marker: 'none' | 'arrow' | 'triangle' | 'triangle-outline' | 'circle' | 'circle-outline'
+//   | 'circle-half' | 'diamond' | 'diamond-outline' | 'bar'
+//   | 'one' | 'many' | 'zero-one' | 'zero-many' | 'one-many'   (pata de gallo)
+// Link: { id: string; u: number; v: number }  — punto (u,v) ∈ [0,1]² de la caja de la figura
+//   enlazada; el extremo la sigue al moverla. null = suelto.
 ```
 
 **text**
