@@ -1,29 +1,33 @@
 /**
- * Home: create a board, join one with a code, or reopen a recent one.
+ * Home: the whiteboard itself, with a glass card floating over it.
  *
- * The design gives creation a single button and no form. Everything a board
- * used to be configured with up front — name, visibility, PIN, who can edit —
- * is now changed from inside the board, where the creator can see what they are
- * changing. "Crear una pizarra sin necesidad de registrarse" (docs/01) is meant
- * to be two taps, and asking four questions before the canvas appears was the
- * thing standing in the way.
+ * There is no landing page to get past — the board is already there behind
+ * the card, and the card is three tabs: *Start* (name a new board and create
+ * it, type a join code, import a file), *Recent* (the boards this device has
+ * opened) and *Settings* (who you are on a board, the theme, the language).
+ * Creating a board is one field and one button; everything else a board used
+ * to be configured with up front — visibility, PIN, who can edit — is changed
+ * from inside it, where the creator can see what they are changing.
  *
- * In landscape the same content reflows into two columns rather than scrolling
- * a narrow strip.
+ * The join code is six boxes over one invisible `TextInput`, so the keyboard,
+ * paste and autofill all work as they do on any input while the boxes show the
+ * code character by character. A pasted link goes straight through
+ * `parseBoardRef`.
  */
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
-import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AvatarPicker } from '@/components/screens/NicknameScreen';
 import { ImportSheet } from '@/components/sheets/ImportSheet';
 import { Avatar } from '@/components/ui/Avatar';
 import { Backdrop, BackdropScene } from '@/components/ui/Backdrop';
@@ -31,40 +35,44 @@ import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
 import { GlassPanel, GlassScene, type SceneSize } from '@/components/ui/Glass';
 import { Icon } from '@/components/ui/Icon';
-import { SectionLabel, Sheet } from '@/components/ui/Sheet';
+import { Segmented } from '@/components/ui/Segmented';
+import { SectionLabel } from '@/components/ui/Sheet';
 import { Txt } from '@/components/ui/Text';
 import { ToastHost, toast } from '@/components/ui/Toast';
-import { Colors, Fonts, Radius, Shadow } from '@/constants/theme';
-import { relativeTime, useT, useToggleLang } from '@/features/i18n/store';
+import { Fonts, Radius, Shadow, type Theme } from '@/constants/theme';
+import { relativeTime, useT } from '@/features/i18n/store';
+import type { Lang } from '@/features/i18n/strings';
 import { LIMITS, type BoardSnapshot } from '@/features/board/model';
-import { useSessionStore } from '@/features/session/store';
+import { useSessionStore, useColors } from '@/features/session/store';
 import { createBoard, importSnapshot, resolveShortCode } from '@/services/api/boards';
 import { parseBoardRef } from '@/utils/deep-link';
 import { thud } from '@/utils/haptics';
+import { SHORT_CODE_LENGTH, normalizeShortCode } from '@/utils/short-code';
 
 const backdropScene = (size: SceneSize) => (
   <BackdropScene variant="home" width={size.width} height={size.height} />
 );
 
+type Tab = 'start' | 'recent' | 'settings';
+
 export default function Home() {
+  const c = useColors();
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
-  const landscape = width > height;
+  const { height } = useWindowDimensions();
 
   const t = useT();
-  const toggleLang = useToggleLang();
   const userId = useSessionStore((s) => s.userId);
   const nickColor = useSessionStore((s) => s.nickColor);
   const recent = useSessionStore((s) => s.recent);
   const forgetBoard = useSessionStore((s) => s.forgetBoard);
   const haptics = useSessionStore((s) => s.settings.haptics);
 
+  const [tab, setTab] = useState<Tab>('start');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
-  /** The naming step between "Create board" and the board itself. */
-  const [naming, setNaming] = useState(false);
+  const codeInput = useRef<TextInput>(null);
 
   const openBoard = (boardId: string, pickName = false) => {
     router.push({
@@ -94,8 +102,8 @@ export default function Home() {
     }
   }
 
-  async function handleJoin() {
-    const ref = parseBoardRef(code);
+  async function handleJoin(raw: string) {
+    const ref = parseBoardRef(raw);
     if (!ref) {
       toast(t.errCodeInvalid);
       return;
@@ -106,10 +114,23 @@ export default function Home() {
       setCode('');
       openBoard(boardId);
     } catch (error) {
+      setCode('');
       toast(error instanceof Error ? error.message : t.errJoin);
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Characters fill the boxes; a link or an id skips them and joins at once. */
+  function onCodeChange(raw: string) {
+    if (busy) return;
+    if (raw.includes('/') || raw.includes(':')) {
+      void handleJoin(raw);
+      return;
+    }
+    const next = normalizeShortCode(raw).slice(0, SHORT_CODE_LENGTH);
+    setCode(next);
+    if (next.length === SHORT_CODE_LENGTH) void handleJoin(next);
   }
 
   async function handleImport(snapshot: BoardSnapshot) {
@@ -122,240 +143,192 @@ export default function Home() {
     openBoard(meta.id, true);
   }
 
-  const canJoin = code.trim().length >= 3 && !busy;
-  const gutter = Math.max(insets.left, insets.right, landscape ? 46 : 22);
-
-  const header = (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        ...(landscape ? { width: '100%' } : null),
-      }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+  const start = (
+    <>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <View
           style={{
-            width: 34,
-            height: 34,
-            borderRadius: 11,
+            width: 44,
+            height: 44,
+            borderRadius: 14,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: Colors.accent,
+            backgroundColor: c.accent,
             ...Shadow.accent,
           }}
         >
-          <Icon name="board" size={19} color="#FFFFFF" />
+          <Icon name="board" size={22} color="#FFFFFF" />
         </View>
-        <Txt weight="extrabold" size={20} tracking={-0.4}>
-          {t.appName}
-        </Txt>
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={t.language}
-        onPress={toggleLang}
-        style={{
-          paddingHorizontal: 10,
-          paddingVertical: 6,
-          borderRadius: 11,
-          borderWidth: 1,
-          borderColor: Colors.borderStrong,
-          backgroundColor: 'rgba(255,255,255,0.8)',
-        }}
-      >
-        <Txt weight="bold" size={11}>
-          {t.langLabel}
-        </Txt>
-      </Pressable>
-    </View>
-  );
-
-  const createColumn = (
-    <View style={{ gap: 14, flex: landscape ? 1 : undefined, minWidth: 0 }}>
-      <View style={{ gap: 6 }}>
-        <Txt weight="extrabold" size={26} leading={1.15} tracking={-0.6}>
-          {t.homeTitle}
-        </Txt>
-        <Txt size={14} leading={1.45} color="#565D6C">
-          {t.homeSub}
-        </Txt>
-      </View>
-      <Button label={t.createBoard} icon="plus" onPress={() => setNaming(true)} fullWidth />
-    </View>
-  );
-
-  const joinColumn = (
-    <View style={{ gap: 20, flex: landscape ? 1 : undefined, minWidth: 0 }}>
-      <GlassPanel level="row" radius={Radius.xl} border={Colors.border}>
-        <View style={{ gap: 11, padding: 16 }}>
-          <Txt weight="extrabold" size={13}>
-            {t.joinTitle}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Txt weight="extrabold" size={26} leading={1.05} tracking={-0.6}>
+            {t.appName}
           </Txt>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TextInput
-              value={code}
-              onChangeText={(value) => setCode(value.toUpperCase())}
-              placeholder="ABC-123"
-              placeholderTextColor="rgba(27,32,48,0.3)"
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={40}
-              returnKeyType="go"
-              onSubmitEditing={() => canJoin && handleJoin()}
-              accessibilityLabel={t.codeFieldLabel}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                paddingHorizontal: 13,
-                paddingVertical: 12,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: Colors.borderStrong,
-                backgroundColor: '#FFFFFF',
-                fontFamily: Fonts.monoBold,
-                fontSize: 15,
-                letterSpacing: 1.5,
-                color: Colors.text,
-              }}
-            />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t.enter}
-              accessibilityState={{ disabled: !canJoin }}
-              disabled={!canJoin}
-              onPress={handleJoin}
-              style={{
-                paddingHorizontal: 16,
-                justifyContent: 'center',
-                borderRadius: 14,
-                backgroundColor: canJoin ? Colors.accent : 'rgba(27,32,48,0.14)',
-              }}
-            >
-              <Txt weight="extrabold" size={13.5} tone="inverse">
-                {t.enter}
-              </Txt>
-            </Pressable>
-          </View>
-          <Txt size={11.5} leading={1.4} tone="secondary">
-            {t.joinHint}
+          <Txt weight="semibold" size={12.5} tone="secondary">
+            {t.tagline}
           </Txt>
         </View>
-      </GlassPanel>
+      </View>
+
+      <View style={{ gap: 10 }}>
+        <Field
+          value={name}
+          onChangeText={setName}
+          placeholder={t.boardNamePlaceholder}
+          maxLength={LIMITS.maxBoardNameLength}
+          accessibilityLabel={t.boardNamePlaceholder}
+          returnKeyType="go"
+          onSubmitEditing={() => !busy && handleCreate()}
+        />
+        <Button label={t.createBoard} icon="plus" onPress={handleCreate} loading={busy} fullWidth />
+      </View>
 
       <View style={{ gap: 8 }}>
-        <SectionLabel>{t.recent}</SectionLabel>
-        {recent.length === 0 ? (
-          <Txt size={11.5} leading={1.4} tone="secondary">
-            {t.noRecent}
-          </Txt>
-        ) : (
-          recent.map((board) => (
-            <GlassPanel key={board.id} level="row" radius={Radius.lg} border={Colors.border}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${board.name}, ${board.shortCode}`}
-                onPress={() => openBoard(board.id)}
-                onLongPress={() => {
-                  forgetBoard(board.id);
-                  toast(t.forget);
-                }}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 11,
-                  paddingHorizontal: 13,
-                  paddingVertical: 12,
-                }}
-              >
-                <Avatar name={board.name} color={nickColor} size={38} />
-                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                  <Txt weight="bold" size={13.5} leading={1.2} numberOfLines={1}>
-                    {board.name}
-                  </Txt>
-                  <Txt size={11} mono tone="secondary" numberOfLines={1}>
-                    {board.shortCode} · {relativeTime(t, board.lastOpenedAt)}
-                  </Txt>
-                </View>
-                <Icon name="chevron" size={16} color="rgba(27,32,48,0.35)" />
-              </Pressable>
-            </GlassPanel>
-          ))
-        )}
+        <SectionLabel>{t.joinCode}</SectionLabel>
+        {/* The boxes are a picture of the input; the input itself is the thing
+            with focus, so paste and autofill just work. */}
+        <Pressable
+          accessibilityRole="none"
+          onPress={() => codeInput.current?.focus()}
+          style={{ flexDirection: 'row', gap: 6 }}
+        >
+          {Array.from({ length: SHORT_CODE_LENGTH }, (_, i) => (
+            <View
+              key={i}
+              style={{
+                flex: 1,
+                height: 52,
+                borderRadius: 14,
+                borderWidth: 1.5,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderColor: code.length === i ? c.accent : c.borderStrong,
+                backgroundColor: code.length === i ? c.background : c.glassTintSolid,
+              }}
+            >
+              <Txt mono weight="bold" size={20}>
+                {code[i] ?? ''}
+              </Txt>
+            </View>
+          ))}
+          <TextInput
+            ref={codeInput}
+            value={code}
+            onChangeText={onCodeChange}
+            accessibilityLabel={t.joinCode}
+            autoCapitalize="characters"
+            autoComplete="one-time-code"
+            autoCorrect={false}
+            caretHidden
+            editable={!busy}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              opacity: 0,
+              fontFamily: Fonts.monoBold,
+              color: 'transparent',
+            }}
+          />
+        </Pressable>
+        <Txt size={11.5} leading={1.4} tone="secondary">
+          {t.joinCodeHint}
+        </Txt>
       </View>
 
       <Button
         label={t.importBoard}
-        icon="share"
+        icon="upload"
         variant="dashed"
         onPress={() => setImporting(true)}
         fullWidth
       />
+    </>
+  );
+
+  const recentTab = (
+    <View style={{ gap: 8 }}>
+      {recent.length === 0 ? (
+        <Txt size={12.5} leading={1.4} tone="secondary" style={{ textAlign: 'center', paddingVertical: 24 }}>
+          {t.noRecent}
+        </Txt>
+      ) : (
+        recent.map((board) => (
+          <GlassPanel key={board.id} level="row" radius={Radius.lg} border={c.border}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${board.name}, ${board.shortCode}`}
+              onPress={() => openBoard(board.id)}
+              onLongPress={() => {
+                forgetBoard(board.id);
+                toast(t.forget);
+              }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 11,
+                paddingHorizontal: 13,
+                paddingVertical: 12,
+              }}
+            >
+              <Avatar name={board.name} color={nickColor} size={38} />
+              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                <Txt weight="bold" size={13.5} leading={1.2} numberOfLines={1}>
+                  {board.name}
+                </Txt>
+                <Txt size={11} mono tone="secondary" numberOfLines={1}>
+                  {board.shortCode} · {relativeTime(t, board.lastOpenedAt)}
+                </Txt>
+              </View>
+              <Icon name="chevron" size={16} color={c.textTertiary} />
+            </Pressable>
+          </GlassPanel>
+        ))
+      )}
     </View>
   );
 
-  // The wash, handed to the glass panels so they can blur it; and how far the
-  // page has scrolled, so the blur follows the panels (ui/Glass).
-  const scrollY = useSharedValue(0);
-  const onScroll = useAnimatedScrollHandler((e) => {
-    scrollY.value = e.contentOffset.y;
-  });
-
   return (
-    <GlassScene render={backdropScene} scroll={scrollY}>
+    <GlassScene render={backdropScene}>
       <Backdrop variant="home" />
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Animated.ScrollView
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          contentContainerStyle={{
-            flexGrow: 1,
-            gap: landscape ? 14 : 20,
-            paddingTop: insets.top + (landscape ? 14 : 26),
-            paddingBottom: Math.max(insets.bottom, 16) + 24,
-            paddingHorizontal: gutter,
+        <GlassPanel
+          level="panel"
+          radius={Radius.xxl}
+          style={{
+            width: '100%',
+            maxWidth: 460,
+            marginHorizontal: 16,
+            maxHeight: height - insets.top - insets.bottom - 32,
+            ...Shadow.panel,
           }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
         >
-          {header}
-          <View
-            style={
-              landscape
-                ? { flexDirection: 'row', gap: 28, alignItems: 'flex-start' }
-                : { gap: 20 }
-            }
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ gap: 20, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20 }}
           >
-            {createColumn}
-            {joinColumn}
-          </View>
-        </Animated.ScrollView>
+            <Segmented<Tab>
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: 'start', label: t.tabStart },
+                { value: 'recent', label: t.recent },
+                { value: 'settings', label: t.tabSettings },
+              ]}
+            />
+            {tab === 'start' ? start : null}
+            {tab === 'recent' ? recentTab : null}
+            {tab === 'settings' ? <SettingsTab /> : null}
+          </ScrollView>
+        </GlassPanel>
       </KeyboardAvoidingView>
 
-      <ToastHost bottom={Math.max(insets.bottom, 16) + 24} enabled={!importing && !naming} />
-
-      {/* The name is optional, but the step is not: nobody should discover
-          after the fact that their board is "Untitled". */}
-      <Sheet open={naming} title={t.nameYourBoard} onClose={() => setNaming(false)} closeLabel={t.close}>
-        <View style={{ gap: 14 }}>
-          <Field
-            autoFocus
-            value={name}
-            onChangeText={setName}
-            placeholder={t.boardNamePlaceholder}
-            hint={t.nameYourBoardHint}
-            maxLength={LIMITS.maxBoardNameLength}
-            accessibilityLabel={t.boardNamePlaceholder}
-            returnKeyType="go"
-            onSubmitEditing={() => !busy && handleCreate()}
-          />
-          <Button label={t.createBoard} icon="plus" onPress={handleCreate} loading={busy} fullWidth />
-        </View>
-      </Sheet>
+      <ToastHost bottom={Math.max(insets.bottom, 16) + 24} enabled={!importing} />
 
       <ImportSheet
         open={importing}
@@ -364,5 +337,80 @@ export default function Home() {
         allowImagePlacement={false}
       />
     </GlassScene>
+  );
+}
+
+/** Who you are on a board, and how the app looks: all local, all remembered. */
+function SettingsTab() {
+  const t = useT();
+  const c = useColors();
+  const nickname = useSessionStore((s) => s.nickname);
+  const nickColor = useSessionStore((s) => s.nickColor);
+  const avatar = useSessionStore((s) => s.avatar);
+  const setNickname = useSessionStore((s) => s.setNickname);
+  const theme = useSessionStore((s) => s.theme);
+  const setTheme = useSessionStore((s) => s.setTheme);
+  const lang = useSessionStore((s) => s.lang);
+  const setLang = useSessionStore((s) => s.setLang);
+  const [draft, setDraft] = useState(nickname);
+
+  return (
+    <View style={{ gap: 16 }}>
+      <View style={{ gap: 8 }}>
+        <SectionLabel>{t.nickPlaceholder}</SectionLabel>
+        <GlassPanel level="row" radius={18} border={c.border}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 }}>
+            <Avatar name={draft || '?'} color={nickColor} avatar={avatar} size={42} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Field
+                value={draft}
+                onChangeText={setDraft}
+                onBlur={() => setNickname(draft)}
+                placeholder={t.nickPlaceholder}
+                maxLength={LIMITS.maxNicknameLength}
+                autoComplete="nickname"
+                accessibilityLabel={t.nickPlaceholder}
+                style={{
+                  borderWidth: 0,
+                  backgroundColor: 'transparent',
+                  paddingHorizontal: 0,
+                  paddingVertical: 4,
+                  fontSize: 16,
+                }}
+              />
+            </View>
+          </View>
+        </GlassPanel>
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <SectionLabel>{t.yourIcon}</SectionLabel>
+        <AvatarPicker name={draft} />
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <SectionLabel>{t.theme}</SectionLabel>
+        <Segmented<Theme>
+          value={theme}
+          onChange={setTheme}
+          options={[
+            { value: 'light', label: t.themeLight },
+            { value: 'dark', label: t.themeDark },
+          ]}
+        />
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <SectionLabel>{t.language}</SectionLabel>
+        <Segmented<Lang>
+          value={lang}
+          onChange={setLang}
+          options={[
+            { value: 'es', label: 'Español' },
+            { value: 'en', label: 'English' },
+          ]}
+        />
+      </View>
+    </View>
   );
 }
