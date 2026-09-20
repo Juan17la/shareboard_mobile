@@ -13,58 +13,71 @@ import { useCallback, useMemo, useState, type RefObject } from 'react';
 import { Pressable, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
-import { Colors, Shadow } from '@/constants/theme';
+import { Shadow } from '@/constants/theme';
 import {
+  elementsIn,
+  handlesOf,
   isLineLike,
-  resizeShape,
+  linkEndpoints,
+  resizeElement,
   shapeAt,
   shapeBounds,
-  shapeHandles,
   simplify,
-  linkEndpoints,
 } from '@/features/board/geometry';
-import type { Point, ShapeElement } from '@/features/board/model';
+import type { BoardElement, Link, Point, ShapeElement } from '@/features/board/model';
 import { visibleSorted } from '@/features/board/ops';
-import { fillFor, useBoardStore, type ShapeEdit } from '@/features/board/store';
+import { MAX_ZOOM, MIN_ZOOM, editPatches, fillFor, useBoardStore, type LiveEdit } from '@/features/board/store';
 import { useT } from '@/features/i18n/store';
-import { useSessionStore } from '@/features/session/store';
+import { useSessionStore, useColors } from '@/features/session/store';
 import { tick } from '@/utils/haptics';
 
-import { Anchors, DotGrid, ElementRenderer, SelectionFrame } from './ElementRenderer';
+import { Anchors, DashedBox, DotGrid, ElementRenderer, SelectionFrame } from './ElementRenderer';
 import { PeerCursors } from './PeerCursors';
 import { TextEditorOverlay } from './TextEditorOverlay';
 import { Txt } from '../ui/Text';
-
-/** Zoom bounds. Matches the design's 25%–600% range. */
-export const MIN_ZOOM = 0.25;
-export const MAX_ZOOM = 6;
 
 function screenToBoard(x: number, y: number): Point {
   const { camera } = useBoardStore.getState();
   return { x: (x - camera.x) / camera.scale, y: (y - camera.y) / camera.scale };
 }
 
-/** A line's ends link to the shapes they land in; other shapes pass through. */
-function snapLine(shape: string, from: Point, to: Point): { from: Point; to: Point } {
+type Ends = {
+  from: Point;
+  to: Point;
+  fromLink?: Link | null;
+  toLink?: Link | null;
+};
+
+/** A line's ends bind to the shapes they land on; other shapes pass through. */
+function snapLine(shape: string, from: Point, to: Point): Ends {
   if (shape !== 'line' && shape !== 'arrow') return { from, to };
   const store = useBoardStore.getState();
-  return linkEndpoints(store.visibleElements(), from, to, 18 / store.camera.scale);
+  // Never to itself: the line being reshaped is not a target.
+  const others = store.visibleElements().filter((el) => !store.selectedIds.includes(el.id));
+  return linkEndpoints(others, from, to, 18 / store.camera.scale);
 }
 
-/** `from`/`to` of an edit dragged to `p`. A line's ends are re-linked after. */
-function dragShape(edit: ShapeEdit, base: ShapeElement, p: Point) {
-  const el = { ...base, ...edit.origin };
-  if (edit.mode === 'resize') {
-    const next = resizeShape(el, edit.handle, p);
-    return isLineLike(el) ? snapLine(el.shape, next.from, next.to) : next;
-  }
-  const dx = p.x - edit.start.x;
-  const dy = p.y - edit.start.y;
-  return {
-    from: { x: el.from.x + dx, y: el.from.y + dy },
-    to: { x: el.to.x + dx, y: el.to.y + dy },
-  };
+/** The patch of an edit dragged to `p`. A line's ends are re-bound after. */
+function dragPatch(edit: LiveEdit, el: BoardElement, p: Point): Partial<BoardElement> {
+  const next = resizeElement(el, edit.handle, p) as Partial<ShapeElement>;
+  if (el.kind === 'shape' && isLineLike(el) && next.from && next.to)
+    return snapLine(el.shape, next.from, next.to);
+  return next;
 }
+
+/**
+ * Whether this tap on `id` is the second within 300 ms — the cursor tool's
+ * double tap. The empty board counts too (`''`): that is the zoom gesture.
+ */
+const isDoubleTap = (() => {
+  let last = { id: '', at: -1 };
+  return (id: string): boolean => {
+    const now = Date.now();
+    const again = last.at >= 0 && id === last.id && now - last.at < 300;
+    last = { id, at: again ? -1 : now };
+    return again;
+  };
+})();
 
 export function BoardCanvas({
   onCursorMove,
@@ -74,14 +87,17 @@ export function BoardCanvas({
   /** Handed out so the glass panels can snapshot the board (`useBoardMirror`). */
   canvasRef?: RefObject<CanvasRef | null>;
 }) {
+  const c = useColors();
   const camera = useBoardStore((s) => s.camera);
   const tool = useBoardStore((s) => s.tool);
   const config = useBoardStore((s) => s.config);
   const elements = useBoardStore((s) => s.elements);
-  const selectedId = useBoardStore((s) => s.selectedId);
+  const selectedIds = useBoardStore((s) => s.selectedIds);
   const liveEdit = useBoardStore((s) => s.liveEdit);
+  const liveMarquee = useBoardStore((s) => s.liveMarquee);
   const t = useT();
   const smooth = useSessionStore((s) => s.settings.smooth);
+  const dark = useSessionStore((s) => s.theme === 'dark');
   const haptics = useSessionStore((s) => s.settings.haptics);
 
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -92,15 +108,19 @@ export function BoardCanvas({
   const list = useMemo(() => {
     const sorted = visibleSorted(elements);
     if (!liveEdit) return sorted;
+    // The same patches the lift will commit, so the preview is the result.
+    const patches = new Map(editPatches(sorted, liveEdit).map((p) => [p.id, p.patch]));
     return sorted.map((el) =>
-      el.id === liveEdit.id ? { ...el, from: liveEdit.from, to: liveEdit.to } : el,
+      patches.has(el.id) ? ({ ...el, ...patches.get(el.id) } as BoardElement) : el,
     );
   }, [elements, liveEdit]);
 
-  const selected = useMemo(() => {
-    const el = selectedId ? list.find((e) => e.id === selectedId) : null;
-    return el && el.kind === 'shape' && tool === 'shape' ? el : null;
-  }, [list, selectedId, tool]);
+  const selecting = tool === 'select' || tool === 'shape';
+  const selected = useMemo(
+    () => (selecting ? list.filter((e) => selectedIds.includes(e.id)) : []),
+    [list, selectedIds, selecting],
+  );
+  const selectedShape = selected.length === 1 && selected[0].kind === 'shape' ? selected[0] : null;
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -114,38 +134,75 @@ export function BoardCanvas({
     // would only ever exist on this screen, and the banner is what says so.
     const editable = () => store().canEditNow() && store().connection === 'online';
 
-    // With the shape tool, a finger landing on the selected shape drags it
-    // rather than drawing: a handle reshapes, the body moves.
-    const beginShapeEdit = (p: Point): boolean => {
-      const el = store().selectedShape();
-      if (!el) return false;
+    // A finger landing on the selection drags it rather than drawing: a
+    // handle (one element only) reshapes, anything selected moves the lot.
+    const beginEdit = (p: Point): boolean => {
+      const sel = store().selectedElements();
+      if (!sel.length) return false;
       const scale = store().camera.scale;
       const hitR = 18 / scale;
-      const handle = shapeHandles(el).findIndex((h) => Math.hypot(h.x - p.x, h.y - p.y) <= hitR);
-      const mode = handle >= 0 ? 'resize' : shapeAt([el], p, 6 / scale) ? 'move' : null;
+      const one = sel.length === 1 ? sel[0] : null;
+      const handle = one
+        ? handlesOf(one).findIndex((h) => Math.hypot(h.x - p.x, h.y - p.y) <= hitR)
+        : -1;
+      const onBody = !!store().elementAt(p, 6 / scale, sel);
+      const mode = handle >= 0 ? 'resize' : onBody ? 'move' : null;
       if (!mode) return false;
       store().setLiveEdit({
-        id: el.id,
+        ids: sel.map((el) => el.id),
         mode,
         handle,
         start: p,
-        origin: { from: el.from, to: el.to },
-        from: el.from,
-        to: el.to,
+        dx: 0,
+        dy: 0,
+        patch: null,
       });
       return true;
     };
 
-    // One finger moves the camera for the hand tool, and for anyone who has
-    // no tools — the one gesture the board still owes a viewer.
-    const panning = () => store().tool === 'hand' || !store().canEditNow();
+    // One finger moves the camera for the hand tool, for anyone who has no
+    // tools — the one gesture the board still owes a viewer — and for the
+    // cursor when it lands on empty board, so nobody has to switch to the hand
+    // to look around. (The rubber band is a press-and-hold: `marquee`.)
+    const touch = { onEmpty: false };
+    const panning = () =>
+      store().tool === 'hand' || !store().canEditNow() || (store().tool === 'select' && touch.onEmpty);
+    /** Whether `p` lands on nothing: no element, and not the selection's handles. */
+    const emptyAt = (p: Point): boolean => {
+      const scale = store().camera.scale;
+      if (store().elementAt(p, 8 / scale)) return false;
+      const sel = store().selectedElements();
+      const one = sel.length === 1 ? sel[0] : null;
+      return !one || !handlesOf(one).some((h) => Math.hypot(h.x - p.x, h.y - p.y) <= 18 / scale);
+    };
     // Where a line was started, unsnapped: its anchor can change as the end moves.
     const lineStart = { x: 0, y: 0 };
+
+    /** Drags the selection (or one of its handles) to `p`. */
+    const moveEdit = (p: Point) => {
+      const edit = store().liveEdit;
+      if (!edit) return;
+      if (edit.mode === 'move') {
+        store().setLiveEdit({ ...edit, dx: p.x - edit.start.x, dy: p.y - edit.start.y });
+      } else {
+        store().setLiveEdit({ ...edit, patch: dragPatch(edit, store().elements[edit.ids[0]], p) });
+      }
+    };
+    /** One undo step for the whole drag. */
+    const finishEdit = () => {
+      const edit = store().liveEdit;
+      if (!edit) return;
+      if (edit.dx || edit.dy || edit.patch) store().commitEdit(edit);
+      store().setLiveEdit(null);
+    };
 
     const draw = Gesture.Pan()
       // Palm rejection: a second finger belongs to the camera, never the tool.
       .maxPointers(1)
       .runOnJS(true)
+      .onBegin((e) => {
+        touch.onEmpty = store().tool === 'select' && emptyAt(screenToBoard(e.x, e.y));
+      })
       .onChange((e) => {
         if (!panning()) return;
         const c = store().camera;
@@ -160,9 +217,16 @@ export function BoardCanvas({
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
         else if (t === 'pen') store().setLiveStroke([p.x, p.y]);
-        else if (t === 'shape' && !beginShapeEdit(p)) {
+        else if (t === 'shape' && !beginEdit(p)) {
           Object.assign(lineStart, p);
           store().setLiveShape(snapLine(store().config.shape, p, p));
+        } else if (t === 'select' && !beginEdit(p)) {
+          // On something not yet selected: pick it up and carry it at once.
+          const hit = store().elementAt(p, 8 / store().camera.scale);
+          if (hit) {
+            store().select(hit.id);
+            beginEdit(p);
+          }
         }
         // A finger rarely lands perfectly still: the slightest movement makes
         // this a pan rather than a tap, and the one-shot tools must still fire.
@@ -180,13 +244,10 @@ export function BoardCanvas({
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
         else if (t === 'pen') store().setLiveStroke([...store().liveStroke, p.x, p.y]);
-        else if (t === 'shape') {
-          const edit = store().liveEdit;
-          if (edit) {
-            const base = store().elements[edit.id] as ShapeElement;
-            store().setLiveEdit({ ...edit, ...dragShape(edit, base, p) });
-          } else {
-            if (store().liveShape) store().setLiveShape(snapLine(store().config.shape, lineStart, p));
+        else if (t === 'shape' || t === 'select') {
+          if (store().liveEdit) moveEdit(p);
+          else if (store().liveShape) {
+            store().setLiveShape(snapLine(store().config.shape, lineStart, p));
           }
         }
         onCursorMove?.(p);
@@ -197,30 +258,71 @@ export function BoardCanvas({
         // "cannot update a component while rendering a different component".
         const { tool: t, liveStroke: pts, liveShape: shape, liveEdit: edit } = store();
         if (t === 'pen' && pts.length >= 4) store().addStroke(simplify(pts));
-        if (t === 'shape' && edit) {
-          // One op for the whole drag, so undo takes it back in one step.
-          if (edit.from !== edit.origin.from || edit.to !== edit.origin.to) {
-            store().updateShape(edit.id, { from: edit.from, to: edit.to });
-          }
-          store().setLiveEdit(null);
+        if (edit) {
+          finishEdit();
         } else if (t === 'shape' && shape) {
           // A tap with the shape tool is a mis-hit, not a zero-size rectangle.
           const dragged = Math.hypot(shape.to.x - shape.from.x, shape.to.y - shape.from.y);
           // A new shape comes up selected, handles ready, so it can be sized
           // right away.
-          if (dragged > 6) store().select(store().addShape(store().config.shape, shape.from, shape.to));
+          if (dragged > 6) store().select(store().addShape(store().config.shape, shape));
         }
         store().setLiveStroke([]);
         store().setLiveShape(null);
       });
 
+    // Press and hold with the cursor, then drag: on empty board the rubber
+    // band, on the selection an ordinary drag of it. It waits for the hold so
+    // a plain drag on empty board stays a pan.
+    const marquee = Gesture.Pan()
+      .maxPointers(1)
+      .activateAfterLongPress(300)
+      .runOnJS(true)
+      .onStart((e) => {
+        const p = screenToBoard(e.x, e.y);
+        if (store().tool !== 'select' || !editable()) return;
+        store().setRailOpen(false);
+        if (beginEdit(p)) return;
+        tick(haptics);
+        store().select(null);
+        store().setLiveMarquee({ from: p, to: p });
+      })
+      .onUpdate((e) => {
+        const p = screenToBoard(e.x, e.y);
+        const box = store().liveMarquee;
+        if (box) store().setLiveMarquee({ from: box.from, to: p });
+        else moveEdit(p);
+      })
+      .onEnd(() => {
+        const box = store().liveMarquee;
+        if (!box) {
+          finishEdit();
+          return;
+        }
+        const ids = elementsIn(store().visibleElements(), shapeBounds(box)).map((el) => el.id);
+        store().select(ids);
+        store().setRailOpen(ids.length > 0);
+        store().setLiveMarquee(null);
+      });
+
+    // Twice on empty board with the cursor or the hand: closer, and back home
+    // from 2× on — the one-handed way to look at a detail and let it go again.
+    const zoomTap = (p: Point) => {
+      const cam = store().camera;
+      if (cam.scale >= 2) store().setCamera(store().homeCamera());
+      else store().zoomBy(2, p);
+    };
+
     const tap = Gesture.Tap()
       .runOnJS(true)
       .onEnd((e) => {
-        if (!editable()) return;
+        const t = store().tool;
+        if (t === 'hand' || !editable()) {
+          if (isDoubleTap('')) zoomTap({ x: e.x, y: e.y });
+          return;
+        }
         store().setRailOpen(false);
         const p = screenToBoard(e.x, e.y);
-        const t = store().tool;
         if (t === 'text') {
           const id = store().addText(p);
           if (id) setEditingId(id);
@@ -233,6 +335,17 @@ export function BoardCanvas({
           const hit = shapeAt(store().visibleElements(), p, 8 / store().camera.scale);
           store().select(hit?.id ?? null);
           if (hit) tick(haptics);
+          // Selecting something is asking to change it: the options come up.
+          store().setRailOpen(!!hit);
+        } else if (t === 'select') {
+          const hit = store().elementAt(p, 8 / store().camera.scale);
+          store().select(hit?.id ?? null);
+          if (hit) tick(haptics);
+          store().setRailOpen(!!hit);
+          // Twice on the same text or shape: type into it. Twice on nothing: zoom.
+          const again = isDoubleTap(hit?.id ?? '');
+          if (again && hit && (hit.kind === 'text' || hit.kind === 'shape')) setEditingId(hit.id);
+          else if (again && !hit) zoomTap({ x: e.x, y: e.y });
         }
         onCursorMove?.(p);
       });
@@ -257,32 +370,32 @@ export function BoardCanvas({
         // board space at the old zoom, then re-place it at the new one.
         const bx = (e.focalX - c.x) / c.scale;
         const by = (e.focalY - c.y) / c.scale;
-        store().setCamera({ scale: next, x: e.focalX - bx * next, y: e.focalY - by * next });
+        store().setCamera({
+          scale: next,
+          x: e.focalX - bx * next,
+          y: e.focalY - by * next,
+        });
       });
 
-    return Gesture.Simultaneous(pinch, panCamera, Gesture.Exclusive(draw, tap));
+    return Gesture.Simultaneous(pinch, panCamera, Gesture.Exclusive(marquee, draw, tap));
   }, [onCursorMove, haptics]);
 
   const editing = editingId ? elements[editingId] : null;
 
   // The label button floats just above the selected shape.
   const labelAt = useMemo(() => {
-    if (!selected) return null;
-    const b = shapeBounds(selected);
+    if (!selectedShape) return null;
+    const b = shapeBounds(selectedShape);
     return {
       x: (b.x + b.width / 2) * camera.scale + camera.x,
       y: b.y * camera.scale + camera.y,
     };
-  }, [selected, camera]);
+  }, [selectedShape, camera]);
 
-  const transform = [
-    { translateX: camera.x },
-    { translateY: camera.y },
-    { scale: camera.scale },
-  ];
+  const transform = [{ translateX: camera.x }, { translateY: camera.y }, { scale: camera.scale }];
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#FFFFFF' }} onLayout={onLayout}>
+    <View style={{ flex: 1, backgroundColor: c.background }} onLayout={onLayout}>
       <GestureDetector gesture={gesture}>
         <Canvas ref={canvasRef} style={{ flex: 1 }}>
           {/* Outside the camera group: the grid is spaced in screen pixels, so
@@ -291,12 +404,13 @@ export function BoardCanvas({
 
           <Group transform={transform}>
             {list.map((el) => (
-              <ElementRenderer key={el.id} el={el} smooth={smooth} />
+              <ElementRenderer key={el.id} el={el} smooth={smooth} dark={dark} />
             ))}
 
             {livePoints.length >= 4 ? (
               <ElementRenderer
                 smooth={smooth}
+                dark={dark}
                 el={{
                   id: 'live-stroke',
                   kind: 'stroke',
@@ -313,6 +427,7 @@ export function BoardCanvas({
 
             {liveShape ? (
               <ElementRenderer
+                dark={dark}
                 el={{
                   id: 'live-shape',
                   kind: 'shape',
@@ -321,7 +436,7 @@ export function BoardCanvas({
                   to: liveShape.to,
                   stroke: config.color,
                   strokeWidth: config.width,
-                  fill: config.filled ? fillFor(config.color) : null,
+                  fill: fillFor(config.color, config.fill),
                   createdBy: 'local',
                   createdAt: 0,
                   updatedAt: 0,
@@ -331,9 +446,11 @@ export function BoardCanvas({
             ) : null}
           </Group>
 
-          {selected ? <SelectionFrame el={selected} camera={camera} /> : null}
+          {selected.length ? <SelectionFrame elements={selected} camera={camera} /> : null}
+          {liveMarquee ? <DashedBox b={shapeBounds(liveMarquee)} camera={camera} /> : null}
           {/* Connection points show whenever a line or arrow could land on them. */}
-          {tool === 'shape' && (config.shape === 'line' || config.shape === 'arrow') ? (
+          {(tool === 'shape' && (config.shape === 'line' || config.shape === 'arrow')) ||
+          (selectedShape && isLineLike(selectedShape)) ? (
             <Anchors elements={list} camera={camera} />
           ) : null}
         </Canvas>
@@ -341,11 +458,11 @@ export function BoardCanvas({
 
       <PeerCursors camera={camera} />
 
-      {labelAt && selected && !editing ? (
+      {labelAt && selectedShape && !editing ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t.text}
-          onPress={() => setEditingId(selected.id)}
+          onPress={() => setEditingId(selectedShape.id)}
           style={{
             position: 'absolute',
             left: labelAt.x - 24,
@@ -354,8 +471,8 @@ export function BoardCanvas({
             paddingVertical: 5,
             borderRadius: 999,
             borderWidth: 1,
-            borderColor: Colors.accent,
-            backgroundColor: '#FFFFFF',
+            borderColor: c.accent,
+            backgroundColor: c.surface,
             ...Shadow.panel,
           }}
         >
