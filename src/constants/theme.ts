@@ -1,11 +1,13 @@
 /**
- * Design tokens. Mirrors `tailwind.config.js`, which the web app copies —
- * keep them in sync. Full rationale in docs/03-styles.
+ * Design tokens. The web app copies them into `web/src/index.css` — keep them
+ * in sync. Full rationale in docs/03-styles.
  *
  * The palette comes from the Shareboard mobile design: a light, glassy surface
- * system built on frosted white panels over a soft violet/green ambient wash,
- * with one purple accent doing all the "this is active / this is the CTA" work.
- * There is no dark variant on purpose — the design is light-only (docs/03-styles).
+ * system built on frosted white panels over a soft ambient wash, with one
+ * blood-red accent doing all the "this is active / this is the CTA" work.
+ * `Colors` is the light palette; `Palettes.dark` is the same set over a deep
+ * ink ground. Components read the one in use through `useColors()`
+ * (`features/session/store.ts`), so nothing else has to know which is on.
  */
 /** UI surfaces. Deliberately restrained: board content is the star. */
 export const Colors = {
@@ -21,11 +23,11 @@ export const Colors = {
   textTertiary: '#8B909C',
 
   /** The single brand accent: active tool, primary CTA, selected state. */
-  accent: '#6D3FB5',
-  accentDeep: '#3C42AD',
+  accent: '#7A1F2B',
+  accentDeep: '#5A1420',
   /** Tinted accent background for selected rows and icon chips. */
-  accentSoft: 'rgba(109,63,181,0.11)',
-  accentSofter: 'rgba(109,63,181,0.07)',
+  accentSoft: 'rgba(122,31,43,0.11)',
+  accentSofter: 'rgba(122,31,43,0.07)',
 
   danger: '#C4353A',
   dangerBright: '#E5484D',
@@ -33,26 +35,68 @@ export const Colors = {
   warn: '#B4530A',
   warnSoft: 'rgba(247,104,8,0.12)',
 
-  /** Hairlines and control borders, always over a light ground. */
+  /** Hairlines and control borders. */
   border: 'rgba(27,32,48,0.10)',
   borderStrong: 'rgba(27,32,48,0.14)',
   borderDashed: 'rgba(27,32,48,0.22)',
-} as const;
+
+  // Frosted-panel recipe. `BlurView` supplies the blur; these are the tint and
+  // the highlight painted over it so panels read as glass rather than as flat
+  // translucent boxes.
+  /** Tint over the blur for floating panels (tool rail, sheets). */
+  glassTint: 'rgba(255,255,255,0.46)',
+  /** Slightly more opaque tint for rows and chips that hold text. */
+  glassTintSolid: 'rgba(255,255,255,0.62)',
+  /** Near-opaque tint for panels that cannot blur (inside a Modal). */
+  glassFlat: 'rgba(255,255,255,0.92)',
+  /** Top inner highlight that gives the panel its lit edge. */
+  glassHighlight: 'rgba(255,255,255,0.92)',
+  /** A light rim around chips over the board. */
+  glassRim: 'rgba(255,255,255,0.60)',
+};
+
+export type Theme = 'light' | 'dark';
+export type Palette = { [K in keyof typeof Colors]: string };
+
+/** The dark board: the same recipe over a deep ink ground. */
+export const Palettes: Record<Theme, Palette> = {
+  light: Colors,
+  dark: {
+    ...Colors,
+    background: '#141824',
+    surface: '#1C2130',
+    surfaceSelected: '#242A3B',
+    text: '#F2F3F5',
+    textSecondary: '#A7ADBB',
+    textTertiary: '#6F7684',
+    accent: '#A82F3F',
+    accentDeep: '#82202E',
+    accentSoft: 'rgba(168,47,63,0.20)',
+    accentSofter: 'rgba(168,47,63,0.11)',
+    dangerBright: '#FF6B70',
+    border: 'rgba(242,243,245,0.10)',
+    borderStrong: 'rgba(242,243,245,0.16)',
+    borderDashed: 'rgba(242,243,245,0.26)',
+    glassTint: 'rgba(20,24,36,0.55)',
+    glassTintSolid: 'rgba(28,33,48,0.72)',
+    glassFlat: 'rgba(28,33,48,0.94)',
+    glassHighlight: 'rgba(255,255,255,0.08)',
+    glassRim: 'rgba(255,255,255,0.10)',
+  },
+};
 
 /**
- * Frosted-panel recipe. `BlurView` supplies the blur; these are the tint,
- * hairline and highlight painted over it so panels read as glass rather than
- * as flat translucent boxes.
+ * The default ink is the light theme's text colour and vanishes on the dark
+ * board, so the renderer paints it as the dark text colour instead. Only the
+ * painting changes: the element keeps its colour, and a collaborator on the
+ * light theme sees ink. Any fill alpha suffix is kept.
  */
+export function inkFor(color: string, dark: boolean): string {
+  return dark && color.slice(0, 7).toUpperCase() === '#1B2030' ? '#F2F3F5' + color.slice(7) : color;
+}
+
+/** What does not change with the theme: scrims and the blur strength. */
 export const Glass = {
-  /** Tint over the blur for floating panels (tool rail, sheets). */
-  tint: 'rgba(255,255,255,0.46)',
-  /** Slightly more opaque tint for rows and chips that hold text. */
-  tintSolid: 'rgba(255,255,255,0.62)',
-  /** Top inner highlight that gives the panel its lit edge. */
-  highlight: 'rgba(255,255,255,0.92)',
-  border: 'rgba(27,32,48,0.10)',
-  borderLight: 'rgba(255,255,255,0.60)',
   /** Scrim behind a bottom sheet / dialog. */
   scrim: 'rgba(21,26,45,0.28)',
   scrimStrong: 'rgba(21,26,45,0.34)',
@@ -86,7 +130,7 @@ export const StrokeSizes = [2, 5, 10, 20] as const;
 
 /** Identity colors offered on the nickname screen (also the presence color). */
 export const NicknameColors = [
-  '#6D3FB5',
+  '#7A1F2B',
   '#E5484D',
   '#F76808',
   '#30A46C',
@@ -154,7 +198,7 @@ export const Shadow = {
     elevation: 4,
   },
   accent: {
-    shadowColor: '#6D3FB5',
+    shadowColor: '#7A1F2B',
     shadowOpacity: 0.3,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
