@@ -2,7 +2,6 @@ import {
   DashPathEffect,
   Group,
   Image,
-  Line,
   Oval,
   Path,
   Rect,
@@ -10,43 +9,75 @@ import {
   Circle,
   Skia,
   useImage,
-  vec,
   type SkFont,
 } from '@shopify/react-native-skia';
 import { memo, useMemo } from 'react';
 
-import { Colors } from '@/constants/theme';
+import { Palettes, inkFor } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 import {
   anchorsOf,
+  dashIntervals,
+  elementBounds,
+  endAngles,
+  handlesOf,
+  headsOf,
   isLineLike,
+  markerPaths,
+  routePath,
   shapeBounds,
-  shapeHandles,
   strokeToSvgPath,
+  type Bounds,
 } from '@/features/board/geometry';
-import { SHAPE_TEXT_SIZE, type BoardElement, type Point, type ShapeElement } from '@/features/board/model';
+import {
+  SHAPE_TEXT_SIZE,
+  type BoardElement,
+  type Marker,
+  type Point,
+  type ShapeElement,
+} from '@/features/board/model';
 
 import { textWidth, useBoardFont } from './BoardFonts';
 
-function ArrowHead({
-  from,
-  to,
+/** A marker's size grows with the stroke, and never below a fingertip's worth. */
+export const markerSize = (width: number) => Math.max(10, width * 3);
+
+/** One end of a line: the marker's parts, painted after the line so a hollow one hides it. */
+function MarkerView({
+  kind,
+  tip,
+  angle,
   color,
   width,
+  ground,
 }: {
-  from: Point;
-  to: Point;
+  kind: Marker;
+  tip: Point;
+  angle: number;
   color: string;
   width: number;
+  /** What a hollow marker is filled with: the surface the board is painted on. */
+  ground: string;
 }) {
-  const angle = Math.atan2(to.y - from.y, to.x - from.x);
-  const size = Math.max(10, width * 3);
-  const p = Skia.PathBuilder.Make()
-    .moveTo(to.x, to.y)
-    .lineTo(to.x - size * Math.cos(angle - Math.PI / 6), to.y - size * Math.sin(angle - Math.PI / 6))
-    .moveTo(to.x, to.y)
-    .lineTo(to.x - size * Math.cos(angle + Math.PI / 6), to.y - size * Math.sin(angle + Math.PI / 6))
-    .detach();
-  return <Path path={p} style="stroke" strokeWidth={width} color={color} strokeCap="round" />;
+  return (
+    <Group>
+      {markerPaths(kind, tip, angle, markerSize(width)).map((part, i) => (
+        <Group key={i}>
+          {part.fill !== 'none' ? (
+            <Path path={part.d} color={part.fill === 'solid' ? color : ground} />
+          ) : null}
+          <Path
+            path={part.d}
+            style="stroke"
+            strokeWidth={width}
+            color={color}
+            strokeCap="round"
+            strokeJoin="round"
+          />
+        </Group>
+      ))}
+    </Group>
+  );
 }
 
 /** A shape's label: centred in its box, or floating just above a line's midpoint. */
@@ -66,78 +97,144 @@ function ShapeLabel({ el }: { el: ShapeElement }) {
   return (
     <Group>
       {lines.map((line, i) => (
-        <TextPath key={i} x={cx - textWidth(font, line) / 2} y={top + i * step} text={line} font={font} color={el.stroke} />
+        <TextPath
+          key={i}
+          x={cx - textWidth(font, line) / 2}
+          y={top + i * step}
+          text={line}
+          font={font}
+          color={el.stroke}
+        />
       ))}
     </Group>
   );
 }
 
 /**
- * The selection frame: a dashed box and a handle on each corner (each endpoint
- * for a line). Rendered in screen space — outside the camera group — so the
- * handles stay finger-sized at any zoom.
+ * The selection frame: a dashed box round the selection and, for a single
+ * element, a handle on each corner (each endpoint for a line). Rendered in
+ * screen space — outside the camera group — so the handles stay finger-sized
+ * at any zoom.
  */
 export const HANDLE_SIZE = 12;
 
-export function SelectionFrame({
-  el,
+/** A dashed screen-space box round board-space bounds: the frame, and the marquee. */
+export function DashedBox({
+  b,
   camera,
 }: {
-  el: ShapeElement;
+  b: Bounds;
   camera: { x: number; y: number; scale: number };
 }) {
+  const c = useColors();
+  return (
+    <Rect
+      x={b.x * camera.scale + camera.x - 4}
+      y={b.y * camera.scale + camera.y - 4}
+      width={b.width * camera.scale + 8}
+      height={b.height * camera.scale + 8}
+      color={c.accent}
+      style="stroke"
+      strokeWidth={1.5}
+    >
+      <DashPathEffect intervals={[5, 4]} />
+    </Rect>
+  );
+}
+
+export function SelectionFrame({
+  elements,
+  camera,
+}: {
+  elements: BoardElement[];
+  camera: { x: number; y: number; scale: number };
+}) {
+  const c = useColors();
   const sx = (v: number) => v * camera.scale + camera.x;
   const sy = (v: number) => v * camera.scale + camera.y;
-  const b = shapeBounds(el);
+  const one = elements.length === 1 ? elements[0] : null;
+  const line = one?.kind === 'shape' && isLineLike(one) ? one : null;
+  const b = one ? elementBounds(one) : unionBounds(elements);
   return (
     <Group>
-      {isLineLike(el) ? null : (
-        <Rect
-          x={sx(b.x) - 4}
-          y={sy(b.y) - 4}
-          width={b.width * camera.scale + 8}
-          height={b.height * camera.scale + 8}
-          color={Colors.accent}
-          style="stroke"
-          strokeWidth={1.5}
-        >
-          <DashPathEffect intervals={[5, 4]} />
-        </Rect>
-      )}
-      {shapeHandles(el).map((h, i) => (
-        <Group key={i}>
-          <Rect
-            x={sx(h.x) - HANDLE_SIZE / 2}
-            y={sy(h.y) - HANDLE_SIZE / 2}
-            width={HANDLE_SIZE}
-            height={HANDLE_SIZE}
-            color="#FFFFFF"
-          />
-          <Rect
-            x={sx(h.x) - HANDLE_SIZE / 2}
-            y={sy(h.y) - HANDLE_SIZE / 2}
-            width={HANDLE_SIZE}
-            height={HANDLE_SIZE}
-            color={Colors.accent}
+      {line ? (
+        // A line has no box to frame, so the line itself lights up: a soft
+        // accent halo along its route, and round handles at the two ends it
+        // can be dragged by — unmistakably not the square corners of a box.
+        <Group transform={[{ translateX: camera.x }, { translateY: camera.y }, { scale: camera.scale }]}>
+          <Path
+            path={routePath(line.from, line.to, line.route)}
+            color={c.accent}
+            opacity={0.28}
             style="stroke"
-            strokeWidth={1.5}
+            strokeWidth={line.strokeWidth + 8 / camera.scale}
+            strokeCap="round"
+            strokeJoin="round"
           />
         </Group>
-      ))}
+      ) : (
+        <DashedBox b={b} camera={camera} />
+      )}
+      {(one ? handlesOf(one) : []).map((h, i) =>
+        line ? (
+          <Group key={i}>
+            <Circle cx={sx(h.x)} cy={sy(h.y)} r={HANDLE_SIZE / 2 + 1} color={c.accent} />
+            <Circle
+              cx={sx(h.x)}
+              cy={sy(h.y)}
+              r={HANDLE_SIZE / 2 + 1}
+              color={c.background}
+              style="stroke"
+              strokeWidth={1.5}
+            />
+          </Group>
+        ) : (
+          <Group key={i}>
+            <Rect
+              x={sx(h.x) - HANDLE_SIZE / 2}
+              y={sy(h.y) - HANDLE_SIZE / 2}
+              width={HANDLE_SIZE}
+              height={HANDLE_SIZE}
+              color={c.background}
+            />
+            <Rect
+              x={sx(h.x) - HANDLE_SIZE / 2}
+              y={sy(h.y) - HANDLE_SIZE / 2}
+              width={HANDLE_SIZE}
+              height={HANDLE_SIZE}
+              color={c.accent}
+              style="stroke"
+              strokeWidth={1.5}
+            />
+          </Group>
+        ),
+      )}
     </Group>
   );
 }
 
-function ShapeView({ el }: { el: ShapeElement }) {
+function unionBounds(elements: BoardElement[]): Bounds {
+  const boxes = elements.map(elementBounds);
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  return {
+    x,
+    y,
+    width: Math.max(...boxes.map((b) => b.x + b.width)) - x,
+    height: Math.max(...boxes.map((b) => b.y + b.height)) - y,
+  };
+}
+
+function ShapeView({ el, ground }: { el: ShapeElement; ground: string }) {
   return (
     <Group>
-      <ShapeGeometry el={el} />
+      <ShapeGeometry el={el} ground={ground} />
       <ShapeLabel el={el} />
     </Group>
   );
 }
 
-function ShapeGeometry({ el }: { el: ShapeElement }) {
+function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
   const x = Math.min(el.from.x, el.to.x);
   const y = Math.min(el.from.y, el.to.y);
   const w = Math.abs(el.to.x - el.from.x);
@@ -205,19 +302,37 @@ function ShapeGeometry({ el }: { el: ShapeElement }) {
   }
 
   // line / arrow
+  const [headStart, headEnd] = headsOf(el);
+  const angles = endAngles(el.from, el.to, el.route);
+  const dash = dashIntervals(el.dash, el.strokeWidth);
   return (
     <Group>
-      <Line
-        p1={vec(el.from.x, el.from.y)}
-        p2={vec(el.to.x, el.to.y)}
+      <Path
+        path={routePath(el.from, el.to, el.route)}
         color={el.stroke}
         style="stroke"
         strokeWidth={el.strokeWidth}
         strokeCap="round"
+        strokeJoin="round"
+      >
+        {dash ? <DashPathEffect intervals={dash} /> : null}
+      </Path>
+      <MarkerView
+        kind={headStart}
+        tip={el.from}
+        angle={angles.start}
+        color={el.stroke}
+        width={el.strokeWidth}
+        ground={ground}
       />
-      {el.shape === 'arrow' ? (
-        <ArrowHead from={el.from} to={el.to} color={el.stroke} width={el.strokeWidth} />
-      ) : null}
+      <MarkerView
+        kind={headEnd}
+        tip={el.to}
+        angle={angles.end}
+        color={el.stroke}
+        width={el.strokeWidth}
+        ground={ground}
+      />
     </Group>
   );
 }
@@ -247,7 +362,19 @@ function ImageView({
  * and the native recorder silently skips a `Text` whose font it cannot read.
  * A path is the pipeline that is known to work on the same screen.
  */
-function TextPath({ text, x, y, font, color }: { text: string; x: number; y: number; font: SkFont; color: string }) {
+function TextPath({
+  text,
+  x,
+  y,
+  font,
+  color,
+}: {
+  text: string;
+  x: number;
+  y: number;
+  font: SkFont;
+  color: string;
+}) {
   const path = useMemo(() => Skia.Path.MakeFromText(text, x, y, font), [text, x, y, font]);
   return path ? <Path path={path} color={color} /> : null;
 }
@@ -255,7 +382,9 @@ function TextPath({ text, x, y, font, color }: { text: string; x: number; y: num
 function TextView({ el }: { el: Extract<BoardElement, { kind: 'text' }> }) {
   const font = useBoardFont(el.fontSize, !!el.bold, !!el.italic);
   // Skia draws text from the baseline; nudge down by ~the font size.
-  return <TextPath x={el.at.x} y={el.at.y + el.fontSize} text={el.text} font={font} color={el.color} />;
+  return (
+    <TextPath x={el.at.x} y={el.at.y + el.fontSize} text={el.text} font={font} color={el.color} />
+  );
 }
 
 /**
@@ -263,7 +392,13 @@ function TextView({ el }: { el: Extract<BoardElement, { kind: 'text' }> }) {
  * re-renders on every touch sample, and rebuilding the SVG string of every
  * other stroke on the board each time is what made the JS thread drop samples.
  */
-function StrokeView({ el, smooth }: { el: Extract<BoardElement, { kind: 'stroke' }>; smooth: boolean }) {
+function StrokeView({
+  el,
+  smooth,
+}: {
+  el: Extract<BoardElement, { kind: 'stroke' }>;
+  smooth: boolean;
+}) {
   const path = useMemo(() => strokeToSvgPath(el.points, smooth), [el.points, smooth]);
   return (
     <Path
@@ -288,18 +423,24 @@ export function Anchors({
   elements: BoardElement[];
   camera: { x: number; y: number; scale: number };
 }) {
+  const c = useColors();
   return (
     <Group>
       {elements.map((el) =>
         el.kind === 'shape'
           ? anchorsOf(el).map((a, i) => (
               <Group key={`${el.id}-${i}`}>
-                <Circle cx={a.x * camera.scale + camera.x} cy={a.y * camera.scale + camera.y} r={4} color="#FFFFFF" />
                 <Circle
                   cx={a.x * camera.scale + camera.x}
                   cy={a.y * camera.scale + camera.y}
                   r={4}
-                  color={Colors.accent}
+                  color={c.background}
+                />
+                <Circle
+                  cx={a.x * camera.scale + camera.x}
+                  cy={a.y * camera.scale + camera.y}
+                  r={4}
+                  color={c.accent}
                   style="stroke"
                   strokeWidth={1.5}
                 />
@@ -311,19 +452,43 @@ export function Anchors({
   );
 }
 
-/** Renders one board element with Skia primitives. Memoised: see `StrokeView`. */
+/**
+ * The element as it is painted on the dark board: the default ink swapped for
+ * the dark theme's text colour (`inkFor`). The element itself is untouched.
+ */
+function inked(el: BoardElement): BoardElement {
+  switch (el.kind) {
+    case 'stroke':
+    case 'text':
+      return { ...el, color: inkFor(el.color, true) };
+    case 'shape':
+      return { ...el, stroke: inkFor(el.stroke, true), fill: el.fill && inkFor(el.fill, true) };
+    default:
+      return el;
+  }
+}
+
+/**
+ * Renders one board element with Skia primitives. Memoised: see `StrokeView`.
+ * `dark` paints for the dark board; the export preview leaves it off, since a
+ * saved picture is always ink on white.
+ */
 export const ElementRenderer = memo(function ElementRenderer({
   el,
   smooth = true,
+  dark = false,
 }: {
   el: BoardElement;
   smooth?: boolean;
+  dark?: boolean;
 }) {
+  if (dark) el = inked(el);
+  const ground = dark ? Palettes.dark.background : Palettes.light.background;
   switch (el.kind) {
     case 'stroke':
       return <StrokeView el={el} smooth={smooth} />;
     case 'shape':
-      return <ShapeView el={el} />;
+      return <ShapeView el={el} ground={ground} />;
     case 'image':
       return <ImageView uri={el.uri} x={el.at.x} y={el.at.y} width={el.width} height={el.height} />;
     case 'text':
@@ -349,6 +514,7 @@ export function DotGrid({
   height: number;
   camera: { x: number; y: number; scale: number };
 }) {
+  const c = useColors();
   const step = 26 * camera.scale;
   const path = useMemo(() => {
     // Below ~9px apart the dots read as a grey wash, so the grid drops out —
@@ -365,5 +531,5 @@ export function DotGrid({
   }, [step, width, height, camera.x, camera.y, camera.scale]);
 
   if (!path) return null;
-  return <Path path={path} color="rgba(27,32,48,0.13)" />;
+  return <Path path={path} color={c.borderStrong} />;
 }
