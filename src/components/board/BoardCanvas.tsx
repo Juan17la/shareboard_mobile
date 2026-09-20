@@ -30,7 +30,6 @@ import { useT } from '@/features/i18n/store';
 import { useSessionStore } from '@/features/session/store';
 import { tick } from '@/utils/haptics';
 
-import { useBoardFontStatus } from './BoardFonts';
 import { Anchors, DotGrid, ElementRenderer, SelectionFrame } from './ElementRenderer';
 import { PeerCursors } from './PeerCursors';
 import { TextEditorOverlay } from './TextEditorOverlay';
@@ -89,7 +88,6 @@ export function BoardCanvas({
   const livePoints = useBoardStore((s) => s.liveStroke);
   const liveShape = useBoardStore((s) => s.liveShape);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const fontStatus = useBoardFontStatus();
 
   const list = useMemo(() => {
     const sorted = visibleSorted(elements);
@@ -342,13 +340,6 @@ export function BoardCanvas({
       </GestureDetector>
 
       <PeerCursors camera={camera} />
-
-      {/* Dev only, until the phone that draws no text has said why. */}
-      {__DEV__ ? (
-        <Txt size={11} tone="secondary" style={{ position: 'absolute', left: 12, top: 130 }}>
-          {fontStatus}
-        </Txt>
-      ) : null}
 
       {labelAt && selected && !editing ? (
         <Pressable
