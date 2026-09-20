@@ -14,15 +14,42 @@
  * Nothing scrolls: in portrait the tools sit in two rows (tools, then shapes)
  * and the options wrap, so everything is visible at once on a narrow phone.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Path as SvgPath, Svg } from 'react-native-svg';
 
-import { Colors, DrawingPalette, StrokeSizes } from '@/constants/theme';
+import { DrawingPalette, StrokeSizes, inkFor } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
-import { LIMITS, SHAPE_TEXT_SIZE, type ShapeKind, type ToolType } from '@/features/board/model';
-import { useBoardStore } from '@/features/board/store';
-import { useSessionStore } from '@/features/session/store';
+import {
+  dashIntervals,
+  headsOf,
+  isLineLike,
+  markerPaths,
+  routePath,
+} from '@/features/board/geometry';
+import {
+  DASHES,
+  LIMITS,
+  MARKERS,
+  ROUTES,
+  SHAPE_TEXT_SIZE,
+  isFillable,
+  type BoardElement,
+  type Dash,
+  type Marker,
+  type Route,
+  type ShapeKind,
+  type ToolType,
+} from '@/features/board/model';
+import {
+  fillFor,
+  fillLevelOf,
+  useBoardStore,
+  type FillLevel,
+  type ReorderOp,
+} from '@/features/board/store';
+import { useSessionStore, useColors, useDark } from '@/features/session/store';
 import { tick } from '@/utils/haptics';
 
 import { StepperButton } from '../ui/Button';
@@ -30,9 +57,11 @@ import { ColorPickerSheet } from '../ui/ColorPickerSheet';
 import { GlassPanel } from '../ui/Glass';
 import { Icon, type IconName } from '../ui/Icon';
 import { Txt } from '../ui/Text';
+import { tip } from '../ui/Toast';
 
 type LabelKey =
   | 'hand'
+  | 'select'
   | 'pencil'
   | 'eraser'
   | 'shapeRectangle'
@@ -40,75 +69,216 @@ type LabelKey =
   | 'shapeTriangle'
   | 'shapeLine'
   | 'shapeArrow'
+  | 'shapes'
   | 'text'
   | 'fill';
 
-const TOOLS: { tool: ToolType; shape?: ShapeKind; icon: IconName; labelKey: LabelKey }[] = [
-  { tool: 'hand', icon: 'hand', labelKey: 'hand' },
-  { tool: 'pen', icon: 'pencil', labelKey: 'pencil' },
-  { tool: 'eraser', icon: 'eraser', labelKey: 'eraser' },
+interface ToolEntry {
+  tool: ToolType;
+  shape?: ShapeKind;
+  icon: IconName;
+  labelKey: LabelKey;
+}
+
+/** The shape kinds, offered in the options strip while the shapes tool is in hand. */
+const SHAPES: ToolEntry[] = [
   { tool: 'shape', shape: 'rectangle', icon: 'rectangle', labelKey: 'shapeRectangle' },
   { tool: 'shape', shape: 'ellipse', icon: 'ellipse', labelKey: 'shapeEllipse' },
   { tool: 'shape', shape: 'triangle', icon: 'triangle', labelKey: 'shapeTriangle' },
   { tool: 'shape', shape: 'line', icon: 'line', labelKey: 'shapeLine' },
   { tool: 'shape', shape: 'arrow', icon: 'arrow', labelKey: 'shapeArrow' },
+];
+
+/**
+ * One row of seven, in the order a hand reaches for them: the cursor first
+ * (it is the tool in hand by default — it looks, picks up, moves the board),
+ * the hand, then the marks. The five shape kinds fold into one button so the
+ * row fits a phone; the strip above offers the kind.
+ */
+const TOOLS: ToolEntry[] = [
+  { tool: 'select', icon: 'cursor', labelKey: 'select' },
+  { tool: 'hand', icon: 'hand', labelKey: 'hand' },
+  { tool: 'pen', icon: 'pencil', labelKey: 'pencil' },
+  { tool: 'eraser', icon: 'eraser', labelKey: 'eraser' },
+  { tool: 'shape', icon: 'shapes', labelKey: 'shapes' },
   { tool: 'text', icon: 'text', labelKey: 'text' },
   { tool: 'fill', icon: 'fill', labelKey: 'fill' },
 ];
 
-/** Height of the bar: one row in landscape, two in portrait. */
-export const toolbarHeight = (landscape: boolean) => (landscape ? 46 : 96);
+/** Height of the bar: one row, a little shorter in landscape. */
+export const toolbarHeight = (landscape: boolean) => (landscape ? 46 : 56);
 
 export function Toolbar({ landscape }: { landscape: boolean }) {
+  const c = useColors();
   const insets = useSafeAreaInsets();
   const t = useT();
   const tool = useBoardStore((s) => s.tool);
   const config = useBoardStore((s) => s.config);
-  const setTool = useBoardStore((s) => s.setTool);
+  const pickTool = useBoardStore((s) => s.pickTool);
   const setConfig = useBoardStore((s) => s.setConfig);
-  const updateShape = useBoardStore((s) => s.updateShape);
-  const selected = useBoardStore((s) => s.selectedShape());
+  const reorder = useBoardStore((s) => s.reorder);
+  const group = useBoardStore((s) => s.group);
+  const ungroup = useBoardStore((s) => s.ungroup);
+  const selectedIds = useBoardStore((s) => s.selectedIds);
+  const elements = useBoardStore((s) => s.elements);
   const canEdit = useBoardStore((s) => s.canEditNow());
   const haptics = useSessionStore((s) => s.settings.haptics);
+  const dark = useDark();
 
   const open = useBoardStore((s) => s.railOpen);
   const setOpen = useBoardStore((s) => s.setRailOpen);
   const [picking, setPicking] = useState(false);
+  /** Which end's marker grid is open, replacing the strip while it is. */
+  const [pickingHead, setPickingHead] = useState<'headStart' | 'headEnd' | null>(null);
 
   const nudge = () => tick(haptics);
 
-  const isActive = (entry: (typeof TOOLS)[number]) =>
+  // The selection, when a tool that has one is in hand.
+  const selected = useMemo(
+    () =>
+      tool === 'select' || tool === 'shape'
+        ? selectedIds
+            .map((id) => elements[id])
+            .filter((el): el is BoardElement => !!el && !el.deleted)
+        : [],
+    [tool, selectedIds, elements],
+  );
+  const has = (test: (el: BoardElement) => boolean) => selected.some(test);
+  /** The first selected element's value for an option, so the strip shows what it will change. */
+  const first = <T,>(pick: (el: BoardElement) => T | undefined): T | undefined => {
+    for (const el of selected) {
+      const v = pick(el);
+      if (v !== undefined) return v;
+    }
+    return undefined;
+  };
+
+  const isActive = (entry: ToolEntry) =>
     tool === entry.tool && (!entry.shape || config.shape === entry.shape);
 
-  const pick = (entry: (typeof TOOLS)[number]) => {
+  const pick = (entry: ToolEntry) => {
     nudge();
-    if (isActive(entry)) {
-      setOpen(!open);
-      return;
-    }
-    setTool(entry.tool);
-    if (entry.shape) setConfig({ shape: entry.shape });
-    // The hand has nothing to configure; an empty strip would just be noise.
-    setOpen(entry.tool !== 'hand');
+    pickTool(entry.tool, entry.shape);
+    setPickingHead(null);
   };
 
   // A viewer has no tools at all: the design hides them rather than greying
   // them out, so the board is all there is to look at (docs/04).
   if (!canEdit) return null;
 
-  const showSizes = tool === 'pen' || tool === 'eraser' || tool === 'shape';
-  const showFill = tool === 'shape' && config.shape !== 'line' && config.shape !== 'arrow';
+  // What the strip shows: the options of the tool in hand, or of what is
+  // selected. Every button goes through `setConfig`, which restyles the
+  // selection as well as setting the next thing drawn.
+  const shapeTool = tool === 'shape';
+  const lineTool = shapeTool && (config.shape === 'line' || config.shape === 'arrow');
+  const selShape = has((el) => el.kind === 'shape');
+  const selLine = has((el) => el.kind === 'shape' && isLineLike(el));
+  const selBox = has((el) => el.kind === 'shape' && isFillable(el.shape));
+  const selText = has((el) => el.kind === 'text');
+  const showSizes =
+    tool === 'pen' ||
+    tool === 'eraser' ||
+    shapeTool ||
+    has((el) => el.kind === 'stroke') ||
+    selShape;
+  const showFill = (shapeTool && isFillable(config.shape)) || selBox;
+  const showLine = lineTool || selLine;
   // A selected shape borrows the text tool's size stepper for its label.
-  const showTextOptions = tool === 'text' || selected !== null;
-  const showColor = tool !== 'hand' && tool !== 'eraser';
-  const fontSize = selected ? (selected.fontSize ?? SHAPE_TEXT_SIZE) : config.fontSize;
-  const setFontSize = (next: number) =>
-    selected ? updateShape(selected.id, { fontSize: next }) : setConfig({ fontSize: next });
+  const showTextOptions = tool === 'text' || selText || selShape;
+  const showStyle = tool === 'text' || selText;
+  const showColor =
+    tool !== 'hand' && tool !== 'eraser' && (tool !== 'select' || selected.length > 0);
+  const showOrder = tool === 'select' && selected.length > 0;
+  // A selected shape can change kind within its family: box to box, line to
+  // arrow. With the shapes tool in hand, the strip is where the kind is chosen.
+  const kinds: ShapeKind[] = selLine
+    ? ['line', 'arrow']
+    : selShape
+      ? ['rectangle', 'ellipse', 'triangle']
+      : shapeTool
+        ? SHAPES.map((e) => e.shape!)
+        : [];
+  const pickKind = (kind: ShapeKind) => {
+    nudge();
+    if (selected.length) setConfig({ shape: kind });
+    else pickTool('shape', kind);
+  };
+  // Group only when there is more than one thing to join: loose elements or separate groups.
+  const showGroup = new Set(selected.map((el) => el.group ?? el.id)).size > 1;
 
-  const buttonSize = landscape ? 34 : 40;
+  const cur = {
+    width:
+      first((el) =>
+        el.kind === 'stroke' ? el.width : el.kind === 'shape' ? el.strokeWidth : undefined,
+      ) ?? config.width,
+    color:
+      first((el) =>
+        el.kind === 'shape' ? el.stroke : el.kind === 'image' ? undefined : el.color,
+      ) ?? config.color,
+    fill:
+      first((el) =>
+        el.kind === 'shape' && isFillable(el.shape) ? fillLevelOf(el.fill) : undefined,
+      ) ?? config.fill,
+    fontSize:
+      first((el) =>
+        el.kind === 'text'
+          ? el.fontSize
+          : el.kind === 'shape'
+            ? (el.fontSize ?? SHAPE_TEXT_SIZE)
+            : undefined,
+      ) ?? config.fontSize,
+    bold: first((el) => (el.kind === 'text' ? !!el.bold : undefined)) ?? config.bold,
+    italic: first((el) => (el.kind === 'text' ? !!el.italic : undefined)) ?? config.italic,
+    headStart:
+      first((el) => (el.kind === 'shape' && isLineLike(el) ? headsOf(el)[0] : undefined)) ??
+      config.headStart,
+    headEnd:
+      first((el) => (el.kind === 'shape' && isLineLike(el) ? headsOf(el)[1] : undefined)) ??
+      config.headEnd,
+    route:
+      first((el) =>
+        el.kind === 'shape' && isLineLike(el) ? (el.route ?? 'straight') : undefined,
+      ) ?? config.route,
+    shape: first((el) => (el.kind === 'shape' ? el.shape : undefined)) ?? config.shape,
+    dash:
+      first((el) => (el.kind === 'shape' && isLineLike(el) ? (el.dash ?? 'solid') : undefined)) ??
+      config.dash,
+  };
+  const fontSize = cur.fontSize;
+  const setFontSize = (next: number) => setConfig({ fontSize: next });
+  const fillLevels: {
+    level: FillLevel;
+    labelKey: 'fillNone' | 'fillLow' | 'fillMedium' | 'fillFull';
+  }[] = [
+    { level: 'none', labelKey: 'fillNone' },
+    { level: 'low', labelKey: 'fillLow' },
+    { level: 'medium', labelKey: 'fillMedium' },
+    { level: 'full', labelKey: 'fillFull' },
+  ];
+  const routeLabel: Record<Route, 'routeStraight' | 'routeCurved' | 'routeElbow'> = {
+    straight: 'routeStraight',
+    curved: 'routeCurved',
+    elbow: 'routeElbow',
+  };
+  const dashLabel: Record<Dash, 'dashSolid' | 'dashDashed' | 'dashDotted'> = {
+    solid: 'dashSolid',
+    dashed: 'dashDashed',
+    dotted: 'dashDotted',
+  };
+  const orderOps: {
+    op: ReorderOp;
+    icon: IconName;
+    labelKey: 'toBack' | 'backward' | 'forward' | 'toFront';
+  }[] = [
+    { op: 'back', icon: 'to-back', labelKey: 'toBack' },
+    { op: 'backward', icon: 'backward', labelKey: 'backward' },
+    { op: 'forward', icon: 'forward', labelKey: 'forward' },
+    { op: 'front', icon: 'to-front', labelKey: 'toFront' },
+  ];
+
+  const buttonSize = landscape ? 34 : 44;
   const buttonRadius = landscape ? 12 : 14;
-  // Portrait: plain tools on one row, the shape kinds on the next.
-  const rows = landscape ? [TOOLS] : [TOOLS.filter((e) => !e.shape), TOOLS.filter((e) => e.shape)];
+  const rows = [TOOLS];
 
   return (
     <>
@@ -126,197 +296,403 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
       >
         {open ? (
           <GlassPanel level="panel" radius={16} style={[panelShadow, { maxWidth: '100%' }]}>
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 8,
-              }}
-            >
-              {showSizes ? (
-                <Cluster>
-                  {StrokeSizes.map((value) => {
-                    const active = config.width === value;
-                    return (
-                      <Pressable
-                        key={value}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${t.size} ${value}`}
-                        accessibilityState={{ selected: active }}
+            <View>
+              {pickingHead ? (
+                <View style={{ gap: 6, paddingHorizontal: 10, paddingVertical: 8 }}>
+                  {(
+                    [
+                      ['markersDefault', MARKERS.default],
+                      ['markersOther', MARKERS.other],
+                      ['markersCardinality', MARKERS.cardinality],
+                    ] as const
+                  ).map(([labelKey, kinds]) => (
+                    <View
+                      key={labelKey}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <Txt weight="bold" size={10} color={c.textSecondary} style={{ width: 74 }}>
+                        {t[labelKey]}
+                      </Txt>
+                      {kinds.map((kind) => (
+                        <MiniButton
+                          key={kind}
+                          label={kind}
+                          active={cur[pickingHead] === kind}
+                          onPress={() => {
+                            nudge();
+                            setConfig({ [pickingHead]: kind });
+                            setPickingHead(null);
+                          }}
+                        >
+                          <MarkerIcon
+                            kind={kind}
+                            end={pickingHead === 'headEnd'}
+                            color={cur[pickingHead] === kind ? '#FFFFFF' : c.text}
+                          />
+                        </MiniButton>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                  }}
+                >
+                  {showSizes ? (
+                    <Cluster>
+                      {StrokeSizes.map((value) => {
+                        const active = cur.width === value;
+                        return (
+                          <Pressable
+                            key={value}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${t.size} ${value}`}
+                            accessibilityState={{ selected: active }}
+                            onPress={() => {
+                              nudge();
+                              setConfig({ width: value });
+                            }}
+                            style={{
+                              width: 32,
+                              height: 32,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderRadius: 9,
+                              borderWidth: 1,
+                              borderColor: active ? 'transparent' : c.border,
+                              backgroundColor: active ? c.accentSoft : c.surface,
+                            }}
+                          >
+                            <View
+                              style={{
+                                width: Math.min(20, value + 3),
+                                height: Math.min(20, value + 3),
+                                borderRadius: 10,
+                                backgroundColor: active ? c.accent : '#4A515F',
+                              }}
+                            />
+                          </Pressable>
+                        );
+                      })}
+                    </Cluster>
+                  ) : null}
+
+                  {kinds.length ? (
+
+                    <Cluster>
+
+                      {kinds.map((kind) => (
+
+                        <MiniButton
+
+                          key={kind}
+
+                          label={t[SHAPES.find((e) => e.shape === kind)!.labelKey]}
+
+                          active={cur.shape === kind}
+
+                          onPress={() => pickKind(kind)}
+
+                        >
+
+                          <Icon name={kind} size={18} color={cur.shape === kind ? '#FFFFFF' : c.text} />
+
+                        </MiniButton>
+
+                      ))}
+
+                    </Cluster>
+
+                  ) : null}
+
+
+                  {showFill ? (
+                    <Cluster>
+                      {fillLevels.map(({ level, labelKey }) => (
+                        <MiniButton
+                          key={level}
+                          label={t[labelKey]}
+                          active={cur.fill === level}
+                          onPress={() => {
+                            nudge();
+                            setConfig({ fill: level });
+                          }}
+                        >
+                          {/* The swatch is the fill itself: the colour at that alpha, outlined. */}
+                          <View
+                            style={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: 4,
+                              borderWidth: 1.5,
+                              borderColor: cur.fill === level ? '#FFFFFF' : cur.color,
+                              backgroundColor:
+                                fillFor(cur.fill === level ? '#FFFFFF' : cur.color, level) ??
+                                'transparent',
+                            }}
+                          />
+                        </MiniButton>
+                      ))}
+                    </Cluster>
+                  ) : null}
+
+                  {showLine ? (
+                    <>
+                      <Cluster>
+                        {(['headStart', 'headEnd'] as const).map((end) => (
+                          <MiniButton
+                            key={end}
+                            label={t[end]}
+                            active={false}
+                            onPress={() => {
+                              nudge();
+                              setPickingHead(end);
+                            }}
+                          >
+                            <MarkerIcon
+                              kind={cur[end]}
+                              end={end === 'headEnd'}
+                              color={c.text}
+                            />
+                          </MiniButton>
+                        ))}
+                      </Cluster>
+                      <Cluster>
+                        {ROUTES.map((route) => (
+                          <MiniButton
+                            key={route}
+                            label={t[routeLabel[route]]}
+                            active={cur.route === route}
+                            onPress={() => {
+                              nudge();
+                              setConfig({ route });
+                            }}
+                          >
+                            <Svg
+                              width={20}
+                              height={20}
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke={cur.route === route ? '#FFFFFF' : c.text}
+                              strokeWidth={2}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <SvgPath d={routePath({ x: 4, y: 19 }, { x: 20, y: 5 }, route)} />
+                            </Svg>
+                          </MiniButton>
+                        ))}
+                      </Cluster>
+                      <Cluster>
+                        {DASHES.map((dash) => (
+                          <MiniButton
+                            key={dash}
+                            label={t[dashLabel[dash]]}
+                            active={cur.dash === dash}
+                            onPress={() => {
+                              nudge();
+                              setConfig({ dash });
+                            }}
+                          >
+                            <Svg
+                              width={20}
+                              height={20}
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke={cur.dash === dash ? '#FFFFFF' : c.text}
+                              strokeWidth={2.2}
+                              strokeLinecap="round"
+                            >
+                              <SvgPath
+                                d="M3 12H21"
+                                strokeDasharray={dashIntervals(dash, 2.2)?.join(' ')}
+                              />
+                            </Svg>
+                          </MiniButton>
+                        ))}
+                      </Cluster>
+                    </>
+                  ) : null}
+
+                  {showTextOptions ? (
+                    <Cluster>
+                      <StepperButton
+                        icon="minus"
+                        label={t.smaller}
                         onPress={() => {
                           nudge();
-                          setConfig({ width: value });
+                          setFontSize(Math.max(LIMITS.minFontSize, fontSize - 4));
                         }}
+                      />
+                      <Txt
+                        weight="extrabold"
+                        size={11}
+                        mono
+                        style={{ width: 40, textAlign: 'center' }}
+                      >
+                        {fontSize}px
+                      </Txt>
+                      <StepperButton
+                        icon="plus"
+                        label={t.bigger}
+                        onPress={() => {
+                          nudge();
+                          setFontSize(Math.min(LIMITS.maxFontSize, fontSize + 4));
+                        }}
+                      />
+                      {showStyle ? (
+                        <>
+                          <MiniButton
+                            glyph="B"
+                            glyphWeight="extrabold"
+                            label={t.bold}
+                            active={cur.bold}
+                            onPress={() => {
+                              nudge();
+                              setConfig({ bold: !cur.bold });
+                            }}
+                          />
+                          <MiniButton
+                            glyph="I"
+                            glyphItalic
+                            label={t.italic}
+                            active={cur.italic}
+                            onPress={() => {
+                              nudge();
+                              setConfig({ italic: !cur.italic });
+                            }}
+                          />
+                        </>
+                      ) : null}
+                    </Cluster>
+                  ) : null}
+
+                  {showOrder ? (
+                    <Cluster>
+                      {orderOps.map(({ op, icon, labelKey }) => (
+                        <MiniButton
+                          key={op}
+                          label={t[labelKey]}
+                          active={false}
+                          onPress={() => {
+                            nudge();
+                            reorder(op);
+                          }}
+                        >
+                          <Icon name={icon} size={18} />
+                        </MiniButton>
+                      ))}
+                      {showGroup ? (
+                        <MiniButton
+                          label={t.group}
+                          active={false}
+                          onPress={() => {
+                            nudge();
+                            group();
+                          }}
+                        >
+                          <Icon name="group" size={18} />
+                        </MiniButton>
+                      ) : null}
+                      {has((el) => !!el.group) ? (
+                        <MiniButton
+                          label={t.ungroup}
+                          active={false}
+                          onPress={() => {
+                            nudge();
+                            ungroup();
+                          }}
+                        >
+                          <Icon name="ungroup" size={18} />
+                        </MiniButton>
+                      ) : null}
+                    </Cluster>
+                  ) : null}
+
+                  {showColor ? (
+                    <Cluster last>
+                      {DrawingPalette.map((swatch) => {
+                        const active = cur.color.toUpperCase() === swatch.toUpperCase();
+                        return (
+                          <Pressable
+                            key={swatch}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${t.color} ${swatch}`}
+                            accessibilityState={{ selected: active }}
+                            onPress={() => {
+                              nudge();
+                              setConfig({ color: swatch });
+                            }}
+                            style={{
+                              width: 26,
+                              height: 26,
+                              borderRadius: 8,
+                              backgroundColor: inkFor(swatch, dark),
+                              borderWidth: 2,
+                              borderColor: active ? c.accent : c.background,
+                            }}
+                          />
+                        );
+                      })}
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t.custom}
+                        onPress={() => setPicking(true)}
                         style={{
-                          width: 32,
-                          height: 32,
+                          flexDirection: 'row',
                           alignItems: 'center',
-                          justifyContent: 'center',
-                          borderRadius: 9,
+                          gap: 5,
+                          height: 26,
+                          paddingHorizontal: 8,
+                          borderRadius: 8,
                           borderWidth: 1,
-                          borderColor: active ? 'transparent' : Colors.border,
-                          backgroundColor: active ? Colors.accentSoft : '#FFFFFF',
+                          borderStyle: 'dashed',
+                          borderColor: c.borderDashed,
                         }}
                       >
                         <View
                           style={{
-                            width: Math.min(20, value + 3),
-                            height: Math.min(20, value + 3),
-                            borderRadius: 10,
-                            backgroundColor: active ? Colors.accent : '#4A515F',
+                            width: 14,
+                            height: 14,
+                            borderRadius: 4,
+                            backgroundColor: cur.color,
+                            borderWidth: 1,
+                            borderColor: c.border,
                           }}
                         />
+                        <Txt weight="bold" size={10} color={c.textSecondary}>
+                          {t.custom}
+                        </Txt>
                       </Pressable>
-                    );
-                  })}
-                </Cluster>
-              ) : null}
-
-              {showFill ? (
-                <Cluster>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={t.filled}
-                    accessibilityState={{ selected: config.filled }}
-                    onPress={() => {
-                      nudge();
-                      setConfig({ filled: !config.filled });
-                    }}
-                    style={{
-                      height: 32,
-                      justifyContent: 'center',
-                      paddingHorizontal: 10,
-                      borderRadius: 9,
-                      borderWidth: 1,
-                      borderColor: config.filled ? 'transparent' : Colors.borderStrong,
-                      backgroundColor: config.filled ? Colors.accent : '#FFFFFF',
-                    }}
-                  >
-                    <Txt weight="bold" size={11} color={config.filled ? '#FFFFFF' : '#4A515F'}>
-                      {t.filled}
-                    </Txt>
-                  </Pressable>
-                </Cluster>
-              ) : null}
-
-              {showTextOptions ? (
-                <Cluster>
-                  <StepperButton
-                    icon="minus"
-                    label={t.smaller}
-                    onPress={() => {
-                      nudge();
-                      setFontSize(Math.max(LIMITS.minFontSize, fontSize - 4));
-                    }}
-                  />
-                  <Txt weight="extrabold" size={11} mono style={{ width: 40, textAlign: 'center' }}>
-                    {fontSize}px
-                  </Txt>
-                  <StepperButton
-                    icon="plus"
-                    label={t.bigger}
-                    onPress={() => {
-                      nudge();
-                      setFontSize(Math.min(LIMITS.maxFontSize, fontSize + 4));
-                    }}
-                  />
-                  {selected ? null : (
-                    <>
-                      <MiniButton
-                        glyph="B"
-                        glyphWeight="extrabold"
-                        label={t.bold}
-                        active={config.bold}
-                        onPress={() => {
-                          nudge();
-                          setConfig({ bold: !config.bold });
-                        }}
-                      />
-                      <MiniButton
-                        glyph="I"
-                        glyphItalic
-                        label={t.italic}
-                        active={config.italic}
-                        onPress={() => {
-                          nudge();
-                          setConfig({ italic: !config.italic });
-                        }}
-                      />
-                    </>
-                  )}
-                </Cluster>
-              ) : null}
-
-              {showColor ? (
-                <Cluster last>
-                  {DrawingPalette.map((swatch) => {
-                    const active = config.color.toUpperCase() === swatch.toUpperCase();
-                    return (
-                      <Pressable
-                        key={swatch}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${t.color} ${swatch}`}
-                        accessibilityState={{ selected: active }}
-                        onPress={() => {
-                          nudge();
-                          setConfig({ color: swatch });
-                        }}
-                        style={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: 8,
-                          backgroundColor: swatch,
-                          borderWidth: 2,
-                          borderColor: active ? Colors.accent : 'rgba(255,255,255,0.9)',
-                        }}
-                      />
-                    );
-                  })}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={t.custom}
-                    onPress={() => setPicking(true)}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 5,
-                      height: 26,
-                      paddingHorizontal: 8,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderStyle: 'dashed',
-                      borderColor: Colors.borderDashed,
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: 14,
-                        height: 14,
-                        borderRadius: 4,
-                        backgroundColor: config.color,
-                        borderWidth: 1,
-                        borderColor: Colors.border,
-                      }}
-                    />
-                    <Txt weight="bold" size={10} color="rgba(27,32,48,0.6)">
-                      {t.custom}
-                    </Txt>
-                  </Pressable>
-                </Cluster>
-              ) : null}
+                    </Cluster>
+                  ) : null}
+                </View>
+              )}
             </View>
           </GlassPanel>
         ) : null}
 
-        <GlassPanel level="panel" radius={landscape ? 17 : 20} style={[panelShadow, { maxWidth: '100%' }]}>
+        <GlassPanel
+          level="panel"
+          radius={landscape ? 17 : 20}
+          style={[panelShadow, { maxWidth: '100%' }]}
+        >
           <View
             style={{ gap: landscape ? 3 : 4, padding: landscape ? 5 : 6 }}
             accessibilityRole="toolbar"
-            accessibilityLabel={t.sheetMenu}
+            accessibilityLabel={t.tools}
           >
             {rows.map((row, i) => (
               <View
@@ -348,7 +724,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
 
       <ColorPickerSheet
         open={picking}
-        value={config.color}
+        value={cur.color}
         onClose={() => setPicking(false)}
         onPick={(color) => {
           nudge();
@@ -364,37 +740,45 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   function Swatch() {
     return (
       <>
-        <View style={{ width: 1, height: 24, marginHorizontal: 4, backgroundColor: Colors.border }} />
+        <View
+          style={{
+            width: 1,
+            height: 24,
+            marginHorizontal: 4,
+            backgroundColor: c.border,
+          }}
+        />
         <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t.color}
-              accessibilityState={{ expanded: open }}
-              onPress={() => {
-                nudge();
-                setOpen(!open);
-              }}
-              style={{
-                width: buttonSize,
-                height: buttonSize,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: buttonRadius,
-                borderWidth: 1,
-                borderColor: Colors.border,
-                backgroundColor: 'rgba(255,255,255,0.6)',
-              }}
-            >
-              <View
-                style={{
-                  width: landscape ? 19 : 22,
-                  height: landscape ? 19 : 22,
-                  borderRadius: 7,
-                  backgroundColor: config.color,
-                  borderWidth: 2,
-                  borderColor: '#FFFFFF',
-                }}
-              />
-            </Pressable>
+          accessibilityRole="button"
+          accessibilityLabel={t.color}
+          accessibilityState={{ expanded: open }}
+          onPress={() => {
+            nudge();
+            setOpen(!open);
+          }}
+          onLongPress={() => tip(t.color)}
+          style={{
+            width: buttonSize,
+            height: buttonSize,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: buttonRadius,
+            borderWidth: 1,
+            borderColor: c.border,
+            backgroundColor: c.glassTintSolid,
+          }}
+        >
+          <View
+            style={{
+              width: landscape ? 19 : 22,
+              height: landscape ? 19 : 22,
+              borderRadius: 7,
+              backgroundColor: inkFor(config.color, dark),
+              borderWidth: 2,
+              borderColor: '#FFFFFF',
+            }}
+          />
+        </Pressable>
       </>
     );
   }
@@ -410,10 +794,11 @@ const panelShadow = {
 
 /** One cluster of options, separated from the next by a hairline. */
 function Cluster({ children, last }: { children: React.ReactNode; last?: boolean }) {
+  const c = useColors();
   return (
     <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>{children}</View>
-      {last ? null : <View style={{ width: 1, height: 24, backgroundColor: Colors.border }} />}
+      {last ? null : <View style={{ width: 1, height: 24, backgroundColor: c.border }} />}
     </>
   );
 }
@@ -433,22 +818,24 @@ function ToolButton({
   radius: number;
   onPress: () => void;
 }) {
+  const c = useColors();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected: active }}
       onPress={onPress}
+      onLongPress={() => tip(label)}
       style={{
         width: size,
         height: size,
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: radius,
-        backgroundColor: active ? Colors.accent : 'transparent',
+        backgroundColor: active ? c.accent : 'transparent',
         ...(active
           ? {
-              shadowColor: Colors.accent,
+              shadowColor: c.accent,
               shadowOpacity: 0.3,
               shadowRadius: 12,
               shadowOffset: { width: 0, height: 4 },
@@ -457,8 +844,38 @@ function ToolButton({
           : null),
       }}
     >
-      <Icon name={icon} size={21} color={active ? '#FFFFFF' : Colors.text} />
+      <Icon name={icon} size={21} color={active ? '#FFFFFF' : c.text} />
     </Pressable>
+  );
+}
+
+/** A marker as the strip shows it: on the end of a short line, pointing out of it. */
+function MarkerIcon({ kind, end, color }: { kind: Marker; end: boolean; color: string }) {
+  const c = useColors();
+  const tip = end ? { x: 21, y: 12 } : { x: 3, y: 12 };
+  const parts = markerPaths(kind, tip, end ? 0 : Math.PI, 7);
+  // "None" is greyed: a bare line reads as nothing on purpose, not as a missing icon.
+  const ink = kind !== 'none' ? color : color === '#FFFFFF' ? 'rgba(255,255,255,0.55)' : c.borderStrong;
+  return (
+    <Svg
+      width={22}
+      height={22}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={ink}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <SvgPath d="M3 12H21" />
+      {parts.map((part, i) => (
+        <SvgPath
+          key={i}
+          d={part.d}
+          fill={part.fill === 'solid' ? ink : part.fill === 'hollow' ? '#FFFFFF' : 'none'}
+        />
+      ))}
+    </Svg>
   );
 }
 
@@ -469,34 +886,46 @@ function MiniButton({
   label,
   active,
   onPress,
+  children,
 }: {
-  glyph: string;
+  glyph?: string;
   glyphWeight?: 'bold' | 'extrabold';
   glyphItalic?: boolean;
   label: string;
   active: boolean;
   onPress: () => void;
+  /** Drawn instead of the glyph. */
+  children?: React.ReactNode;
 }) {
+  const c = useColors();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected: active }}
       onPress={onPress}
+      onLongPress={() => tip(label)}
       style={{
-        width: 32,
-        height: 32,
+        width: 36,
+        height: 36,
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 9,
         borderWidth: 1,
-        borderColor: active ? 'transparent' : Colors.borderStrong,
-        backgroundColor: active ? Colors.accent : '#FFFFFF',
+        borderColor: active ? 'transparent' : c.borderStrong,
+        backgroundColor: active ? c.accent : c.surface,
       }}
     >
-      <Txt weight={glyphWeight} italic={glyphItalic} size={13} color={active ? '#FFFFFF' : Colors.text}>
-        {glyph}
-      </Txt>
+      {children ?? (
+        <Txt
+          weight={glyphWeight}
+          italic={glyphItalic}
+          size={13}
+          color={active ? '#FFFFFF' : c.text}
+        >
+          {glyph}
+        </Txt>
+      )}
     </Pressable>
   );
 }
