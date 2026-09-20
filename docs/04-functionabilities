@@ -89,15 +89,20 @@ riel en cinco botones.
 | Lápiz (`pen`) | color, grosor | traza suavizada (Catmull-Rom, `geometry.ts`); se simplifican puntos muy juntos. El suavizado se puede desactivar en ajustes |
 | Grosor | 2 / 5 / 10 / 20 (rango 1–64) | columna de opciones del riel |
 | Color | 8 presets + "Otro" (rejilla tono × luminosidad) | afecta lápiz, figuras, relleno y texto nuevo |
-| Figuras (`shape`) | rectángulo, círculo, **triángulo**, línea, flecha; relleno sí/no | arrastrar de un punto a otro; un toque sin arrastre no crea nada |
+| Cursor (`select`) | — | toca un elemento para seleccionarlo (cualquier tipo); arrastra sobre vacío para seleccionar varios con un recuadro; arrastra la selección para moverla, sus asas para redimensionar; doble toque en un texto o figura abre su editor. Seleccionar abre la tira de opciones, que edita lo seleccionado: color, grosor, relleno, y el **tipo** de figura dentro de su familia (caja ↔ caja, línea ↔ flecha). Los botones de herramienta nunca convierten: sueltan la selección |
+| Figuras (`shape`) | rectángulo, círculo, **triángulo**, línea, flecha; relleno ninguno / suave / medio / sólido | arrastrar de un punto a otro; un toque sin arrastre no crea nada |
+| Líneas y flechas | punta de inicio y de fin (básicas, otras, cardinalidad pata de gallo), trazo recto / curvo / codo, línea continua / discontinua / punteada | un extremo soltado sobre una figura cerrada queda **enlazado** a ella (`fromLink`/`toLink`, punto relativo `u,v` de su caja) y la sigue al moverla; soltarlo sobre el punto central apunta al otro extremo, en otro sitio se ancla ahí |
 | Texto (`text`) | tamaño (10–96), negrita, cursiva, color | tocar el lienzo abre un `TextInput` superpuesto en el sitio y al tamaño finales; vacío = se descarta |
 | Relleno (`fill`) | color | **implementado**: toca una figura cerrada y la tiñe (`fillAt()` → `Op` `update`) |
 | Borrador (`eraser`) | radio | hit-test contra elementos visibles → borrado suave (`deleted: true`) |
 
-Los rellenos son un lavado translúcido del color del trazo (`#RRGGBBAA`, ~18%)
-para que la cuadrícula y lo que haya debajo se sigan leyendo. Por eso
-`LIMITS.colorPattern` acepta ahora un canal alfa opcional, en los tres
-proyectos.
+Los rellenos son el color del trazo con un alfa (`#RRGGBBAA`): suave (~18%,
+la cuadrícula se sigue leyendo), medio (50%) o sólido. Por eso
+`LIMITS.colorPattern` acepta un canal alfa opcional, en los tres proyectos.
+
+Con el cursor y algo seleccionado, la tira ofrece además el orden de pintado
+(enviar al fondo / atrás / adelante / al frente — `Op` `update` de `z`) y
+**agrupar** / desagrupar (`group`): un grupo se selecciona y se mueve entero.
 
 *Aceptación:* cada herramienta produce un elemento serializable que se sincroniza
 como una `Op`; el trazo no se ve "entrecortado" a velocidad normal.
@@ -109,14 +114,19 @@ como una `Op`; el trazo no se ve "entrecortado" a velocidad normal.
   sitio lo confirma.
 * Ampliable después (alineación, fuentes) sin romper el formato de archivo:
   el elemento `text` admite campos nuevos opcionales.
-* *Pendiente v2*: volver a abrir un texto ya creado para editarlo requiere la
-  herramienta de selección.
+* Un texto ya creado se reabre con doble toque del cursor; negrita, cursiva,
+  tamaño y color de la tira se aplican al texto seleccionado.
 
 # Interacción táctil
 
 * **1 dedo** = herramienta activa (dibujar / borrar / colocar texto / rellenar).
+  Con el cursor, un dedo sobre el vacío **mueve el lienzo**: no hace falta
+  cambiar a la mano para mirar alrededor. Mantener pulsado (~300 ms) y
+  arrastrar dibuja el recuadro de selección.
 * **2 dedos** = mover el lienzo (pan).
-* **Pellizco** = zoom (25 %–600 %), manteniendo fijo el punto focal.
+* **Pellizco** = zoom (25 %–600 %), manteniendo fijo el punto focal. **Doble
+  toque** en el vacío acerca ×2 alrededor del dedo; desde 2× vuelve al 100 %.
+  Los botones − / + del chip superior derecho hacen lo mismo por pasos.
 * La cámara (posición/zoom) es **local**: no se sincroniza. El chip de zoom la
   devuelve al origen de un toque, que es la única forma de volver después de un
   desplazamiento largo por un lienzo infinito.
@@ -150,6 +160,12 @@ Qué se sincroniza y qué no:
 # Deshacer / rehacer
 
 * Pila local de ops inversas (`src/features/board/ops.ts` → `invertOps`).
+* Una inversa restaura **solo las claves que el cambio tocó**; una clave que el
+  elemento no tenía se restaura como `null` (JSON descarta `undefined`, y el
+  servidor se quedaría con el valor que el undo quitó), y `applyOps` borra la
+  clave al recibir `null`. Al mover una figura, la flecha enlazada solo recibe
+  el extremo que sigue a esa figura: así el undo no rebobina el otro extremo,
+  que quizá movió otra persona.
 * En modo colaborativo el undo es **local y de mejor esfuerzo**: si otro usuario
   tocó el mismo elemento, el resultado puede no ser el esperado. Coordinación
   global de undo → *pendiente*, requiere apoyo del backend.
@@ -214,7 +230,6 @@ pizarra y la quita de recientes; la pizarra sigue existiendo para los demás.
 * Qué pasa si el servidor se reinicia antes de persistir (ver
   `docs/06-loading-exporting`, propuesta de flush periódico).
 * `DELETE /boards/:id` en el backend.
-* Herramienta de selección/transformación (mover y redimensionar).
 * Undo colaborativo coordinado.
 * Más opciones de formato de texto (alineación, fuentes).
 * Paridad de la web con las novedades de móvil (relleno, triángulo, idioma).
