@@ -49,7 +49,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "check:socket": "node --import ../server/node_modules/tsx/dist/loader.mjs --import ./test/expo-stub.mjs test/socket-lifecycle.mjs"
   },
   "private": true
 }
