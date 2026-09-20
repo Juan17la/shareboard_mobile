@@ -27,7 +27,29 @@ export type ShapeKind = 'rectangle' | 'ellipse' | 'triangle' | 'line' | 'arrow';
  * `ToolConfig.shape`, though the toolbar shows one button per kind so any of
  * them is a single tap away. `hand` only moves the camera.
  */
-export type ToolType = 'hand' | 'pen' | 'eraser' | 'shape' | 'text' | 'fill';
+export type ToolType = 'hand' | 'select' | 'pen' | 'eraser' | 'shape' | 'text' | 'fill';
+
+/** What a line or arrow ends in. Grouped as the toolbar shows them. */
+export const MARKERS = {
+  default: ['none', 'arrow', 'triangle', 'triangle-outline'],
+  other: ['circle', 'circle-outline', 'circle-half', 'diamond', 'diamond-outline', 'bar'],
+  cardinality: ['one', 'many', 'zero-one', 'zero-many', 'one-many'],
+} as const;
+export type Marker = (typeof MARKERS)[keyof typeof MARKERS][number];
+export const ALL_MARKERS: Marker[] = [...MARKERS.default, ...MARKERS.other, ...MARKERS.cardinality];
+
+/** How a line gets from `from` to `to`: sharp, curved, or elbowed. */
+export const ROUTES = ['straight', 'curved', 'elbow'] as const;
+export type Route = (typeof ROUTES)[number];
+export const DASHES = ['solid', 'dashed', 'dotted'] as const;
+export type Dash = (typeof DASHES)[number];
+
+/** A line end bound to a shape: the point is (u, v) ∈ [0,1]² of that shape's box. */
+export interface Link {
+  id: ElementId;
+  u: number;
+  v: number;
+}
 
 /** Shape kinds that enclose an area, and so can carry a fill. */
 export const FILLABLE_SHAPES: ShapeKind[] = ['rectangle', 'ellipse', 'triangle'];
@@ -51,6 +73,8 @@ export interface ElementBase {
   updatedAt: number;
   z: number;
   deleted?: boolean;
+  /** Elements sharing a group id select and move as one. */
+  group?: string | null;
 }
 
 export interface StrokeElement extends ElementBase {
@@ -73,6 +97,14 @@ export interface ShapeElement extends ElementBase {
   text?: string;
   /** Label size; `SHAPE_TEXT_SIZE` when absent. */
   fontSize?: number;
+  // Lines and arrows only. Absent: no start marker, an `arrow` head on an arrow.
+  headStart?: Marker;
+  headEnd?: Marker;
+  route?: Route;
+  dash?: Dash;
+  /** Ends bound to a shape follow it when it moves. Null: unbound. */
+  fromLink?: Link | null;
+  toLink?: Link | null;
 }
 
 export interface TextElement extends ElementBase {

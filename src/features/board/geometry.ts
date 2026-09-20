@@ -10,7 +10,7 @@
  * to the cubic Beziers SVG understands), which is what keeps freehand lines
  * smooth: the "minimizar líneas entrecortadas" requirement in docs/01.
  */
-import type { BoardElement, Point, ShapeElement } from './model';
+import type { BoardElement, Dash, Link, Marker, Point, Route, ShapeElement } from './model';
 
 export interface Bounds {
   x: number;
@@ -58,7 +58,8 @@ export function strokeToSvgPath(flat: number[], smooth = true): string {
 
   if (!smooth) {
     return p.reduce(
-      (d, point, i) => (i === 0 ? `M ${n(point.x)} ${n(point.y)}` : `${d} L ${n(point.x)} ${n(point.y)}`),
+      (d, point, i) =>
+        i === 0 ? `M ${n(point.x)} ${n(point.y)}` : `${d} L ${n(point.x)} ${n(point.y)}`,
       '',
     );
   }
@@ -146,7 +147,12 @@ export const isLineLike = (el: ShapeElement): boolean =>
 export function shapeBounds(el: Pick<ShapeElement, 'from' | 'to'>): Bounds {
   const x = Math.min(el.from.x, el.to.x);
   const y = Math.min(el.from.y, el.to.y);
-  return { x, y, width: Math.abs(el.to.x - el.from.x), height: Math.abs(el.to.y - el.from.y) };
+  return {
+    x,
+    y,
+    width: Math.abs(el.to.x - el.from.x),
+    height: Math.abs(el.to.y - el.from.y),
+  };
 }
 
 /** Handle positions, in board coordinates: TL, TR, BR, BL — or from, to. */
@@ -162,71 +168,183 @@ export function shapeHandles(el: ShapeElement): Point[] {
 }
 
 /** The shape's `from`/`to` after handle `h` is dragged to `p`. */
-export function resizeShape(el: ShapeElement, h: number, p: Point): Pick<ShapeElement, 'from' | 'to'> {
+export function resizeShape(
+  el: ShapeElement,
+  h: number,
+  p: Point,
+): Pick<ShapeElement, 'from' | 'to'> {
   if (isLineLike(el)) return h === 0 ? { from: p, to: el.to } : { from: el.from, to: p };
   // Box shapes are drawn from their normalised bounds, so any corner order works.
   return { from: shapeHandles(el)[(h + 2) % 4], to: p };
 }
 
-// --- connection points -----------------------------------------------------
-// Every enclosed shape offers the midpoint of each side of its box as a place a
-// line or an arrow can start or end. Snapping is by proximity at draw time
-// only: the arrow is not bound to the shape, so moving one leaves the other.
+// --- any element ---------------------------------------------------------
+// The cursor tool works on every kind, so these are the kind-agnostic
+// versions of the shape helpers above.
 
-/** Anchor points of an enclosed shape, in board coordinates: top, right, bottom, left. */
-export function anchorsOf(el: ShapeElement): Point[] {
-  if (isLineLike(el)) return [];
-  const b = shapeBounds(el);
+export function elementBounds(el: BoardElement): Bounds {
+  return contentBounds([el]) ?? { x: 0, y: 0, width: 0, height: 0 };
+}
+
+/** The patch that moves `el` by (dx, dy). */
+export function translate(el: BoardElement, dx: number, dy: number): Partial<BoardElement> {
+  switch (el.kind) {
+    case 'stroke':
+      return { points: el.points.map((v, i) => v + (i % 2 ? dy : dx)) };
+    case 'shape':
+      return {
+        from: { x: el.from.x + dx, y: el.from.y + dy },
+        to: { x: el.to.x + dx, y: el.to.y + dy },
+      };
+    default:
+      return { at: { x: el.at.x + dx, y: el.at.y + dy } };
+  }
+}
+
+/** Resize handles of any element: corners for a box or an image, ends for a line, none otherwise. */
+export function handlesOf(el: BoardElement): Point[] {
+  if (el.kind === 'shape') return shapeHandles(el);
+  if (el.kind !== 'image') return [];
+  const { at, width, height } = el;
   return [
-    { x: b.x + b.width / 2, y: b.y },
-    { x: b.x + b.width, y: b.y + b.height / 2 },
-    { x: b.x + b.width / 2, y: b.y + b.height },
-    { x: b.x, y: b.y + b.height / 2 },
+    at,
+    { x: at.x + width, y: at.y },
+    { x: at.x + width, y: at.y + height },
+    { x: at.x, y: at.y + height },
   ];
 }
 
+/** `el` after handle `h` is dragged to `p`, as a patch. */
+export function resizeElement(el: BoardElement, h: number, p: Point): Partial<BoardElement> {
+  if (el.kind === 'shape') return resizeShape(el, h, p);
+  if (el.kind !== 'image') return {};
+  const o = handlesOf(el)[(h + 2) % 4];
+  return {
+    at: { x: Math.min(o.x, p.x), y: Math.min(o.y, p.y) },
+    width: Math.max(8, Math.abs(p.x - o.x)),
+    height: Math.max(8, Math.abs(p.y - o.y)),
+  };
+}
+
+/** Elements whose box lies entirely inside `b` — the marquee's pick. */
+export function elementsIn(elements: BoardElement[], b: Bounds): BoardElement[] {
+  return elements.filter((el) => {
+    const e = elementBounds(el);
+    return (
+      e.x >= b.x && e.y >= b.y && e.x + e.width <= b.x + b.width && e.y + e.height <= b.y + b.height
+    );
+  });
+}
+
+// --- connection points -----------------------------------------------------
+// A line's end dropped on an enclosed shape binds to it: the point is kept as
+// a fraction (u, v) of the shape's box, so it is anywhere on the outline the
+// user chose and follows the shape when it moves or resizes (`followLinks`).
+// The one dot shown on a shape is its centre: dropping there aims at the other
+// end instead of pinning a spot.
+
+/** The connection hint of an enclosed shape: its centre. */
+export function anchorsOf(el: ShapeElement): Point[] {
+  if (isLineLike(el)) return [];
+  const b = shapeBounds(el);
+  return [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }];
+}
+
+/** Where a link lands on its shape's current box. */
+export function linkPoint(el: Pick<ShapeElement, 'from' | 'to'>, link: Link): Point {
+  const b = shapeBounds(el);
+  return { x: b.x + link.u * b.width, y: b.y + link.v * b.height };
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/** The point of the box outline nearest to `p`. */
+function edgePoint(p: Point, b: Bounds): Point {
+  const x = clamp(p.x, b.x, b.x + b.width);
+  const y = clamp(p.y, b.y, b.y + b.height);
+  const d = [x - b.x, b.x + b.width - x, y - b.y, b.y + b.height - y];
+  const i = d.indexOf(Math.min(...d));
+  if (i === 0) return { x: b.x, y };
+  if (i === 1) return { x: b.x + b.width, y };
+  if (i === 2) return { x, y: b.y };
+  return { x, y: b.y + b.height };
+}
+
+/** Where the ray from the box centre towards `target` leaves the box. */
+function rayToBox(target: Point, b: Bounds): Point {
+  const c = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  const dx = target.x - c.x;
+  const dy = target.y - c.y;
+  if (!dx && !dy) return edgePoint(c, b);
+  const t = Math.min(
+    dx ? b.width / 2 / Math.abs(dx) : Infinity,
+    dy ? b.height / 2 / Math.abs(dy) : Infinity,
+  );
+  return { x: c.x + dx * t, y: c.y + dy * t };
+}
+
 /**
- * Where the two ends of a line land. An end inside (or within `radius` of) an
- * enclosed shape goes to that shape's anchor facing the other end — so an
- * arrow dragged from somewhere in box A to somewhere in box B links the two
- * without aiming at a dot, and the start slides round A as the end moves.
- * An end near nobody snaps to the nearest anchor within `radius`, or stays.
+ * Where the two ends of a line land, and what they bind to. An end within
+ * `radius` of an enclosed shape binds: near the centre dot it faces the other
+ * end (so an arrow dragged from box A to box B links the two without aiming),
+ * elsewhere it pins the nearest point of the outline.
  */
 export function linkEndpoints(
   elements: BoardElement[],
   from: Point,
   to: Point,
   radius: number,
-): { from: Point; to: Point } {
-  const nearest = (anchors: Point[], target: Point, limit: number): Point | null => {
-    let best: Point | null = null;
-    let bestD = limit;
-    for (const a of anchors) {
-      const d = (a.x - target.x) ** 2 + (a.y - target.y) ** 2;
-      if (d < bestD) {
-        bestD = d;
-        best = a;
-      }
-    }
-    return best;
-  };
+): { from: Point; to: Point; fromLink: Link | null; toLink: Link | null } {
   const enclosed = elements.filter((el) => el.kind === 'shape' && !isLineLike(el));
-  const all = enclosed.flatMap((el) => anchorsOf(el as ShapeElement));
-  const centre = (el: ShapeElement) => {
+  const centre = (el: ShapeElement) => anchorsOf(el)[0];
+  const bind = (el: ShapeElement | null, p: Point, other: Point) => {
+    if (!el) return { p, link: null };
     const b = shapeBounds(el);
-    return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    const c = centre(el);
+    const at = Math.hypot(p.x - c.x, p.y - c.y) <= radius ? rayToBox(other, b) : edgePoint(p, b);
+    return {
+      p: at,
+      link: {
+        id: el.id,
+        u: b.width ? (at.x - b.x) / b.width : 0.5,
+        v: b.height ? (at.y - b.y) / b.height : 0.5,
+      },
+    };
   };
   const a = shapeAt(enclosed, from, radius);
   const b = shapeAt(enclosed, to, radius);
-  // Face the other shape's centre when both ends are bound: the anchors then
-  // stay put while the pointer wanders inside the box.
-  const from2 = a
-    ? nearest(anchorsOf(a), b && b !== a ? centre(b) : to, Infinity)!
-    : (nearest(all, from, radius * radius) ?? from);
-  const to2 = b
-    ? nearest(anchorsOf(b), a && a !== b ? centre(a) : from2, Infinity)!
-    : (nearest(all, to, radius * radius) ?? to);
-  return { from: from2, to: to2 };
+  // Both ends bound: face the other shape's centre, so the ends stay put while
+  // the finger wanders inside its box.
+  const f = bind(a, from, b && b !== a ? centre(b) : to);
+  const t = bind(b, to, a && a !== b ? centre(a) : f.p);
+  return { from: f.p, to: t.p, fromLink: f.link, toLink: t.link };
+}
+
+/**
+ * The endpoint patches of every line bound to a shape in `moved`, computed
+ * from the shapes as they are in `elements`. A link to a shape that is gone
+ * simply does nothing — no cleanup needed.
+ */
+export function followLinks(
+  elements: BoardElement[],
+  moved: Iterable<string>,
+): { id: string; from?: Point; to?: Point }[] {
+  const ids = new Set(moved);
+  const byId = new Map(elements.map((el) => [el.id, el] as const));
+  const out: { id: string; from?: Point; to?: Point }[] = [];
+  for (const el of elements) {
+    if (el.kind !== 'shape' || !isLineLike(el)) continue;
+    // Only the end that is bound to a moved shape changes: patching the other
+    // one too would make an undo rewind wherever a collaborator had put it.
+    const end = (link: Link | null | undefined) => {
+      const target = link && ids.has(link.id) ? byId.get(link.id) : undefined;
+      return target?.kind === 'shape' ? linkPoint(target, link!) : undefined;
+    };
+    const from = end(el.fromLink);
+    const to = end(el.toLink);
+    if (from || to) out.push({ id: el.id, ...(from && { from }), ...(to && { to }) });
+  }
+  return out;
 }
 
 /** The topmost shape whose box (padded by `pad` board units) contains `at`. */
@@ -245,4 +363,157 @@ export function shapeAt(elements: BoardElement[], at: Point, pad: number): Shape
     }
   }
   return null;
+}
+
+// --- routes, dashes and markers ----------------------------------------------
+// Everything a line is made of, as SVG path strings: Skia draws a string as-is
+// (`<Path path=...>`) and so does react-native-svg, so the toolbar's option
+// icons are drawn by the very same generators as the board.
+
+/** The bend of a curved route: a quarter of the length, to the left. */
+function control(from: Point, to: Point): Point {
+  return {
+    x: (from.x + to.x) / 2 - (to.y - from.y) / 4,
+    y: (from.y + to.y) / 2 + (to.x - from.x) / 4,
+  };
+}
+
+/** Elbow: two right angles, the long axis first. */
+function elbow(from: Point, to: Point): Point[] {
+  const horizontal = Math.abs(to.x - from.x) >= Math.abs(to.y - from.y);
+  const mx = (from.x + to.x) / 2;
+  const my = (from.y + to.y) / 2;
+  return horizontal
+    ? [from, { x: mx, y: from.y }, { x: mx, y: to.y }, to]
+    : [from, { x: from.x, y: my }, { x: to.x, y: my }, to];
+}
+
+export function routePath(from: Point, to: Point, route: Route = 'straight'): string {
+  if (route === 'curved') {
+    const c = control(from, to);
+    return `M ${n(from.x)} ${n(from.y)} Q ${n(c.x)} ${n(c.y)} ${n(to.x)} ${n(to.y)}`;
+  }
+  const pts = route === 'elbow' ? elbow(from, to) : [from, to];
+  return pts.map((p, i) => `${i ? 'L' : 'M'} ${n(p.x)} ${n(p.y)}`).join(' ');
+}
+
+/** The outward direction at each end, for the markers. */
+export function endAngles(
+  from: Point,
+  to: Point,
+  route: Route = 'straight',
+): { start: number; end: number } {
+  const angle = (a: Point, b: Point) => Math.atan2(b.y - a.y, b.x - a.x);
+  if (route === 'curved') {
+    const c = control(from, to);
+    return { start: angle(c, from), end: angle(c, to) };
+  }
+  const pts = route === 'elbow' ? elbow(from, to) : [from, to];
+  const inner = (a: Point, b: Point) => (a.x === b.x && a.y === b.y ? null : b);
+  // A zero-length elbow segment has no direction; fall back to the chord.
+  const s = inner(from, pts[1]) ?? to;
+  const e = inner(to, pts[pts.length - 2]) ?? from;
+  return { start: angle(s, from), end: angle(e, to) };
+}
+
+/** Dash intervals for a stroke of `width`; null for solid. */
+export function dashIntervals(dash: Dash | undefined, width: number): number[] | null {
+  if (dash === 'dashed') return [width * 3, width * 2];
+  // A hair-length dash with round caps paints as a dot.
+  if (dash === 'dotted') return [0.1, width * 2];
+  return null;
+}
+
+export interface MarkerPart {
+  d: string;
+  /** solid: the stroke colour; hollow: white, so the line does not show through; none: outline only. */
+  fill: 'solid' | 'hollow' | 'none';
+}
+
+/** The default heads of a line kind when the element does not say. */
+export function headsOf(
+  el: Pick<ShapeElement, 'shape' | 'headStart' | 'headEnd'>,
+): [Marker, Marker] {
+  return [el.headStart ?? 'none', el.headEnd ?? (el.shape === 'arrow' ? 'arrow' : 'none')];
+}
+
+/**
+ * A marker at `tip`, pointing along `angle` (radians, outward), `size` long.
+ * Cardinality markers are the crow's-foot set: the bar and the crow sit at the
+ * tip, the "zero" circle one step further back.
+ */
+export function markerPaths(kind: Marker, tip: Point, angle: number, size: number): MarkerPart[] {
+  const ux = Math.cos(angle);
+  const uy = Math.sin(angle);
+  // Points along the line (`back` from the tip) and across it (`side`).
+  const at = (back: number, side: number): Point => ({
+    x: tip.x - ux * back - uy * side,
+    y: tip.y - uy * back + ux * side,
+  });
+  const P = (p: Point) => `${n(p.x)} ${n(p.y)}`;
+  const poly = (...pts: Point[]) => `M ${pts.map(P).join(' L ')} Z`;
+  const circle = (back: number) => {
+    const r = size / 2;
+    const l = at(back + r, 0);
+    const rr = at(back - r, 0);
+    return `M ${P(l)} A ${n(r)} ${n(r)} 0 1 0 ${P(rr)} A ${n(r)} ${n(r)} 0 1 0 ${P(l)}`;
+  };
+  const bar = (back: number) => `M ${P(at(back, -size / 2))} L ${P(at(back, size / 2))}`;
+  const crow = () =>
+    `M ${P(at(size, 0))} L ${P(at(0, -size / 2))} M ${P(at(size, 0))} L ${P(tip)} M ${P(at(size, 0))} L ${P(at(0, size / 2))}`;
+  const triangle = poly(tip, at(size, -size / 2), at(size, size / 2));
+  const diamond = poly(tip, at(size / 2, -size * 0.4), at(size, 0), at(size / 2, size * 0.4));
+
+  switch (kind) {
+    case 'none':
+      return [];
+    case 'arrow':
+      return [
+        {
+          d: `M ${P(at(size, -size / 2))} L ${P(tip)} L ${P(at(size, size / 2))}`,
+          fill: 'none',
+        },
+      ];
+    case 'triangle':
+      return [{ d: triangle, fill: 'solid' }];
+    case 'triangle-outline':
+      return [{ d: triangle, fill: 'hollow' }];
+    case 'circle':
+      return [{ d: circle(size / 2), fill: 'solid' }];
+    case 'circle-outline':
+      return [{ d: circle(size / 2), fill: 'hollow' }];
+    case 'circle-half': {
+      const r = size / 2;
+      const half = `M ${P(at(r, -r))} A ${n(r)} ${n(r)} 0 0 1 ${P(at(r, r))} Z`;
+      return [
+        { d: circle(r), fill: 'hollow' },
+        { d: half, fill: 'solid' },
+      ];
+    }
+    case 'diamond':
+      return [{ d: diamond, fill: 'solid' }];
+    case 'diamond-outline':
+      return [{ d: diamond, fill: 'hollow' }];
+    case 'bar':
+      return [{ d: bar(0), fill: 'none' }];
+    case 'one':
+      return [{ d: bar(size / 2), fill: 'none' }];
+    case 'many':
+      return [{ d: crow(), fill: 'none' }];
+    case 'zero-one':
+      return [
+        { d: bar(size / 2), fill: 'none' },
+        { d: circle(size * 1.5), fill: 'hollow' },
+      ];
+    case 'zero-many':
+      return [
+        { d: crow(), fill: 'none' },
+        { d: circle(size * 1.5), fill: 'hollow' },
+      ];
+    case 'one-many':
+      return [
+        { d: crow(), fill: 'none' },
+        { d: bar(size), fill: 'none' },
+      ];
+  }
 }
