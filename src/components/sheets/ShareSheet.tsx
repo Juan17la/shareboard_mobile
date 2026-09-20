@@ -9,7 +9,8 @@
 import * as Clipboard from 'expo-clipboard';
 import { Pressable, View } from 'react-native';
 
-import { Colors, Radius } from '@/constants/theme';
+import { Radius } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 import { useBoardStore } from '@/features/board/store';
 
@@ -33,6 +34,7 @@ export function ShareSheet({
   onOpenExport: () => void;
   onOpenPrivacy: () => void;
 }) {
+  const c = useColors();
   const t = useT();
   const meta = useBoardStore((s) => s.meta);
   const code = meta?.shortCode ?? '';
@@ -45,7 +47,7 @@ export function ShareSheet({
   return (
     <Sheet open={open} title={t.sheetShare} onClose={onClose} closeLabel={t.close}>
       <View style={{ gap: 13 }}>
-        <GlassPanel level="row" radius={18} border={Colors.border}>
+        <GlassPanel level="row" radius={18} border={c.border}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 15 }}>
             <QRCode value={link} size={96} />
             <View style={{ flex: 1, minWidth: 0, gap: 7 }}>
@@ -63,14 +65,14 @@ export function ShareSheet({
                   paddingVertical: 9,
                   borderRadius: 13,
                   borderWidth: 1,
-                  borderColor: Colors.borderStrong,
-                  backgroundColor: '#FFFFFF',
+                  borderColor: c.borderStrong,
+                  backgroundColor: c.surface,
                 }}
               >
                 <Txt weight="bold" size={16} mono tracking={1.4}>
                   {code}
                 </Txt>
-                <Icon name="copy" size={15} color={Colors.text} />
+                <Icon name="copy" size={15} color={c.text} />
               </Pressable>
               <Txt size={11} leading={1.35} tone="secondary">
                 {t.qrHint}
@@ -79,14 +81,14 @@ export function ShareSheet({
           </View>
         </GlassPanel>
 
-        <GlassPanel level="row" radius={Radius.lg} border={Colors.border}>
+        <GlassPanel level="row" radius={Radius.lg} border={c.border}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t.copyLink}
             onPress={() => copy(link, t.toastLink)}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 }}
           >
-            <Icon name="link" size={18} color={Colors.text} />
+            <Icon name="link" size={18} color={c.text} />
             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
               <Txt weight="bold" size={13.5} leading={1.2}>
                 {t.copyLink}
@@ -116,16 +118,17 @@ function ShortcutTile({
   label: string;
   onPress: () => void;
 }) {
+  const c = useColors();
   return (
     <View style={{ flex: 1 }}>
-      <GlassPanel level="row" radius={Radius.lg} border={Colors.border}>
+      <GlassPanel level="row" radius={Radius.lg} border={c.border}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={label}
           onPress={onPress}
           style={{ alignItems: 'center', gap: 6, paddingVertical: 14, paddingHorizontal: 8 }}
         >
-          <Icon name={icon} size={20} color={Colors.text} />
+          <Icon name={icon} size={20} color={c.text} />
           <Txt weight="bold" size={11.5}>
             {label}
           </Txt>

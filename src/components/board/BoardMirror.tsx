@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState, type ReactNode, type RefObject } from
 import { Platform, useWindowDimensions } from 'react-native';
 
 import { useBoardStore } from '@/features/board/store';
+import { useColors } from '@/features/session/store';
 
 import type { SceneSize } from '../ui/Glass';
 
@@ -93,17 +94,18 @@ export function useBoardMirror(canvasRef: RefObject<CanvasRef | null>) {
   // unmount.
   useEffect(() => () => image?.dispose(), [image]);
 
+  const c = useColors();
   return useCallback(
     (size: SceneSize): ReactNode => (
       <>
-        {/* The canvas surface is transparent where nothing is drawn; the white
+        {/* The canvas surface is transparent where nothing is drawn; the ground
             comes from the view behind it, so paint it here too. */}
-        <Rect x={0} y={0} width={size.width} height={size.height} color="#FFFFFF" />
+        <Rect x={0} y={0} width={size.width} height={size.height} color={c.background} />
         {image ? (
           <Image image={image} x={0} y={0} width={size.width} height={size.height} fit="fill" />
         ) : null}
       </>
     ),
-    [image],
+    [image, c.background],
   );
 }

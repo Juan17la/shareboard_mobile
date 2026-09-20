@@ -7,7 +7,8 @@
  */
 import { Pressable, View } from 'react-native';
 
-import { Colors, Shadow } from '@/constants/theme';
+import { Shadow } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 import { useBoardStore } from '@/features/board/store';
 import { useT } from '@/features/i18n/store';
 
@@ -15,11 +16,12 @@ import { Icon } from '../ui/Icon';
 import { Txt } from '../ui/Text';
 
 export function ConnectionBanner({ top, onRetry }: { top: number; onRetry: () => void }) {
+  const c = useColors();
   const t = useT();
   const connection = useBoardStore((s) => s.connection);
   if (connection === 'online' || connection === 'idle') return null;
   const offline = connection === 'offline';
-  const color = offline ? Colors.danger : Colors.textSecondary;
+  const color = offline ? c.danger : c.textSecondary;
 
   return (
     <View
@@ -36,8 +38,8 @@ export function ConnectionBanner({ top, onRetry }: { top: number; onRetry: () =>
           paddingHorizontal: 14,
           borderRadius: 999,
           borderWidth: 1,
-          borderColor: offline ? 'rgba(196,53,58,0.25)' : Colors.border,
-          backgroundColor: offline ? 'rgba(255,241,241,0.96)' : 'rgba(255,255,255,0.92)',
+          borderColor: offline ? 'rgba(196,53,58,0.25)' : c.border,
+          backgroundColor: c.glassFlat,
           ...Shadow.panel,
         }}
       >
@@ -53,7 +55,7 @@ export function ConnectionBanner({ top, onRetry }: { top: number; onRetry: () =>
               paddingVertical: 5,
               paddingHorizontal: 12,
               borderRadius: 999,
-              backgroundColor: Colors.danger,
+              backgroundColor: c.danger,
             }}
           >
             <Txt weight="extrabold" size={12} tone="inverse">

@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import { Animated, Pressable } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 
 export function Toggle({
   value,
@@ -21,6 +21,7 @@ export function Toggle({
   label: string;
   disabled?: boolean;
 }) {
+  const c = useColors();
   // A lazily-initialised piece of state rather than a ref: the value is read
   // during render (it is interpolated into styles), which is exactly what a ref
   // is not for. `useState` with an initialiser creates it once all the same.
@@ -53,7 +54,7 @@ export function Toggle({
           borderRadius: 99,
           backgroundColor: progress.interpolate({
             inputRange: [0, 1],
-            outputRange: ['rgba(27,32,48,0.16)', Colors.accent],
+            outputRange: [c.borderStrong, c.accent],
           }),
         }}
       >

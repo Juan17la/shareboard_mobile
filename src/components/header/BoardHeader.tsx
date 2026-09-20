@@ -21,7 +21,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Defs, LinearGradient, Rect, Stop, Svg } from 'react-native-svg';
 
-import { Colors, Radius, StatusColors } from '@/constants/theme';
+import { Radius, StatusColors } from '@/constants/theme';
+import { useColors, useDark, useSessionStore } from '@/features/session/store';
 import { useT, useTf } from '@/features/i18n/store';
 import { useBoardStore } from '@/features/board/store';
 
@@ -30,6 +31,7 @@ import { Avatar, AvatarOverflow } from '../ui/Avatar';
 import { GlassBlur } from '../ui/Glass';
 import { Icon } from '../ui/Icon';
 import { Txt } from '../ui/Text';
+import { tip } from '../ui/Toast';
 
 /** A slow breathing dot — the design's "someone is actually here" signal. */
 function PresenceDot({ color, animated }: { color: string; animated: boolean }) {
@@ -93,6 +95,9 @@ export function BoardHeader({
   onOpenPrivacy: () => void;
   onOpenShare: () => void;
 }) {
+  const c = useColors();
+  const dark = useDark();
+  const toggleTheme = useSessionStore((s) => s.toggleTheme);
   const insets = useSafeAreaInsets();
   const t = useT();
   const tf = useTf();
@@ -136,8 +141,8 @@ export function BoardHeader({
     paddingHorizontal: 10,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: 'rgba(255,255,255,0.62)',
+    borderColor: c.border,
+    backgroundColor: c.glassTintSolid,
   } as const;
 
   // Everything you can *do* with the board, as one strip: the menu, the code
@@ -146,32 +151,40 @@ export function BoardHeader({
   const actions = (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
       <IconButton icon="more" label={t.boardMenu} onPress={onOpenMenu} size={30} iconSize={17} />
+      <IconButton
+        icon={dark ? 'sun' : 'moon'}
+        label={dark ? t.themeLight : t.themeDark}
+        onPress={toggleTheme}
+        size={30}
+        iconSize={16}
+      />
 
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${t.code} ${meta?.shortCode ?? ''}`}
         onPress={onCopyCode}
+        onLongPress={() => tip(t.code)}
         disabled={!meta}
         style={[
           chip,
           {
             gap: 6,
-            borderColor: codeCopied ? 'transparent' : Colors.border,
-            backgroundColor: codeCopied ? 'rgba(15,158,142,0.14)' : 'rgba(255,255,255,0.7)',
+            borderColor: codeCopied ? 'transparent' : c.border,
+            backgroundColor: codeCopied ? 'rgba(15,158,142,0.14)' : c.glassTintSolid,
           },
         ]}
       >
         <Icon
           name={codeCopied ? 'check' : 'copy'}
           size={14}
-          color={codeCopied ? '#0B7F72' : Colors.text}
+          color={codeCopied ? '#0B7F72' : c.text}
         />
         <Txt
           weight="bold"
           size={12.5}
           mono
           tracking={0.6}
-          color={codeCopied ? '#0B7F72' : Colors.text}
+          color={codeCopied ? '#0B7F72' : c.text}
         >
           {meta?.shortCode ?? '——————'}
         </Txt>
@@ -181,9 +194,10 @@ export function BoardHeader({
         accessibilityRole="button"
         accessibilityLabel={t.privacyShort}
         onPress={onOpenPrivacy}
+        onLongPress={() => tip(t.privacyShort)}
         style={[chip, { gap: 5 }]}
       >
-        <Icon name={isPrivate ? 'lock' : 'lock-open'} size={14} color={Colors.text} />
+        <Icon name={isPrivate ? 'lock' : 'lock-open'} size={14} color={c.text} />
         <Txt weight="bold" size={11.5}>
           {t.privacyShort}
         </Txt>
@@ -193,14 +207,15 @@ export function BoardHeader({
         accessibilityRole="button"
         accessibilityLabel={t.share}
         onPress={onOpenShare}
+        onLongPress={() => tip(t.share)}
         style={[
           chip,
           {
             gap: 6,
             paddingHorizontal: 12,
             borderColor: 'transparent',
-            backgroundColor: Colors.accent,
-            shadowColor: Colors.accent,
+            backgroundColor: c.accent,
+            shadowColor: c.accent,
             shadowOpacity: 0.28,
             shadowRadius: 12,
             shadowOffset: { width: 0, height: 4 },
@@ -268,6 +283,7 @@ export function BoardHeader({
           accessibilityRole="button"
           accessibilityLabel={t.connectedPeople}
           onPress={onOpenPeople}
+          onLongPress={() => tip(participants.map((p) => p.nickname).join(', ') || t.connectedPeople)}
           style={{
             flexDirection: 'row',
             alignItems: 'center',
@@ -275,13 +291,13 @@ export function BoardHeader({
             padding: 3,
             borderRadius: Radius.pill,
             borderWidth: 1,
-            borderColor: Colors.border,
-            backgroundColor: 'rgba(255,255,255,0.62)',
+            borderColor: c.border,
+            backgroundColor: c.glassTintSolid,
           }}
         >
           {shown.length === 0 ? (
             <View style={{ width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="people" size={18} color={Colors.textSecondary} />
+              <Icon name="people" size={18} color={c.textSecondary} />
             </View>
           ) : (
             shown.map((p, i) => (
@@ -324,6 +340,7 @@ export function BoardHeader({
 export function HeaderScrim({ height }: { height: number }) {
   // The window width is only the first-frame guess until `onLayout` reports.
   const window = useWindowDimensions();
+  const c = useColors();
   const [measured, setMeasured] = useState<number | null>(null);
   const width = measured ?? window.width;
 
@@ -342,9 +359,9 @@ export function HeaderScrim({ height }: { height: number }) {
       <Svg width={width} height={height}>
         <Defs>
           <LinearGradient id="headerFade" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.92} />
-            <Stop offset="0.62" stopColor="#FFFFFF" stopOpacity={0.72} />
-            <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
+            <Stop offset="0" stopColor={c.background} stopOpacity={0.92} />
+            <Stop offset="0.62" stopColor={c.background} stopOpacity={0.72} />
+            <Stop offset="1" stopColor={c.background} stopOpacity={0} />
           </LinearGradient>
         </Defs>
         <Rect x={0} y={0} width={width} height={height} fill="url(#headerFade)" />

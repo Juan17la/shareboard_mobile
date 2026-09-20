@@ -13,7 +13,8 @@
  */
 import { Pressable, View } from 'react-native';
 
-import { Colors, Radius } from '@/constants/theme';
+import { Radius } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 import type { EditPolicy } from '@/features/board/model';
 import { generatePin, useBoardPermissions } from '@/features/board/use-permissions';
@@ -34,6 +35,7 @@ export function PrivacySheet({
   onClose: () => void;
   onOpenPeople: () => void;
 }) {
+  const c = useColors();
   const t = useT();
   const meta = useBoardStore((s) => s.meta);
   const { isCreator, busy, knownPin, apply } = useBoardPermissions();
@@ -76,9 +78,9 @@ export function PrivacySheet({
         </View>
 
         {isPrivate ? (
-          <GlassPanel level="row" radius={Radius.lg} border={Colors.border}>
+          <GlassPanel level="row" radius={Radius.lg} border={c.border}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13 }}>
-              <Icon name="lock" size={18} color={Colors.text} />
+              <Icon name="lock" size={18} color={c.text} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Txt weight="bold" size={13} leading={1.2}>
                   {t.pinLabel}
@@ -103,8 +105,8 @@ export function PrivacySheet({
                     paddingVertical: 7,
                     borderRadius: 11,
                     borderWidth: 1,
-                    borderColor: Colors.borderStrong,
-                    backgroundColor: '#FFFFFF',
+                    borderColor: c.borderStrong,
+                    backgroundColor: c.surface,
                   }}
                 >
                   <Txt weight="extrabold" size={10.5} tone="secondary">
@@ -136,8 +138,8 @@ export function PrivacySheet({
                   paddingVertical: 12,
                   borderRadius: 15,
                   borderWidth: 1,
-                  borderColor: active ? Colors.accent : Colors.border,
-                  backgroundColor: active ? Colors.accentSofter : 'rgba(255,255,255,0.7)',
+                  borderColor: active ? c.accent : c.border,
+                  backgroundColor: active ? c.accentSofter : c.glassTintSolid,
                   opacity: isCreator ? 1 : 0.75,
                 }}
               >
@@ -147,7 +149,7 @@ export function PrivacySheet({
                     height: 18,
                     borderRadius: 9,
                     borderWidth: active ? 5.5 : 2,
-                    borderColor: active ? Colors.accent : 'rgba(27,32,48,0.25)',
+                    borderColor: active ? c.accent : c.borderDashed,
                   }}
                 />
                 <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
@@ -176,14 +178,14 @@ export function PrivacySheet({
                 paddingVertical: 12,
                 borderRadius: 14,
                 borderWidth: 1,
-                borderColor: Colors.accent,
-                backgroundColor: Colors.accentSofter,
+                borderColor: c.accent,
+                backgroundColor: c.accentSofter,
               }}
             >
               <Txt weight="extrabold" size={12.5} tone="accent">
                 {t.chooseEditors}
               </Txt>
-              <Icon name="chevron" size={15} color={Colors.accent} strokeWidth={2.4} />
+              <Icon name="chevron" size={15} color={c.accent} strokeWidth={2.4} />
             </Pressable>
           ) : null}
 
