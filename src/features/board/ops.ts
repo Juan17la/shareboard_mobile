@@ -10,6 +10,12 @@ import type { BoardElement, ElementId, Op } from './model';
 
 export type ElementMap = Record<ElementId, BoardElement>;
 
+/** `null` in a patch means "unset": the key goes away rather than staying null. */
+function withoutNulls(el: Record<string, unknown>): BoardElement {
+  for (const key of Object.keys(el)) if (el[key] === null) delete el[key];
+  return el as unknown as BoardElement;
+}
+
 /** Apply `ops` in order and return the resulting map. */
 export function applyOps(elements: ElementMap, ops: Op[]): ElementMap {
   if (ops.length === 0) return elements;
@@ -24,7 +30,7 @@ export function applyOps(elements: ElementMap, ops: Op[]): ElementMap {
       case 'update': {
         const current = next[op.id];
         if (!current) break;
-        next[op.id] = { ...current, ...op.patch, updatedAt: op.updatedAt } as BoardElement;
+        next[op.id] = withoutNulls({ ...current, ...op.patch, updatedAt: op.updatedAt });
         break;
       }
       case 'delete': {
@@ -62,10 +68,13 @@ export function invertOps(before: ElementMap, ops: Op[]): Op[] {
       case 'update': {
         const previous = state[op.id];
         if (!previous) break;
-        // Restore only the keys this patch touched.
+        // Restore only the keys this patch touched. A key the element did not
+        // have before is restored as `null`, not `undefined`: JSON drops
+        // `undefined`, and a patch that lost the key would leave the server and
+        // everyone else with the value this undo removed.
         const patch: Record<string, unknown> = {};
         for (const key of Object.keys(op.patch)) {
-          patch[key] = (previous as unknown as Record<string, unknown>)[key];
+          patch[key] = (previous as unknown as Record<string, unknown>)[key] ?? null;
         }
         inverses.push({
           t: 'update',
