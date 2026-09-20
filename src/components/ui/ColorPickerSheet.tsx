@@ -11,7 +11,7 @@
  */
 import { Pressable, View } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 
 import { Sheet } from './Sheet';
@@ -69,6 +69,7 @@ export function ColorPickerSheet({
   onPick: (color: string) => void;
   onClose: () => void;
 }) {
+  const c = useColors();
   const t = useT();
 
   const swatch = (color: string, key: string) => {
@@ -86,7 +87,7 @@ export function ColorPickerSheet({
           borderRadius: 8,
           backgroundColor: color,
           borderWidth: active ? 2.5 : 1,
-          borderColor: active ? Colors.accent : Colors.border,
+          borderColor: active ? c.accent : c.border,
         }}
       />
     );

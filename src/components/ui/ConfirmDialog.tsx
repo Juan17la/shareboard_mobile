@@ -8,7 +8,8 @@
  */
 import { Modal, Pressable, View } from 'react-native';
 
-import { Colors, Glass } from '@/constants/theme';
+import { Glass } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 
 import { GlassPanel, NoGlassScene } from './Glass';
 import { Icon } from './Icon';
@@ -37,8 +38,9 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const c = useColors();
   const isDanger = tone === 'danger';
-  const accent = isDanger ? Colors.danger : Colors.warn;
+  const accent = isDanger ? c.danger : c.warn;
 
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
@@ -64,7 +66,7 @@ export function ConfirmDialog({
             <GlassPanel
               level="panel"
               radius={24}
-              border="rgba(255,255,255,0.75)"
+              border={c.glassHighlight}
               style={{
                 shadowColor: '#151A2D',
                 shadowOpacity: 0.28,
@@ -81,7 +83,7 @@ export function ConfirmDialog({
                     borderRadius: 15,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: isDanger ? Colors.dangerSoft : Colors.warnSoft,
+                    backgroundColor: isDanger ? c.dangerSoft : c.warnSoft,
                   }}
                 >
                   <Icon name="warning" size={24} color={accent} />
@@ -106,8 +108,8 @@ export function ConfirmDialog({
                       alignItems: 'center',
                       borderRadius: 14,
                       borderWidth: 1,
-                      borderColor: Colors.borderStrong,
-                      backgroundColor: 'rgba(255,255,255,0.7)',
+                      borderColor: c.borderStrong,
+                      backgroundColor: c.glassTintSolid,
                     }}
                   >
                     <Txt weight="extrabold" size={13}>

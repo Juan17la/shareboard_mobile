@@ -12,7 +12,8 @@
 import { useRef, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
-import { Colors, Fonts, Shadow } from '@/constants/theme';
+import { Fonts, Shadow } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 import { shapeBounds } from '@/features/board/geometry';
 import { SHAPE_TEXT_SIZE, type ShapeElement, type TextElement } from '@/features/board/model';
@@ -31,6 +32,7 @@ export function TextEditorOverlay({
   camera: Camera;
   onClose: () => void;
 }) {
+  const c = useColors();
   const t = useT();
   const updateText = useBoardStore((s) => s.updateText);
   const updateShape = useBoardStore((s) => s.updateShape);
@@ -90,7 +92,7 @@ export function TextEditorOverlay({
         onBlur={commit}
         onSubmitEditing={commit}
         placeholder={t.typeHere}
-        placeholderTextColor="rgba(27,32,48,0.35)"
+        placeholderTextColor={c.borderDashed}
         accessibilityLabel={t.text}
         style={{
           position: 'absolute',
@@ -104,8 +106,8 @@ export function TextEditorOverlay({
           borderRadius: 6,
           borderWidth: 1.5,
           borderStyle: 'dashed',
-          borderColor: Colors.accent,
-          backgroundColor: 'rgba(255,255,255,0.9)',
+          borderColor: c.accent,
+          backgroundColor: c.glassFlat,
           color,
           fontFamily: italic
             ? bold
@@ -130,8 +132,8 @@ export function TextEditorOverlay({
           padding: 3,
           borderRadius: 999,
           borderWidth: 1,
-          borderColor: Colors.accent,
-          backgroundColor: '#FFFFFF',
+          borderColor: c.accent,
+          backgroundColor: c.surface,
           ...Shadow.panel,
         }}
       >
@@ -145,7 +147,7 @@ export function TextEditorOverlay({
             borderRadius: 15,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: Colors.accent,
+            backgroundColor: c.accent,
           }}
         >
           <Icon name="check" size={16} color="#FFFFFF" />
@@ -156,7 +158,7 @@ export function TextEditorOverlay({
           onPress={cancel}
           style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}
         >
-          <Icon name="close" size={15} color={Colors.textSecondary} />
+          <Icon name="close" size={15} color={c.textSecondary} />
         </Pressable>
       </View>
     </View>

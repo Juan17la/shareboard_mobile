@@ -23,7 +23,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors, Glass, Radius } from '@/constants/theme';
+import { Glass, Radius } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 
 import { GlassPanel, NoGlassScene } from './Glass';
 import { IconButton } from './Button';
@@ -47,6 +48,7 @@ export function Sheet({
 }) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
+  const c = useColors();
   const [anim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -103,7 +105,7 @@ export function Sheet({
                 borderBottomLeftRadius: 0,
                 borderBottomRightRadius: 0,
                 borderTopWidth: 1,
-                borderTopColor: 'rgba(255,255,255,0.9)',
+                borderTopColor: c.glassHighlight,
                 // A sheet is a light panel over a light board; without a shadow
                 // its top edge disappears into the scrim.
                 shadowColor: '#151A2D',
@@ -119,7 +121,7 @@ export function Sheet({
                     width: 38,
                     height: 4,
                     borderRadius: 99,
-                    backgroundColor: 'rgba(27,32,48,0.16)',
+                    backgroundColor: c.borderStrong,
                   }}
                 />
               </View>
@@ -184,6 +186,7 @@ export function SheetRow({
   onPress?: () => void;
   accessibilityLabel?: string;
 }) {
+  const c = useColors();
   const body = (
     <>
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
@@ -209,13 +212,13 @@ export function SheetRow({
   };
 
   return (
-    <GlassPanel level="row" radius={15} border={Colors.border}>
+    <GlassPanel level="row" radius={15} border={c.border}>
       {onPress ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={accessibilityLabel ?? title}
           onPress={onPress}
-          style={({ pressed }) => [style, pressed ? { backgroundColor: 'rgba(255,255,255,0.7)' } : null]}
+          style={({ pressed }) => [style, pressed ? { backgroundColor: c.surfaceSelected } : null]}
         >
           {body}
         </Pressable>

@@ -39,7 +39,8 @@ import {
 import { Platform, View, type LayoutChangeEvent, type ViewStyle } from 'react-native';
 import { useAnimatedReaction, useSharedValue, type SharedValue } from 'react-native-reanimated';
 
-import { Colors, Glass, Radius } from '@/constants/theme';
+import { Radius, type Palette } from '@/constants/theme';
+import { useColors, useDark } from '@/features/session/store';
 
 const ABSOLUTE_FILL = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as const;
 
@@ -48,18 +49,10 @@ const NATIVE_BLUR = Platform.OS === 'ios';
 export type GlassLevel = 'panel' | 'row' | 'chip';
 
 /** Tint painted over the blur. */
-const TINT: Record<GlassLevel, string> = {
-  panel: Glass.tint,
-  row: Glass.tintSolid,
-  chip: 'rgba(255,255,255,0.55)',
-};
+const tint = (c: Palette, level: GlassLevel) => (level === 'panel' ? c.glassTint : c.glassTintSolid);
 
 /** Tint with nothing blurred under it, so it has to carry the contrast alone. */
-const TINT_UNBLURRED: Record<GlassLevel, string> = {
-  panel: 'rgba(255,255,255,0.86)',
-  row: 'rgba(255,255,255,0.8)',
-  chip: 'rgba(255,255,255,0.8)',
-};
+const tintUnblurred = (c: Palette) => c.glassFlat;
 
 const INTENSITY: Record<GlassLevel, number> = { panel: 44, row: 30, chip: 26 };
 
@@ -200,7 +193,10 @@ function useBlurs(): boolean {
  * unavailable, so a caller that needs a fallback fill has to bring that too.
  */
 export function GlassBlur({ intensity }: { intensity: number }) {
-  if (NATIVE_BLUR) return <BlurView intensity={intensity} tint="light" style={ABSOLUTE_FILL} />;
+  const dark = useDark();
+  if (NATIVE_BLUR) {
+    return <BlurView intensity={intensity} tint={dark ? 'dark' : 'light'} style={ABSOLUTE_FILL} />;
+  }
   return <SceneBlur sigma={sigmaFor(intensity)} />;
 }
 
@@ -218,11 +214,13 @@ export function GlassPanel({
   children,
   level = 'panel',
   radius = Radius.xl,
-  border = Colors.border,
+  border,
   style,
   pointerEvents,
 }: GlassPanelProps) {
   const blurs = useBlurs();
+  const c = useColors();
+  if (border === undefined) border = c.border;
 
   // `overflow: hidden` is what makes the corner radius clip the blur — without
   // it the blur paints square corners (expo-blur docs).
@@ -241,7 +239,7 @@ export function GlassPanel({
     return (
       <View
         pointerEvents={pointerEvents}
-        style={[shell, { backgroundColor: TINT_UNBLURRED[level] }, flat]}
+        style={[shell, { backgroundColor: tintUnblurred(c) }, flat]}
       >
         {children}
       </View>
@@ -251,12 +249,12 @@ export function GlassPanel({
   // Android's elevation needs an opaque background to cast a shadow from; the
   // scene canvas paints over it entirely, so it never shows. iOS must stay
   // transparent or the native blur has nothing to look through.
-  const ground = NATIVE_BLUR ? null : { backgroundColor: '#FFFFFF' };
+  const ground = NATIVE_BLUR ? null : { backgroundColor: c.background };
 
   return (
     <View pointerEvents={pointerEvents} style={[shell, ground, style as ViewStyle]}>
       <GlassBlur intensity={INTENSITY[level]} />
-      <View pointerEvents="none" style={[ABSOLUTE_FILL, { backgroundColor: TINT[level] }]} />
+      <View pointerEvents="none" style={[ABSOLUTE_FILL, { backgroundColor: tint(c, level) }]} />
       {children}
     </View>
   );

@@ -45,7 +45,7 @@ import { fill, type Strings } from '@/features/i18n/strings';
 import { useT } from '@/features/i18n/store';
 import type { BoardSnapshot } from '@/features/board/model';
 import { useBoardStore } from '@/features/board/store';
-import { useSessionStore } from '@/features/session/store';
+import { useSessionStore, useColors } from '@/features/session/store';
 import { useBoardSync } from '@/hooks/use-board-sync';
 import { deleteBoard, importSnapshot } from '@/services/api/boards';
 import { boardShareLink } from '@/utils/deep-link';
@@ -63,6 +63,7 @@ export default function BoardScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const landscape = width > height;
+  const c = useColors();
 
   const t = useT();
   const nickname = useSessionStore((s) => s.nickname);
@@ -167,8 +168,8 @@ export default function BoardScreen() {
 
   if (sync.phase === 'loading' || !nickname) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }}>
-        <ActivityIndicator color="#6D3FB5" />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.background }}>
+        <ActivityIndicator color={c.accent} />
       </View>
     );
   }
@@ -182,7 +183,7 @@ export default function BoardScreen() {
   const headerHeight = insets.top + (landscape ? 58 : 104);
 
   return (
-    <GlassScene render={mirror} style={{ backgroundColor: '#FFFFFF' }}>
+    <GlassScene render={mirror} style={{ backgroundColor: c.background }}>
       <BoardCanvas onCursorMove={sync.sendCursor} canvasRef={canvasRef} />
 
       <HeaderScrim height={headerHeight} />
@@ -197,8 +198,8 @@ export default function BoardScreen() {
       />
 
       <Toolbar landscape={landscape} />
-      <BottomControls landscape={landscape} />
-      <ConnectionBanner top={headerHeight + 6} onRetry={sync.retry} />
+      <BottomControls top={headerHeight + 6} />
+      <ConnectionBanner top={headerHeight + 50} onRetry={sync.retry} />
 
       <ToastHost
         bottom={Math.max(insets.bottom, 16) + 128}

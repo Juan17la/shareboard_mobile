@@ -14,7 +14,7 @@ import { Canvas, Group, ImageFormat, Rect, useCanvasRef } from '@shopify/react-n
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
-import { Colors, Radius } from '@/constants/theme';
+import { Radius } from '@/constants/theme';
 import { useT, useTf } from '@/features/i18n/store';
 import { contentBounds } from '@/features/board/geometry';
 import {
@@ -26,7 +26,7 @@ import {
 import { visibleSorted } from '@/features/board/ops';
 import { toSnapshot } from '@/features/board/serialization';
 import { useBoardStore } from '@/features/board/store';
-import { useSessionStore } from '@/features/session/store';
+import { useSessionStore, useColors } from '@/features/session/store';
 import { notify } from '@/utils/haptics';
 
 import { ElementRenderer } from '../board/ElementRenderer';
@@ -56,6 +56,7 @@ export function ExportSheet({ open, onClose }: { open: boolean; onClose: () => v
 }
 
 function ExportSheetBody({ onClose }: { onClose: () => void }) {
+  const c = useColors();
   const t = useT();
   const tf = useTf();
   const elements = useBoardStore((s) => s.elements);
@@ -118,8 +119,8 @@ function ExportSheetBody({ onClose }: { onClose: () => void }) {
           minHeight: 130,
           borderRadius: Radius.lg,
           borderWidth: 1,
-          borderColor: Colors.border,
-          backgroundColor: '#FFFFFF',
+          borderColor: c.border,
+          backgroundColor: c.surface,
           overflow: 'hidden',
         }}
       >
