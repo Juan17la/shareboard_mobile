@@ -73,7 +73,29 @@ export class WebSocketConnection {
     this.open();
   }
 
+  /**
+   * Detaches and closes whatever socket is current, and cancels a pending
+   * reconnect. Every `open()` goes through here first: a retry tapped while
+   * the backoff timer was pending used to open a second socket, the server
+   * closed the older one with 4001, and *its* close handler then tore down the
+   * state of the newer one — no heartbeat, so the idle check dropped that one
+   * too, and the board bounced between offline and online indefinitely.
+   */
+  private dropSocket() {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.stopHeartbeat();
+    const ws = this.ws;
+    this.ws = null;
+    if (!ws) return;
+    ws.onopen = ws.onmessage = ws.onclose = null;
+    // Closing a socket that is still connecting reports an error; it is nobody's.
+    ws.onerror = () => {};
+    ws.close();
+  }
+
   private open() {
+    this.dropSocket();
     this.setState('connecting');
     const url = `${WS_URL}?boardId=${encodeURIComponent(this.params.boardId)}&token=${encodeURIComponent(
       this.params.token,
@@ -85,18 +107,19 @@ export class WebSocketConnection {
       this.backoff = REALTIME.backoffMinMs;
       this.attempt = 0;
       this.lastMessageAt = Date.now();
-      this.setState('online');
       this.startHeartbeat();
       // Every socket starts with a `join`; the server answers `joined` with the
       // full board state and rejects anything sent before it. A reconnect is a
       // brand new socket, so it has to join again (docs/07-websockets).
-      this.sendNow({
-        type: 'join',
-        boardId: this.params.boardId,
-        userId: this.params.userId,
-        nickname: this.params.nickname,
-        ...(this.params.pin ? { pin: this.params.pin } : {}),
-      });
+      ws.send(
+        JSON.stringify({
+          type: 'join',
+          boardId: this.params.boardId,
+          userId: this.params.userId,
+          nickname: this.params.nickname,
+          ...(this.params.pin ? { pin: this.params.pin } : {}),
+        } satisfies ClientMessage),
+      );
       const queued = this.outbox;
       this.outbox = [];
       queued.forEach((m) => this.send(m));
@@ -110,6 +133,10 @@ export class WebSocketConnection {
       } catch {
         return;
       }
+      // 'online' means "the server has us on the board", not "the socket
+      // opened": an edit made before `joined` is wiped by the hydrate it
+      // brings, and the store refuses edits unless online.
+      if (msg.type === 'joined') this.setState('online');
       this.listeners.get(msg.type)?.forEach((cb) => cb(msg));
     };
 
@@ -165,10 +192,8 @@ export class WebSocketConnection {
       // A phone that lost wifi keeps an "open" socket for minutes before the OS
       // notices. No pong for two beats means it is gone: drop it ourselves so
       // the reconnect (and the offline banner) start now.
-      const ws = this.ws;
-      if (ws && Date.now() - this.lastMessageAt > REALTIME.heartbeatMs * 2) {
-        ws.onclose = null;
-        ws.close();
+      if (this.ws && Date.now() - this.lastMessageAt > REALTIME.heartbeatMs * 2) {
+        this.dropSocket();
         this.onClosed(1006);
         return;
       }
@@ -179,11 +204,6 @@ export class WebSocketConnection {
   private stopHeartbeat() {
     if (this.heartbeat) clearInterval(this.heartbeat);
     this.heartbeat = null;
-  }
-
-  /** Write straight to the socket, bypassing the offline queue. */
-  private sendNow(msg: ClientMessage) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
   }
 
   send(msg: ClientMessage) {
@@ -216,11 +236,7 @@ export class WebSocketConnection {
 
   close() {
     this.closedByUs = true;
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = null;
-    this.stopHeartbeat();
-    this.ws?.close();
-    this.ws = null;
+    this.dropSocket();
     this.setState('idle');
   }
 }
