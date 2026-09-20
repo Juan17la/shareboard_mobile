@@ -10,7 +10,7 @@
 import { Circle, Ellipse, Path, Polyline, Rect, Svg } from 'react-native-svg';
 import type { ReactElement } from 'react';
 
-import { Colors } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 
 export type IconName =
   | 'back'
@@ -48,7 +48,16 @@ export type IconName =
   | 'arrow'
   | 'undo'
   | 'redo'
-  | 'edit';
+  | 'edit'
+  | 'cursor'
+  | 'group'
+  | 'ungroup'
+  | 'to-back'
+  | 'backward'
+  | 'forward'
+  | 'to-front'
+  | 'moon'
+  | 'sun';
 
 /**
  * `s` is the stroke width the design uses for that glyph — a few are drawn
@@ -291,6 +300,75 @@ const PATHS: Record<IconName, { s?: number; fill?: boolean; body: ReactElement }
       </>
     ),
   },
+  cursor: { body: <Path d="M5.5 4.5l13 6.5-5.6 1.6L11 18.5z" /> },
+  // Two boxes, the marked one on top: the selection and the rest of the stack.
+  group: {
+    s: 1.8,
+    body: (
+      <>
+        <Rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="3 2" />
+        <Rect x="7.5" y="7.5" width="4" height="4" />
+        <Rect x="12.5" y="12.5" width="4" height="4" />
+      </>
+    ),
+  },
+  ungroup: {
+    s: 1.8,
+    body: (
+      <>
+        <Rect x="4" y="4" width="7" height="7" rx="1" />
+        <Rect x="13" y="13" width="7" height="7" rx="1" />
+        <Path d="M13 6.5l-2 0M6.5 13l0 2" />
+      </>
+    ),
+  },
+  'to-back': {
+    s: 1.8,
+    body: (
+      <>
+        <Rect x="9" y="9" width="11" height="11" rx="1.5" />
+        <Path d="M4 15V5.5A1.5 1.5 0 0 1 5.5 4H15" />
+        <Path d="M4 15l3 -3M4 15l-3 -3" transform="translate(0 -0.5)" />
+      </>
+    ),
+  },
+  backward: {
+    s: 1.8,
+    body: (
+      <>
+        <Rect x="9" y="9" width="11" height="11" rx="1.5" />
+        <Path d="M4 15V5.5A1.5 1.5 0 0 1 5.5 4H15" />
+      </>
+    ),
+  },
+  forward: {
+    s: 1.8,
+    body: (
+      <>
+        <Path d="M20 9v9.5a1.5 1.5 0 0 1-1.5 1.5H9" />
+        <Rect x="4" y="4" width="11" height="11" rx="1.5" />
+      </>
+    ),
+  },
+  'to-front': {
+    s: 1.8,
+    body: (
+      <>
+        <Path d="M20 9v9.5a1.5 1.5 0 0 1-1.5 1.5H9" />
+        <Rect x="4" y="4" width="11" height="11" rx="1.5" />
+        <Path d="M9.5 6.5l-3 -3l-3 3" transform="translate(3 4)" />
+      </>
+    ),
+  },
+  moon: { body: <Path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /> },
+  sun: {
+    body: (
+      <>
+        <Circle cx="12" cy="12" r="4" />
+        <Path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4" />
+      </>
+    ),
+  },
   rectangle: { body: <Rect x="4" y="5.5" width="16" height="13" rx="2" /> },
   ellipse: { body: <Ellipse cx="12" cy="12" rx="8" ry="8" /> },
   triangle: { body: <Path d="M12 5l8 14H4z" /> },
@@ -329,7 +407,9 @@ export interface IconProps {
   strokeWidth?: number;
 }
 
-export function Icon({ name, size = 20, color = Colors.text, strokeWidth }: IconProps) {
+export function Icon({ name, size = 20, color, strokeWidth }: IconProps) {
+  const c = useColors();
+  color ??= c.text;
   const glyph = PATHS[name];
   const stroke = glyph.fill ? undefined : color;
   return (
