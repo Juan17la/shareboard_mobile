@@ -11,10 +11,10 @@ import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Avatars, Colors, Radius } from '@/constants/theme';
+import { Avatars, Radius } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
 import { LIMITS } from '@/features/board/model';
-import { useSessionStore } from '@/features/session/store';
+import { useSessionStore, useColors } from '@/features/session/store';
 
 import { Avatar } from '../ui/Avatar';
 import { Backdrop, BackdropScene } from '../ui/Backdrop';
@@ -35,12 +35,12 @@ export function NicknameScreen({
   landscape: boolean;
   onContinue: (nickname: string) => void;
 }) {
+  const c = useColors();
   const insets = useSafeAreaInsets();
   const t = useT();
   const storedNickname = useSessionStore((s) => s.nickname);
   const nickColor = useSessionStore((s) => s.nickColor);
   const avatar = useSessionStore((s) => s.avatar);
-  const setAvatar = useSessionStore((s) => s.setAvatar);
 
   const [draft, setDraft] = useState(storedNickname);
   const ready = draft.trim().length > 0;
@@ -80,7 +80,7 @@ export function NicknameScreen({
             </Txt>
           </View>
 
-          <GlassPanel level="row" radius={Radius.xl} border={Colors.border}>
+          <GlassPanel level="row" radius={Radius.xl} border={c.border}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 }}>
               <Avatar name={draft || '?'} color={nickColor} avatar={avatar} size={46} />
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -109,31 +109,7 @@ export function NicknameScreen({
           <View style={{ gap: 9 }}>
             {/* One choice, not two: every icon brings its own colour. */}
             <SectionLabel>{t.yourIcon}</SectionLabel>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginLeft: -4 }}>
-              {Avatars.map(({ icon, color }) => {
-                const active = avatar === icon;
-                return (
-                  <Pressable
-                    key={icon}
-                    accessibilityRole="radio"
-                    accessibilityLabel={icon}
-                    accessibilityState={{ selected: active }}
-                    onPress={() => setAvatar(icon)}
-                    style={{
-                      width: 46,
-                      height: 46,
-                      borderRadius: 23,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderWidth: 2,
-                      borderColor: active ? color : 'transparent',
-                    }}
-                  >
-                    <Avatar name={draft || '?'} color={color} avatar={icon} size={36} />
-                  </Pressable>
-                );
-              })}
-            </View>
+            <AvatarPicker name={draft} />
           </View>
 
           <View style={{ flex: 1, minHeight: 16 }} />
@@ -147,5 +123,38 @@ export function NicknameScreen({
         </Animated.ScrollView>
       </KeyboardAvoidingView>
     </GlassScene>
+  );
+}
+
+/** The icon grid: one choice, not two, since every icon brings its own colour. */
+export function AvatarPicker({ name }: { name: string }) {
+  const avatar = useSessionStore((s) => s.avatar);
+  const setAvatar = useSessionStore((s) => s.setAvatar);
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginLeft: -4 }}>
+      {Avatars.map(({ icon, color }) => {
+        const active = avatar === icon;
+        return (
+          <Pressable
+            key={icon}
+            accessibilityRole="radio"
+            accessibilityLabel={icon}
+            accessibilityState={{ selected: active }}
+            onPress={() => setAvatar(icon)}
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: 23,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 2,
+              borderColor: active ? color : 'transparent',
+            }}
+          >
+            <Avatar name={name || '?'} color={color} avatar={icon} size={36} />
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
