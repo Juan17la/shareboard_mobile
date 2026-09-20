@@ -1,8 +1,10 @@
 import { ActivityIndicator, Pressable, View, type PressableProps, type ViewStyle } from 'react-native';
 
-import { Colors, Radius, Shadow } from '@/constants/theme';
+import { Radius, Shadow, type Palette } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 
 import { Icon, type IconName } from './Icon';
+import { tip } from './Toast';
 import { Txt } from './Text';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dashed';
@@ -19,15 +21,20 @@ export interface ButtonProps extends Omit<PressableProps, 'children' | 'style'> 
 }
 
 /** Foreground colour per variant, also used for the icon. */
-const FOREGROUND: Record<ButtonVariant, string> = {
-  primary: '#FFFFFF',
-  secondary: Colors.text,
-  ghost: Colors.textSecondary,
-  danger: '#FFFFFF',
-  dashed: 'rgba(27,32,48,0.6)',
-};
+function foreground(c: Palette, variant: ButtonVariant): string {
+  switch (variant) {
+    case 'secondary':
+      return c.text;
+    case 'ghost':
+      return c.textSecondary;
+    case 'dashed':
+      return c.textSecondary;
+    default:
+      return '#FFFFFF';
+  }
+}
 
-function container(variant: ButtonVariant, disabled: boolean): ViewStyle {
+function container(c: Palette, variant: ButtonVariant, disabled: boolean): ViewStyle {
   const base: ViewStyle = {
     flexDirection: 'row',
     alignItems: 'center',
@@ -38,22 +45,22 @@ function container(variant: ButtonVariant, disabled: boolean): ViewStyle {
   };
   switch (variant) {
     case 'primary':
-      return { ...base, backgroundColor: Colors.accent, ...(disabled ? null : Shadow.accent) };
+      return { ...base, backgroundColor: c.accent, ...(disabled ? null : Shadow.accent) };
     case 'danger':
-      return { ...base, backgroundColor: Colors.danger, ...(disabled ? null : Shadow.danger) };
+      return { ...base, backgroundColor: c.danger, ...(disabled ? null : Shadow.danger) };
     case 'secondary':
       return {
         ...base,
-        backgroundColor: 'rgba(255,255,255,0.75)',
+        backgroundColor: c.glassTintSolid,
         borderWidth: 1,
-        borderColor: Colors.borderStrong,
+        borderColor: c.borderStrong,
       };
     case 'dashed':
       return {
         ...base,
         borderWidth: 1,
         borderStyle: 'dashed',
-        borderColor: Colors.borderDashed,
+        borderColor: c.borderDashed,
         borderRadius: Radius.lg,
       };
     default:
@@ -73,7 +80,8 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const off = !!disabled || loading;
-  const fg = FOREGROUND[variant];
+  const c = useColors();
+  const fg = foreground(c, variant);
 
   return (
     <Pressable
@@ -82,7 +90,7 @@ export function Button({
       accessibilityState={{ disabled: off }}
       disabled={off}
       style={({ pressed }) => [
-        container(variant, off),
+        container(c, variant, off),
         {
           paddingVertical: compact ? 12 : 16,
           paddingHorizontal: compact ? 16 : 18,
@@ -114,9 +122,9 @@ export function IconButton({
   onPress,
   size = 36,
   iconSize = 18,
-  color = Colors.text,
+  color,
   disabled,
-  background = 'rgba(255,255,255,0.62)',
+  background,
   radius = Radius.md,
 }: {
   icon: IconName;
@@ -129,6 +137,9 @@ export function IconButton({
   background?: string;
   radius?: number;
 }) {
+  const c = useColors();
+  color ??= c.text;
+  background ??= c.glassTintSolid;
   return (
     <Pressable
       accessibilityRole="button"
@@ -136,6 +147,7 @@ export function IconButton({
       accessibilityState={{ disabled: !!disabled }}
       disabled={disabled}
       onPress={onPress}
+      onLongPress={() => tip(label)}
       style={({ pressed }) => ({
         width: size,
         height: size,
@@ -144,8 +156,8 @@ export function IconButton({
         justifyContent: 'center',
         borderRadius: radius,
         borderWidth: 1,
-        borderColor: Colors.border,
-        backgroundColor: pressed ? '#FFFFFF' : background,
+        borderColor: c.border,
+        backgroundColor: pressed ? c.surfaceSelected : background,
         opacity: disabled ? 0.4 : 1,
       })}
     >
@@ -164,11 +176,13 @@ export function StepperButton({
   label: string;
   onPress: () => void;
 }) {
+  const c = useColors();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
+      onLongPress={() => tip(label)}
       style={({ pressed }) => ({
         width: 26,
         height: 26,
@@ -176,16 +190,17 @@ export function StepperButton({
         justifyContent: 'center',
         borderRadius: 9,
         borderWidth: 1,
-        borderColor: Colors.borderStrong,
-        backgroundColor: pressed ? Colors.surfaceSelected : '#FFFFFF',
+        borderColor: c.borderStrong,
+        backgroundColor: pressed ? c.surfaceSelected : c.surface,
       })}
     >
-      <Icon name={icon} size={14} color={Colors.text} />
+      <Icon name={icon} size={14} color={c.text} />
     </Pressable>
   );
 }
 
 /** Divider used inside panels and rails. */
 export function Hairline({ style }: { style?: ViewStyle }) {
-  return <View style={[{ height: 1, backgroundColor: Colors.border }, style]} />;
+  const c = useColors();
+  return <View style={[{ height: 1, backgroundColor: c.border }, style]} />;
 }
