@@ -6,7 +6,7 @@
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "shareboard",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.juan17lasteam.judd",
@@ -34,7 +34,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#6D3FB5",
+          "backgroundColor": "#7A1F2B",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
