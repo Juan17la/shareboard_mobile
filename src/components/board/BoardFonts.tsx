@@ -12,9 +12,9 @@
  *
  * The four cuts are loaded once per app and cached: the provider mounts inside
  * the board's "ready" gate, so a reconnect would otherwise reload them and blank
- * the text for a moment. Until they have decoded the context is null. If they
- * cannot be decoded at all the system face stands in — wrong shapes beat no
- * text — and the reason is logged.
+ * the text for a moment. Text never waits on that load: the platform's own
+ * sans-serif — available synchronously — is the face until Nunito has decoded,
+ * and stays the face if it never does. Wrong shapes beat no text.
  */
 import { FontSlant, FontWeight, FontWidth, Skia, type SkFont, type SkTypeface } from '@shopify/react-native-skia';
 import { Asset } from 'expo-asset';
@@ -37,16 +37,23 @@ const FILES = {
   extraboldItalic: require('@expo-google-fonts/nunito/800ExtraBold_Italic/Nunito_800ExtraBold_Italic.ttf'),
 } as const;
 
+// Stage markers, until the phone that draws no board text has said which stage
+// goes silent: the loader has never rejected there, so a warn alone tells nothing.
+const log = __DEV__ ? (...args: unknown[]) => console.log('[BoardFonts]', ...args) : () => {};
+
 async function loadTypeface(module: number | string): Promise<SkTypeface> {
   const asset = await Asset.fromModule(module).downloadAsync();
+  log('downloaded', asset.name, asset.localUri);
   if (!asset.localUri) throw new Error(`font asset ${asset.name} has no local file`);
   const bytes = await new File(asset.localUri).bytes();
+  log('read', asset.name, bytes.byteLength, 'bytes');
   const face = Skia.Typeface.MakeFreeTypeFaceFromData(Skia.Data.fromBytes(bytes));
+  log('typeface', asset.name, face ? 'ok' : 'null');
   if (!face) throw new Error(`font asset ${asset.name} is not a valid typeface`);
   return face;
 }
 
-/** One face from the platform's font manager, for when the bundled ones cannot load. */
+/** One face from the platform's font manager: the baseline every text node starts on. */
 function systemTypefaces(): Typefaces | null {
   const face = Skia.FontMgr.System().matchFamilyStyle('sans-serif', {
     weight: FontWeight.Medium,
@@ -67,16 +74,19 @@ function loadTypefaces(): Promise<Typefaces | null> {
   ])
     .then(([medium, extrabold, italic, extraboldItalic]) => ({ medium, extrabold, italic, extraboldItalic }))
     .catch((err: unknown) => {
-      console.warn('[BoardFonts] Nunito could not be loaded for the canvas, using the system face', err);
-      return systemTypefaces();
+      console.warn('[BoardFonts] Nunito could not be loaded for the canvas, keeping the system face', err);
+      return null;
     }));
 }
 
 export function BoardFontsProvider({ children }: { children: ReactNode }) {
-  const [faces, setFaces] = useState<Typefaces | null>(null);
+  const [faces, setFaces] = useState<Typefaces | null>(systemTypefaces);
   useEffect(() => {
     let mounted = true;
-    loadTypefaces().then((f) => mounted && setFaces(f));
+    loadTypefaces().then((f) => {
+      log('nunito', f ? 'ready' : 'unavailable');
+      if (mounted && f) setFaces(f);
+    });
     return () => {
       mounted = false;
     };
@@ -84,7 +94,7 @@ export function BoardFontsProvider({ children }: { children: ReactNode }) {
   return <BoardFontsContext.Provider value={faces}>{children}</BoardFontsContext.Provider>;
 }
 
-/** A Skia font in the app's typeface, or null until the typefaces have decoded. */
+/** A Skia font: the system face at first, Nunito once it has decoded. */
 export function useBoardFont(size: number, bold = false, italic = false): SkFont | null {
   const faces = useContext(BoardFontsContext);
   return useMemo(() => {
