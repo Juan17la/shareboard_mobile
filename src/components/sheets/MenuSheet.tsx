@@ -8,7 +8,7 @@
  */
 import { Pressable, View } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 
 import { GlassPanel } from '../ui/Glass';
@@ -33,6 +33,7 @@ export function MenuSheet({
   onOpenPeople: () => void;
   onOpenSettings: () => void;
 }) {
+  const c = useColors();
   const t = useT();
 
   const rows: { icon: IconName; label: string; onPress: () => void }[] = [
@@ -47,7 +48,7 @@ export function MenuSheet({
     <Sheet open={open} title={t.sheetMenu} onClose={onClose} closeLabel={t.close}>
       <View style={{ gap: 8 }}>
         {rows.map((row) => (
-          <GlassPanel key={row.label} level="row" radius={15} border={Colors.border}>
+          <GlassPanel key={row.label} level="row" radius={15} border={c.border}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={row.label}
@@ -62,15 +63,15 @@ export function MenuSheet({
                   borderRadius: 11,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: Colors.accentSoft,
+                  backgroundColor: c.accentSoft,
                 }}
               >
-                <Icon name={row.icon} size={19} color={Colors.accent} />
+                <Icon name={row.icon} size={19} color={c.accent} />
               </View>
               <Txt weight="bold" size={13.5} leading={1.2} style={{ flex: 1 }}>
                 {row.label}
               </Txt>
-              <Icon name="chevron" size={15} color={Colors.textTertiary} />
+              <Icon name="chevron" size={15} color={c.textTertiary} />
             </Pressable>
           </GlassPanel>
         ))}

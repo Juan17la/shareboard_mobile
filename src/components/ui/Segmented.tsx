@@ -1,6 +1,7 @@
 import { Pressable, View } from 'react-native';
 
-import { Colors, Radius } from '@/constants/theme';
+import { Radius } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 
 import { Txt } from './Text';
 
@@ -21,6 +22,7 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void;
   disabled?: boolean;
 }) {
+  const c = useColors();
   return (
     <View
       style={{
@@ -28,7 +30,7 @@ export function Segmented<T extends string>({
         gap: 7,
         padding: 5,
         borderRadius: Radius.lg,
-        backgroundColor: 'rgba(27,32,48,0.05)',
+        backgroundColor: c.surfaceSelected,
         opacity: disabled ? 0.5 : 1,
       }}
     >
@@ -47,7 +49,7 @@ export function Segmented<T extends string>({
               alignItems: 'center',
               paddingVertical: 9,
               borderRadius: 11,
-              backgroundColor: active ? '#FFFFFF' : 'transparent',
+              backgroundColor: active ? c.background : 'transparent',
               ...(active
                 ? {
                     shadowColor: '#151A2D',
@@ -59,7 +61,7 @@ export function Segmented<T extends string>({
                 : null),
             }}
           >
-            <Txt weight="extrabold" size={12.5} color={active ? Colors.accent : Colors.textSecondary}>
+            <Txt weight="extrabold" size={12.5} color={active ? c.accent : c.textSecondary}>
               {opt.label}
             </Txt>
           </Pressable>

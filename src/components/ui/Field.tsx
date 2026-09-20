@@ -1,6 +1,7 @@
 import { TextInput, View, type TextInputProps } from 'react-native';
 
-import { Colors, Fonts, Radius } from '@/constants/theme';
+import { Fonts, Radius } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 
 import { Txt } from './Text';
 
@@ -13,6 +14,7 @@ export interface FieldProps extends TextInputProps {
 }
 
 export function Field({ label, hint, error, mono = false, style, ...rest }: FieldProps) {
+  const c = useColors();
   return (
     <View style={{ gap: 7 }}>
       {label ? (
@@ -21,16 +23,16 @@ export function Field({ label, hint, error, mono = false, style, ...rest }: Fiel
         </Txt>
       ) : null}
       <TextInput
-        placeholderTextColor="rgba(27,32,48,0.32)"
+        placeholderTextColor={c.borderDashed}
         style={[
           {
             paddingHorizontal: 13,
             paddingVertical: 12,
             borderRadius: Radius.lg,
             borderWidth: 1,
-            borderColor: error ? Colors.dangerBright : Colors.borderStrong,
-            backgroundColor: '#FFFFFF',
-            color: Colors.text,
+            borderColor: error ? c.dangerBright : c.borderStrong,
+            backgroundColor: c.surface,
+            color: c.text,
             fontFamily: mono ? Fonts.monoBold : Fonts.semibold,
             fontSize: mono ? 15 : 16,
             ...(mono ? { letterSpacing: 1.5 } : null),

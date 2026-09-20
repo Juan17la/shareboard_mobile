@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { Avatars, avatarColor } from '@/constants/theme';
+import { Avatars, Palettes, avatarColor, type Palette, type Theme } from '@/constants/theme';
 import type { Lang } from '@/features/i18n/strings';
 import { newUserId } from '@/utils/id';
 
@@ -49,6 +49,8 @@ interface SessionState {
   /** Presence icon; its colour is `nickColor`. */
   avatar: string;
   lang: Lang;
+  /** Light board or dark board; light unless chosen otherwise. */
+  theme: Theme;
   settings: AppSettings;
   recent: RecentBoard[];
   /** PINs this device chose, by board id. */
@@ -58,6 +60,8 @@ interface SessionState {
 
   setNickname(nickname: string): void;
   setAvatar(avatar: string): void;
+  setTheme(theme: Theme): void;
+  toggleTheme(): void;
   setLang(lang: Lang): void;
   toggleLang(): void;
   setSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void;
@@ -97,6 +101,7 @@ export const useSessionStore = create<SessionState>()(
       nickColor: Avatars[0].color,
       avatar: Avatars[0].icon,
       lang: 'es',
+      theme: 'light',
       settings: DEFAULT_SETTINGS,
       recent: [],
       pins: {},
@@ -117,6 +122,14 @@ export const useSessionStore = create<SessionState>()(
 
       toggleLang() {
         set((s) => ({ lang: s.lang === 'es' ? 'en' : 'es' }));
+      },
+
+      setTheme(theme) {
+        set({ theme });
+      },
+
+      toggleTheme() {
+        set((s) => ({ theme: s.theme === 'dark' ? 'light' : 'dark' }));
       },
 
       setSetting(key, value) {
@@ -158,6 +171,7 @@ export const useSessionStore = create<SessionState>()(
         nickColor: s.nickColor,
         avatar: s.avatar,
         lang: s.lang,
+        theme: s.theme,
         settings: s.settings,
         recent: s.recent,
         pins: s.pins,
@@ -172,6 +186,7 @@ export const useSessionStore = create<SessionState>()(
           ...saved,
           avatar,
           nickColor: avatarColor(avatar),
+          theme: saved.theme === 'dark' ? 'dark' : 'light',
           settings: { ...DEFAULT_SETTINGS, ...(saved.settings ?? {}) },
         };
       },
@@ -181,3 +196,13 @@ export const useSessionStore = create<SessionState>()(
     },
   ),
 );
+
+/**
+ * The palette in use. A zustand hook rather than context so it works inside a
+ * Skia canvas too, whose children render in their own React root and never see
+ * the app tree's providers.
+ */
+export const useColors = (): Palette => Palettes[useSessionStore((s) => s.theme)];
+
+/** Whether the dark board is on. */
+export const useDark = (): boolean => useSessionStore((s) => s.theme === 'dark');
