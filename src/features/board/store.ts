@@ -22,15 +22,20 @@ import { DrawingPalette, StrokeSizes } from '@/constants/theme';
 import type { Op } from '@/services/realtime/protocol';
 import { shortId } from '@/utils/id';
 
+import { followLinks, headsOf, isLineLike, translate } from './geometry';
 import {
   LIMITS,
   canEdit,
   isFillable,
   type BoardElement,
   type BoardMeta,
+  type Dash,
   type ElementId,
+  type Link,
+  type Marker,
   type Participant,
   type Point,
+  type Route,
   type ShapeKind,
   type ShapeElement,
   type StrokeElement,
@@ -40,6 +45,12 @@ import {
 } from './model';
 import { applyOps, invertOps, visibleSorted, type ElementMap } from './ops';
 
+/** Zoom bounds. Matches the design's 25%–600% range. */
+export const MIN_ZOOM = 0.25;
+export const MAX_ZOOM = 6;
+/** One tap of the zoom buttons. */
+export const ZOOM_STEP = 1.2;
+
 export type ConnectionStatus = 'idle' | 'connecting' | 'online' | 'offline';
 
 export interface Camera {
@@ -48,38 +59,96 @@ export interface Camera {
   scale: number;
 }
 
+export type FillLevel = 'none' | 'low' | 'medium' | 'full';
+
 export interface ToolConfig {
   color: string;
   width: number;
-  /** Whether a newly drawn enclosed shape gets a translucent fill. */
-  filled: boolean;
+  /** How opaque a newly drawn enclosed shape's fill is; `none` for outline only. */
+  fill: FillLevel;
   shape: ShapeKind;
   fontSize: number;
   bold: boolean;
   italic: boolean;
+  // Lines and arrows. The line/arrow buttons reset these to the kind's default.
+  headStart: Marker;
+  headEnd: Marker;
+  route: Route;
+  dash: Dash;
 }
 
 /**
- * Fills are a tinted wash of the stroke colour rather than a solid block, so
- * the dot grid and anything underneath still read through them. `2E` is ~18%.
+ * A fill is the stroke colour at one of three alphas: a wash the dot grid still
+ * reads through (~18%), a half, or solid.
  */
-export const FILL_ALPHA = '2E';
+export const FILL_ALPHA: Record<Exclude<FillLevel, 'none'>, string> = {
+  low: '2E',
+  medium: '80',
+  full: 'FF',
+};
 
-/** `#RRGGBB` -> the `#RRGGBBAA` a fill is painted with. */
-export function fillFor(color: string): string {
-  return color.length === 9 ? color : color + FILL_ALPHA;
+/** `#RRGGBB` -> the `#RRGGBBAA` a fill is painted with, or null for no fill. */
+export function fillFor(color: string, level: FillLevel): string | null {
+  return level === 'none' ? null : color.slice(0, 7) + FILL_ALPHA[level];
 }
 
-export interface ShapeEdit {
-  id: ElementId;
+/** The level a painted fill was made with — what the toolbar highlights. */
+export function fillLevelOf(fill: string | null | undefined): FillLevel {
+  if (!fill) return 'none';
+  const a = fill.slice(7).toUpperCase();
+  return a === FILL_ALPHA.low ? 'low' : a === FILL_ALPHA.medium ? 'medium' : 'full';
+}
+
+/**
+ * The selection while a finger drags it. `move` shifts every selected element
+ * by (dx, dy); `resize` drags one handle of a single element and keeps the
+ * resulting `patch`. The elements only change (one op each) when the finger lifts.
+ */
+export interface LiveEdit {
+  ids: ElementId[];
   mode: 'move' | 'resize';
   /** Corner index (endpoint index for a line) when resizing. */
   handle: number;
   start: Point;
-  origin: { from: Point; to: Point };
-  from: Point;
-  to: Point;
+  dx: number;
+  dy: number;
+  patch: Partial<BoardElement> | null;
 }
+
+/**
+ * What the drag changes, as patches: the dragged elements, then every line
+ * bound to a shape among them. Shared by the canvas (preview) and the commit,
+ * so what was seen is exactly what is sent.
+ */
+export function editPatches(
+  elements: BoardElement[],
+  edit: LiveEdit,
+): { id: ElementId; patch: Partial<BoardElement> }[] {
+  const moved = new Set(edit.ids);
+  const out: { id: ElementId; patch: Partial<BoardElement> }[] = [];
+  const after = elements.map((el) => {
+    if (!moved.has(el.id)) return el;
+    const patch: Partial<BoardElement> =
+      edit.mode === 'move' ? translate(el, edit.dx, edit.dy) : { ...edit.patch };
+    // A line carried away from what it was bound to lets go; carried together
+    // with it (a group, a marquee) it keeps the link.
+    if (edit.mode === 'move' && el.kind === 'shape' && isLineLike(el)) {
+      const p = patch as Partial<ShapeElement>;
+      if (el.fromLink && !moved.has(el.fromLink.id)) p.fromLink = null;
+      if (el.toLink && !moved.has(el.toLink.id)) p.toLink = null;
+    }
+    out.push({ id: el.id, patch });
+    return { ...el, ...patch } as BoardElement;
+  });
+  for (const { id, ...ends } of followLinks(after, edit.ids)) {
+    const own = out.find((o) => o.id === id);
+    if (own) Object.assign(own.patch, ends);
+    else out.push({ id, patch: ends });
+  }
+  return out;
+}
+
+export type ReorderOp = 'back' | 'backward' | 'forward' | 'front';
 
 interface HistoryEntry {
   undo: Op[];
@@ -116,11 +185,11 @@ interface BoardState {
    */
   railOpen: boolean;
   /**
-   * The shape tool's selection: tap a shape to get its handles, the options
-   * column then restyles it and `Aa` labels it. Never synced — selection is a
-   * cursor, not content.
+   * The selection (cursor and shape tools): tap to get handles, the options
+   * strip then restyles it and `Aa` labels it. A group always selects whole.
+   * Never synced — selection is a cursor, not content.
    */
-  selectedId: ElementId | null;
+  selectedIds: ElementId[];
   /** CSS-pixel size of the canvas, reported by the canvas itself. */
   viewport: { width: number; height: number };
   /** False until the first layout has put the board origin at screen centre. */
@@ -132,12 +201,9 @@ interface BoardState {
    */
   liveStroke: number[];
   liveShape: { from: Point; to: Point } | null;
-  /**
-   * The selected shape while a finger drags it: `from`/`to` are the box on
-   * screen right now, `origin` the box the drag started from. The element
-   * itself only changes (one op) when the finger lifts.
-   */
-  liveEdit: ShapeEdit | null;
+  liveEdit: LiveEdit | null;
+  /** The cursor tool's rubber band, in board coordinates. */
+  liveMarquee: { from: Point; to: Point } | null;
 
   // sync / history
   outbox: Op[];
@@ -160,26 +226,70 @@ interface BoardState {
   setRemoteCursor(userId: UserId, at: Point): void;
 
   setTool(tool: ToolType): void;
+  /**
+   * What a toolbar button does: drops the selection, picks the tool (and shape
+   * kind), resets a line's heads to the kind's default and opens the options
+   * strip. Picking the tool already in hand toggles the strip.
+   */
+  pickTool(tool: ToolType, shape?: ShapeKind): void;
   setConfig(patch: Partial<ToolConfig>): void;
   setCamera(camera: Camera): void;
   setRailOpen(open: boolean): void;
   setViewport(size: { width: number; height: number }): void;
   /** The "100%" camera: board (0,0) at the centre of the screen, unzoomed. */
   homeCamera(): Camera;
+  /** Multiplies the zoom about `focal` (screen px), or about the viewport centre. */
+  zoomBy(factor: number, focal?: Point): void;
   setLiveStroke(points: number[]): void;
   setLiveShape(shape: { from: Point; to: Point } | null): void;
-  setLiveEdit(edit: ShapeEdit | null): void;
+  setLiveEdit(edit: LiveEdit | null): void;
+  setLiveMarquee(box: { from: Point; to: Point } | null): void;
+  /** Turns the drag into ops: one per element touched, all in one undo step. */
+  commitEdit(edit: LiveEdit): void;
 
   addStroke(points: number[]): void;
   /** Returns the new id so the caller can select it for resizing. */
-  addShape(shape: ShapeKind, from: Point, to: Point): ElementId | null;
-  select(id: ElementId | null): void;
-  /** The selected shape, if it is still on the board. */
+  addShape(
+    shape: ShapeKind,
+    ends: {
+      from: Point;
+      to: Point;
+      fromLink?: Link | null;
+      toLink?: Link | null;
+    },
+  ): ElementId | null;
+  /** Selects the ids and whatever shares a group with them. */
+  select(ids: ElementId[] | ElementId | null): void;
+  selectedElements(): BoardElement[];
+  /** The selected shape, when exactly one shape is selected and still on the board. */
   selectedShape(): ShapeElement | null;
+  /** The topmost element under `at`, `radius` board units around it — of `among`, or of everything visible. */
+  elementAt(at: Point, radius: number, among?: BoardElement[]): BoardElement | null;
+  /** Applies an options-strip change to every selected element, by kind. */
+  restyle(patch: Partial<ToolConfig>): void;
+  reorder(op: ReorderOp): void;
+  group(): void;
+  ungroup(): void;
   updateShape(
     id: ElementId,
     patch: Partial<
-      Pick<ShapeElement, 'from' | 'to' | 'text' | 'fontSize' | 'stroke' | 'strokeWidth' | 'fill' | 'shape'>
+      Pick<
+        ShapeElement,
+        | 'from'
+        | 'to'
+        | 'text'
+        | 'fontSize'
+        | 'stroke'
+        | 'strokeWidth'
+        | 'fill'
+        | 'shape'
+        | 'headStart'
+        | 'headEnd'
+        | 'route'
+        | 'dash'
+        | 'fromLink'
+        | 'toLink'
+      >
     >,
   ): void;
   /** Paint bucket: tint the topmost enclosed shape under `at`. */
@@ -209,11 +319,15 @@ interface BoardState {
 const DEFAULT_CONFIG: ToolConfig = {
   color: DrawingPalette[0],
   width: StrokeSizes[1],
-  filled: false,
+  fill: 'none',
   shape: 'rectangle',
   fontSize: 28,
   bold: false,
   italic: false,
+  headStart: 'none',
+  headEnd: 'arrow',
+  route: 'straight',
+  dash: 'solid',
 };
 
 const DEFAULT_CAMERA: Camera = { x: 0, y: 0, scale: 1 };
@@ -274,16 +388,19 @@ export const useBoardStore = create<BoardState>((set, get) => {
     elements: {},
     zCounter: 0,
 
-    tool: 'pen',
+    // The cursor is the tool in hand when nothing has been asked for: it can
+    // look around, pick things up and move the board, and does no harm.
+    tool: 'select',
     config: DEFAULT_CONFIG,
     camera: DEFAULT_CAMERA,
-    railOpen: true,
-    selectedId: null,
+    railOpen: false,
+    selectedIds: [],
     viewport: { width: 0, height: 0 },
     cameraPlaced: false,
     liveStroke: [],
     liveShape: null,
     liveEdit: null,
+    liveMarquee: null,
 
     outbox: [],
     clientSeq: 0,
@@ -332,10 +449,11 @@ export const useBoardStore = create<BoardState>((set, get) => {
         // reconnects), so re-home on the size already known.
         camera: get().homeCamera(),
         cameraPlaced: get().viewport.width > 0,
-        selectedId: null,
+        selectedIds: [],
         liveStroke: [],
         liveShape: null,
         liveEdit: null,
+        liveMarquee: null,
       });
     },
 
@@ -361,29 +479,154 @@ export const useBoardStore = create<BoardState>((set, get) => {
       }));
     },
 
+    pickTool(tool, shape) {
+      const s = get();
+      if (s.tool === tool && (!shape || s.config.shape === shape)) {
+        set({ railOpen: !s.railOpen });
+        return;
+      }
+      // Picking a tool is about the next thing drawn: whatever was selected is
+      // let go first, so a new kind never converts it.
+      s.select(null);
+      s.setTool(tool);
+      if (shape) set((st) => ({ config: { ...st.config, shape } }));
+      // A line starts bare and an arrow with a head: the kind's own default.
+      if (shape === 'line') set((st) => ({ config: { ...st.config, headStart: 'none', headEnd: 'none' } }));
+      if (shape === 'arrow') set((st) => ({ config: { ...st.config, headStart: 'none', headEnd: 'arrow' } }));
+      // The hand has nothing to configure; an empty strip would just be noise.
+      set({ railOpen: tool !== 'hand' });
+    },
+
     setTool(tool) {
-      // The selection belongs to the shape tool; any other tool drops it.
-      set({ tool, selectedId: null });
+      // The selection belongs to the cursor and shape tools; any other drops it.
+      const keeps = tool === 'select' || tool === 'shape';
+      set((s) => ({ tool, selectedIds: keeps ? s.selectedIds : [] }));
     },
 
     setConfig(patch) {
       set((s) => ({ config: { ...s.config, ...patch } }));
-      // With a shape selected the options column edits *it*, not just the next
-      // shape: colour, width, kind and fill all land on the board.
-      const selected = get().selectedShape();
-      if (!selected) return;
-      const { config } = get();
-      const restyle: Parameters<BoardState['updateShape']>[1] = {};
-      if (patch.color !== undefined) {
-        restyle.stroke = patch.color;
-        if (selected.fill) restyle.fill = fillFor(patch.color);
+      // With something selected the options strip edits *it*, not just the
+      // next thing drawn.
+      get().restyle(patch);
+    },
+
+    restyle(patch) {
+      const selected = get().selectedElements();
+      if (!selected.length || !get().canEditNow()) return;
+      const ops: Op[] = [];
+      for (const el of selected) {
+        const p: Record<string, unknown> = {};
+        if (el.kind === 'stroke') {
+          if (patch.color !== undefined) p.color = patch.color;
+          if (patch.width !== undefined) p.width = clampWidth(patch.width);
+        } else if (el.kind === 'text') {
+          if (patch.color !== undefined) p.color = patch.color;
+          if (patch.fontSize !== undefined) p.fontSize = patch.fontSize;
+          if (patch.bold !== undefined) p.bold = patch.bold;
+          if (patch.italic !== undefined) p.italic = patch.italic;
+        } else if (el.kind === 'shape') {
+          // A kind change only comes from the strip's kind cluster (the tool
+          // buttons let go of the selection first) and stays in the family:
+          // box to box, line to arrow. An arrow gets a head if it had none.
+          const shape = patch.shape !== undefined && isLineLike(el) === (patch.shape === 'line' || patch.shape === 'arrow') ? patch.shape : el.shape;
+          if (shape !== el.shape) {
+            p.shape = shape;
+            if (shape === 'line') Object.assign(p, { headStart: 'none', headEnd: 'none' });
+            if (shape === 'arrow' && headsOf(el).every((h) => h === 'none')) p.headEnd = 'arrow';
+          }
+          if (patch.color !== undefined) {
+            p.stroke = patch.color;
+            if (el.fill) p.fill = fillFor(patch.color, fillLevelOf(el.fill));
+          }
+          if (patch.width !== undefined) p.strokeWidth = clampWidth(patch.width);
+          if (patch.fill !== undefined) {
+            // The shape's own colour, not the config's: a red box gets a red wash.
+            p.fill = isFillable(shape)
+              ? fillFor(patch.color ?? el.stroke, patch.fill ?? fillLevelOf(el.fill))
+              : null;
+          }
+          if (patch.fontSize !== undefined) p.fontSize = patch.fontSize;
+          for (const k of ['headStart', 'headEnd', 'route', 'dash'] as const) {
+            if (patch[k] !== undefined) p[k] = patch[k];
+          }
+        }
+        if (Object.keys(p).length)
+          ops.push({
+            t: 'update',
+            id: el.id,
+            patch: p as Partial<BoardElement>,
+            updatedAt: Date.now(),
+          });
       }
-      if (patch.width !== undefined) restyle.strokeWidth = clampWidth(patch.width);
-      if (patch.shape !== undefined) restyle.shape = patch.shape;
-      if (patch.filled !== undefined) {
-        restyle.fill = patch.filled && isFillable(selected.shape) ? fillFor(config.color) : null;
+      commitLocal(ops);
+    },
+
+    reorder(op) {
+      const ids = new Set(get().selectedIds);
+      const visible = get().visibleElements();
+      const sel = visible.filter((el) => ids.has(el.id));
+      if (!sel.length || !get().canEditNow()) return;
+      const now = Date.now();
+      const zOf = (el: BoardElement, z: number): Op => ({
+        t: 'update',
+        id: el.id,
+        patch: { z },
+        updatedAt: now,
+      });
+      const ops: Op[] = [];
+      if (op === 'front') {
+        const top = visible[visible.length - 1].z;
+        sel.forEach((el, i) => ops.push(zOf(el, top + i + 1)));
+      } else if (op === 'back') {
+        const bottom = visible[0].z;
+        sel.forEach((el, i) => ops.push(zOf(el, bottom - sel.length + i)));
+      } else {
+        // One step: trade places with the nearest outsider above (or below)
+        // the selection. ponytail: outsiders interleaved within a multi-selection
+        // are left where they are; a full re-pack if that ever reads wrong.
+        const lo = sel[0].z;
+        const hi = sel[sel.length - 1].z;
+        const other =
+          op === 'forward'
+            ? visible.find((el) => el.z > hi && !ids.has(el.id))
+            : [...visible].reverse().find((el) => el.z < lo && !ids.has(el.id));
+        if (!other) return;
+        const shift = op === 'forward' ? other.z - hi : other.z - lo;
+        sel.forEach((el) => ops.push(zOf(el, el.z + shift)));
+        ops.push(zOf(other, op === 'forward' ? lo : hi));
       }
-      if (Object.keys(restyle).length) get().updateShape(selected.id, restyle);
+      commitLocal(ops);
+    },
+
+    group() {
+      const sel = get().selectedElements();
+      if (sel.length < 2 || !get().canEditNow()) return;
+      const group = shortId();
+      const now = Date.now();
+      commitLocal(
+        sel.map((el) => ({
+          t: 'update',
+          id: el.id,
+          patch: { group },
+          updatedAt: now,
+        })),
+      );
+    },
+
+    ungroup() {
+      const sel = get()
+        .selectedElements()
+        .filter((el) => el.group);
+      if (!sel.length || !get().canEditNow()) return;
+      const now = Date.now();
+      commitLocal(
+        sel.map((el) => ({
+          t: 'update',
+          id: el.id,
+          patch: { group: null },
+          updatedAt: now,
+        })),
+      );
     },
 
     setCamera(camera) {
@@ -408,6 +651,17 @@ export const useBoardStore = create<BoardState>((set, get) => {
       return { x: width / 2, y: height / 2, scale: 1 };
     },
 
+    zoomBy(factor, focal) {
+      const { camera, viewport } = get();
+      const at = focal ?? { x: viewport.width / 2, y: viewport.height / 2 };
+      const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.scale * factor));
+      // Hold the focal point still: convert it to board space at the old zoom,
+      // then re-place it at the new one.
+      const bx = (at.x - camera.x) / camera.scale;
+      const by = (at.y - camera.y) / camera.scale;
+      set({ camera: { scale: next, x: at.x - bx * next, y: at.y - by * next } });
+    },
+
     setLiveStroke(points) {
       set({ liveStroke: points });
     },
@@ -418,6 +672,22 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     setLiveEdit(liveEdit) {
       set({ liveEdit });
+    },
+
+    setLiveMarquee(liveMarquee) {
+      set({ liveMarquee });
+    },
+
+    commitEdit(edit) {
+      if (!get().canEditNow()) return;
+      const now = Date.now();
+      commitLocal(
+        editPatches(get().visibleElements(), edit).map((p) => ({
+          t: 'update',
+          ...p,
+          updatedAt: now,
+        })),
+      );
     },
 
     // --- editing -----------------------------------------------------------
@@ -439,31 +709,58 @@ export const useBoardStore = create<BoardState>((set, get) => {
       commitLocal([{ t: 'add', el }]);
     },
 
-    addShape(shape, from, to) {
+    addShape(shape, ends) {
       if (!get().canEditNow()) return null;
       const { config } = get();
       const el: ShapeElement = {
         ...baseFields(),
         kind: 'shape',
         shape,
-        from,
-        to,
+        from: ends.from,
+        to: ends.to,
         stroke: config.color,
         strokeWidth: clampWidth(config.width),
-        fill: config.filled && isFillable(shape) ? fillFor(config.color) : null,
+        fill: isFillable(shape) ? fillFor(config.color, config.fill) : null,
+        ...(shape === 'line' || shape === 'arrow'
+          ? {
+              headStart: config.headStart,
+              headEnd: config.headEnd,
+              route: config.route,
+              dash: config.dash,
+              fromLink: ends.fromLink ?? null,
+              toLink: ends.toLink ?? null,
+            }
+          : null),
       };
       commitLocal([{ t: 'add', el }]);
       return el.id;
     },
 
-    select(selectedId) {
-      set({ selectedId });
+    select(ids) {
+      const wanted = ids === null ? [] : Array.isArray(ids) ? ids : [ids];
+      const { elements } = get();
+      const groups = new Set(wanted.map((id) => elements[id]?.group).filter(Boolean));
+      const all = new Set(wanted);
+      if (groups.size) {
+        for (const el of get().visibleElements())
+          if (el.group && groups.has(el.group)) all.add(el.id);
+      }
+      set({ selectedIds: [...all] });
+    },
+
+    selectedElements() {
+      const { selectedIds, elements } = get();
+      return selectedIds.map((id) => elements[id]).filter((el) => el && !el.deleted);
     },
 
     selectedShape() {
-      const { selectedId, elements } = get();
-      const el = selectedId ? elements[selectedId] : null;
-      return el && el.kind === 'shape' && !el.deleted ? el : null;
+      const sel = get().selectedElements();
+      return sel.length === 1 && sel[0].kind === 'shape' ? sel[0] : null;
+    },
+
+    elementAt(at, radius, among = get().visibleElements()) {
+      const hits = hitTest(among, at, radius);
+      return hits.length ? (among.find((el) => el.id === hits[hits.length - 1]) ?? null) : null;
     },
 
     updateShape(id, patch) {
@@ -474,7 +771,12 @@ export const useBoardStore = create<BoardState>((set, get) => {
       // A fill only makes sense on a shape that encloses something.
       if (clean.shape && !isFillable(clean.shape)) clean.fill = null;
       commitLocal([
-        { t: 'update', id, patch: clean as Partial<BoardElement>, updatedAt: Date.now() },
+        {
+          t: 'update',
+          id,
+          patch: clean as Partial<BoardElement>,
+          updatedAt: Date.now(),
+        },
       ]);
     },
 
@@ -495,10 +797,16 @@ export const useBoardStore = create<BoardState>((set, get) => {
         const minY = Math.min(el.from.y, el.to.y);
         const maxY = Math.max(el.from.y, el.to.y);
         if (at.x < minX || at.x > maxX || at.y < minY || at.y > maxY) continue;
-        const fill = fillFor(get().config.color);
+        const { color, fill: level } = get().config;
+        const fill = fillFor(color, level === 'none' ? 'low' : level)!;
         if (el.fill === fill) return false;
         commitLocal([
-          { t: 'update', id: el.id, patch: { fill } as Partial<BoardElement>, updatedAt: Date.now() },
+          {
+            t: 'update',
+            id: el.id,
+            patch: { fill } as Partial<BoardElement>,
+            updatedAt: Date.now(),
+          },
         ]);
         return true;
       }
@@ -538,13 +846,23 @@ export const useBoardStore = create<BoardState>((set, get) => {
         return;
       }
       commitLocal([
-        { t: 'update', id, patch: clean as Partial<BoardElement>, updatedAt: Date.now() },
+        {
+          t: 'update',
+          id,
+          patch: clean as Partial<BoardElement>,
+          updatedAt: Date.now(),
+        },
       ]);
     },
 
     addImage(at, width, height, uri) {
       if (!get().canEditNow()) return;
-      commitLocal([{ t: 'add', el: { ...baseFields(), kind: 'image', at, width, height, uri } }]);
+      commitLocal([
+        {
+          t: 'add',
+          el: { ...baseFields(), kind: 'image', at, width, height, uri },
+        },
+      ]);
     },
 
     eraseAt(at, radius = 12) {
@@ -603,9 +921,13 @@ export const useBoardStore = create<BoardState>((set, get) => {
         } else {
           elements = applyOps(elements, ops);
         }
-        // New local elements must land above everything seen so far, remote too.
+        // New local elements must land above everything seen so far, remote
+        // too — including something someone just brought to the front.
         let zCounter = s.zCounter;
-        for (const op of ops) if (op.t === 'add' && op.el.z > zCounter) zCounter = op.el.z;
+        for (const op of ops) {
+          const z = op.t === 'add' ? op.el.z : op.t === 'update' ? op.patch.z : undefined;
+          if (z !== undefined && z > zCounter) zCounter = z;
+        }
         return { elements, zCounter, serverSeq: Math.max(s.serverSeq, seq) };
       });
     },
