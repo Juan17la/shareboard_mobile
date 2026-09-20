@@ -16,15 +16,18 @@ interface ToastState {
   message: string | null;
   /** Bumped on every `show` so repeating the same message re-animates. */
   nonce: number;
-  show(message: string): void;
+  /** How long the message stays, in ms. */
+  duration: number;
+  show(message: string, duration?: number): void;
   hide(): void;
 }
 
 export const useToastStore = create<ToastState>((set) => ({
   message: null,
   nonce: 0,
-  show(message) {
-    set((s) => ({ message, nonce: s.nonce + 1 }));
+  duration: 1700,
+  show(message, duration = 1700) {
+    set((s) => ({ message, duration, nonce: s.nonce + 1 }));
   },
   hide() {
     set({ message: null });
@@ -34,6 +37,14 @@ export const useToastStore = create<ToastState>((set) => ({
 /** Fire a toast from anywhere, including outside React. */
 export function toast(message: string): void {
   useToastStore.getState().show(message);
+}
+
+/**
+ * A control's name, briefly — what a long press on any button shows, since a
+ * finger has no hover to read a tooltip with.
+ */
+export function tip(label: string): void {
+  useToastStore.getState().show(label, 900);
 }
 
 /**
@@ -53,6 +64,7 @@ export function ToastHost({
 }) {
   const message = useToastStore((s) => s.message);
   const nonce = useToastStore((s) => s.nonce);
+  const duration = useToastStore((s) => s.duration);
   const hide = useToastStore((s) => s.hide);
   const [opacity] = useState(() => new Animated.Value(0));
 
@@ -66,9 +78,9 @@ export function ToastHost({
           if (finished) hide();
         },
       );
-    }, 1700);
+    }, duration);
     return () => clearTimeout(timer);
-  }, [message, nonce, opacity, hide]);
+  }, [message, nonce, duration, opacity, hide]);
 
   if (!message || !enabled) return null;
 
