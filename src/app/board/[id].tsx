@@ -21,7 +21,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BoardCanvas } from '@/components/board/BoardCanvas';
 import { ConnectionBanner } from '@/components/board/ConnectionBanner';
-import { BoardFontsProvider } from '@/components/board/BoardFonts';
 import { useBoardMirror } from '@/components/board/BoardMirror';
 import { BottomControls } from '@/components/board/BottomControls';
 import { Toolbar } from '@/components/board/Toolbar';
@@ -183,83 +182,81 @@ export default function BoardScreen() {
   const headerHeight = insets.top + (landscape ? 58 : 104);
 
   return (
-    <BoardFontsProvider>
-      <GlassScene render={mirror} style={{ backgroundColor: '#FFFFFF' }}>
-        <BoardCanvas onCursorMove={sync.sendCursor} canvasRef={canvasRef} />
+    <GlassScene render={mirror} style={{ backgroundColor: '#FFFFFF' }}>
+      <BoardCanvas onCursorMove={sync.sendCursor} canvasRef={canvasRef} />
 
-        <HeaderScrim height={headerHeight} />
-        <BoardHeader
-          landscape={landscape}
-          codeCopied={codeCopied}
-          onCopyCode={copyCode}
-          onOpenPeople={() => setSheet('people')}
-          onOpenMenu={() => setSheet('menu')}
-          onOpenPrivacy={() => setSheet('privacy')}
-          onOpenShare={() => setSheet('share')}
-        />
+      <HeaderScrim height={headerHeight} />
+      <BoardHeader
+        landscape={landscape}
+        codeCopied={codeCopied}
+        onCopyCode={copyCode}
+        onOpenPeople={() => setSheet('people')}
+        onOpenMenu={() => setSheet('menu')}
+        onOpenPrivacy={() => setSheet('privacy')}
+        onOpenShare={() => setSheet('share')}
+      />
 
-        <Toolbar landscape={landscape} />
-        <BottomControls landscape={landscape} />
-        <ConnectionBanner top={headerHeight + 6} onRetry={sync.retry} />
+      <Toolbar landscape={landscape} />
+      <BottomControls landscape={landscape} />
+      <ConnectionBanner top={headerHeight + 6} onRetry={sync.retry} />
 
-        <ToastHost
-          bottom={Math.max(insets.bottom, 16) + 128}
-          enabled={sheet === null && confirm === null}
-        />
+      <ToastHost
+        bottom={Math.max(insets.bottom, 16) + 128}
+        enabled={sheet === null && confirm === null}
+      />
 
-        <ShareSheet
-          open={sheet === 'share'}
-          onClose={() => setSheet(null)}
-          link={link}
-          onOpenExport={() => setSheet('export')}
-          onOpenPrivacy={() => setSheet('privacy')}
-        />
-        <PeopleSheet open={sheet === 'people'} onClose={() => setSheet(null)} />
-        <PrivacySheet
-          open={sheet === 'privacy'}
-          onClose={() => setSheet(null)}
-          onOpenPeople={() => setSheet('people')}
-        />
-        <ExportSheet open={sheet === 'export'} onClose={() => setSheet(null)} />
-        <ImportSheet
-          open={sheet === 'import'}
-          onClose={() => setSheet(null)}
-          onImportSnapshot={handleImportSnapshot}
-          allowImagePlacement
-        />
-        <MenuSheet
-          open={sheet === 'menu'}
-          onClose={() => setSheet(null)}
-          onOpenExport={() => setSheet('export')}
-          onOpenImport={() => setSheet('import')}
-          onOpenPrivacy={() => setSheet('privacy')}
-          onOpenPeople={() => setSheet('people')}
-          onOpenSettings={() => setSheet('settings')}
-        />
-        <SettingsSheet
-          open={sheet === 'settings'}
-          onClose={() => setSheet(null)}
-          onAskClear={() => setConfirm('clear')}
-          onAskDelete={() => setConfirm('delete')}
-        />
+      <ShareSheet
+        open={sheet === 'share'}
+        onClose={() => setSheet(null)}
+        link={link}
+        onOpenExport={() => setSheet('export')}
+        onOpenPrivacy={() => setSheet('privacy')}
+      />
+      <PeopleSheet open={sheet === 'people'} onClose={() => setSheet(null)} />
+      <PrivacySheet
+        open={sheet === 'privacy'}
+        onClose={() => setSheet(null)}
+        onOpenPeople={() => setSheet('people')}
+      />
+      <ExportSheet open={sheet === 'export'} onClose={() => setSheet(null)} />
+      <ImportSheet
+        open={sheet === 'import'}
+        onClose={() => setSheet(null)}
+        onImportSnapshot={handleImportSnapshot}
+        allowImagePlacement
+      />
+      <MenuSheet
+        open={sheet === 'menu'}
+        onClose={() => setSheet(null)}
+        onOpenExport={() => setSheet('export')}
+        onOpenImport={() => setSheet('import')}
+        onOpenPrivacy={() => setSheet('privacy')}
+        onOpenPeople={() => setSheet('people')}
+        onOpenSettings={() => setSheet('settings')}
+      />
+      <SettingsSheet
+        open={sheet === 'settings'}
+        onClose={() => setSheet(null)}
+        onAskClear={() => setConfirm('clear')}
+        onAskDelete={() => setConfirm('delete')}
+      />
 
-        <ConfirmDialog
-          open={confirm !== null}
-          tone={confirm === 'delete' ? 'danger' : 'warn'}
-          title={confirm === 'delete' ? t.deleteTitle : t.clearTitle}
-          body={
-            confirm === 'delete'
-              ? fill(t.deleteBody, { CODE: meta?.shortCode ?? '' })
-              : t.clearBody
-          }
-          confirmLabel={confirm === 'delete' ? t.deleteCta : t.clearCta}
-          cancelLabel={t.cancel}
-          busy={deleting}
-          onConfirm={() => void runConfirm()}
-          onCancel={() => setConfirm(null)}
-        />
-      </GlassScene>
-    </BoardFontsProvider>
+      <ConfirmDialog
+        open={confirm !== null}
+        tone={confirm === 'delete' ? 'danger' : 'warn'}
+        title={confirm === 'delete' ? t.deleteTitle : t.clearTitle}
+        body={
+          confirm === 'delete'
+            ? fill(t.deleteBody, { CODE: meta?.shortCode ?? '' })
+            : t.clearBody
+        }
+        confirmLabel={confirm === 'delete' ? t.deleteCta : t.clearCta}
+        cancelLabel={t.cancel}
+        busy={deleting}
+        onConfirm={() => void runConfirm()}
+        onCancel={() => setConfirm(null)}
+      />
+    </GlassScene>
   );
 }
 

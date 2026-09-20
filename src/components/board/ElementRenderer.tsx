@@ -53,7 +53,7 @@ function ArrowHead({
 function ShapeLabel({ el }: { el: ShapeElement }) {
   const fontSize = el.fontSize ?? SHAPE_TEXT_SIZE;
   const font = useBoardFont(fontSize);
-  if (!el.text || !font) return null;
+  if (!el.text) return null;
   const { x, y, width, height } = shapeBounds(el);
   const step = fontSize * 1.25;
   const lines = el.text.split('\n');
@@ -254,7 +254,6 @@ function TextPath({ text, x, y, font, color }: { text: string; x: number; y: num
 
 function TextView({ el }: { el: Extract<BoardElement, { kind: 'text' }> }) {
   const font = useBoardFont(el.fontSize, !!el.bold, !!el.italic);
-  if (!font) return null;
   // Skia draws text from the baseline; nudge down by ~the font size.
   return <TextPath x={el.at.x} y={el.at.y + el.fontSize} text={el.text} font={font} color={el.color} />;
 }

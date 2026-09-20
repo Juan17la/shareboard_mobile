@@ -29,7 +29,6 @@ import { useBoardStore } from '@/features/board/store';
 import { useSessionStore } from '@/features/session/store';
 import { notify } from '@/utils/haptics';
 
-import { BoardFontsProvider } from '../board/BoardFonts';
 import { ElementRenderer } from '../board/ElementRenderer';
 import { Button } from '../ui/Button';
 import { Segmented } from '../ui/Segmented';
@@ -129,31 +128,29 @@ function ExportSheetBody({ onClose }: { onClose: () => void }) {
             {/* The canvas renders at full export size and is scaled down for
                   display, so `makeImageSnapshot` captures real pixels rather
                   than the thumbnail. */}
-            <BoardFontsProvider>
-              <Canvas
-                ref={canvasRef}
-                style={{
-                  width,
-                  height,
-                  transform: [{ scale: previewScale }],
-                  transformOrigin: 'top left',
-                }}
+            <Canvas
+              ref={canvasRef}
+              style={{
+                width,
+                height,
+                transform: [{ scale: previewScale }],
+                transformOrigin: 'top left',
+              }}
+            >
+              {paintBackground ? (
+                <Rect x={0} y={0} width={width} height={height} color="#FFFFFF" />
+              ) : null}
+              <Group
+                transform={[
+                  { translateX: PADDING - bounds.x },
+                  { translateY: PADDING - bounds.y },
+                ]}
               >
-                {paintBackground ? (
-                  <Rect x={0} y={0} width={width} height={height} color="#FFFFFF" />
-                ) : null}
-                <Group
-                  transform={[
-                    { translateX: PADDING - bounds.x },
-                    { translateY: PADDING - bounds.y },
-                  ]}
-                >
-                  {list.map((el) => (
-                    <ElementRenderer key={el.id} el={el} smooth={smooth} />
-                  ))}
-                </Group>
-              </Canvas>
-            </BoardFontsProvider>
+                {list.map((el) => (
+                  <ElementRenderer key={el.id} el={el} smooth={smooth} />
+                ))}
+              </Group>
+            </Canvas>
           </View>
         ) : (
           <Txt size={11.5} mono tone="tertiary">
