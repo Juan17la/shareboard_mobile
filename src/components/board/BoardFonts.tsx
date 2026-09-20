@@ -2,18 +2,24 @@
  * Nunito for the canvas, loaded straight into Skia and shared with every text
  * node on the board.
  *
- * The four cuts are loaded as typefaces and a `SkFont` is built from the one a
- * node needs (`useBoardFont`). No family-name matching is involved: Skia's
- * `matchFont` looks a family up in a font manager, and a lookup that misses
- * hands back a font with no typeface, which draws nothing at all. A typeface
- * held directly cannot miss.
+ * The bytes are read here, in JS, and handed to Skia as data — never as a URI.
+ * `useTypeface(require(...))` resolves the asset to a URI and asks Skia's
+ * native loader to fetch it; on Android that loader swallows any failure and
+ * the promise simply never settles, so the typeface stays null and every text
+ * node on the board draws nothing, silently. `expo-asset` is the path the rest
+ * of the app's fonts already load through (`expo-font` uses it), and it yields
+ * a real local file in a dev client, Expo Go and a store build alike.
  *
- * It is a context rather than a hook per element: `useTypeface` is a hook, and
- * a board can hold hundreds of text elements. Until the files have decoded the
- * context is null and text nodes render nothing for a frame or two.
+ * The four cuts are loaded once per app and cached: the provider mounts inside
+ * the board's "ready" gate, so a reconnect would otherwise reload them and blank
+ * the text for a moment. Until they have decoded the context is null. If they
+ * cannot be decoded at all the system face stands in — wrong shapes beat no
+ * text — and the reason is logged.
  */
-import { Skia, useTypeface, type SkFont, type SkTypeface } from '@shopify/react-native-skia';
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { FontSlant, FontWeight, FontWidth, Skia, type SkFont, type SkTypeface } from '@shopify/react-native-skia';
+import { Asset } from 'expo-asset';
+import { File } from 'expo-file-system';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 interface Typefaces {
   medium: SkTypeface;
@@ -24,39 +30,58 @@ interface Typefaces {
 
 const BoardFontsContext = createContext<Typefaces | null>(null);
 
-/**
- * What `require()` hands back for an asset differs by platform: a numeric
- * module id on native, a plain URL string on web. Skia accepts the former or a
- * `{ uri }` object, and throws outright on a bare string — so the string case
- * is wrapped rather than passed through.
- */
-type DataSource = Parameters<typeof useTypeface>[0];
+const FILES = {
+  medium: require('@expo-google-fonts/nunito/500Medium/Nunito_500Medium.ttf'),
+  extrabold: require('@expo-google-fonts/nunito/800ExtraBold/Nunito_800ExtraBold.ttf'),
+  italic: require('@expo-google-fonts/nunito/400Regular_Italic/Nunito_400Regular_Italic.ttf'),
+  extraboldItalic: require('@expo-google-fonts/nunito/800ExtraBold_Italic/Nunito_800ExtraBold_Italic.ttf'),
+} as const;
 
-function asSource(asset: unknown): DataSource {
-  return (typeof asset === 'string' ? { uri: asset } : asset) as DataSource;
+async function loadTypeface(module: number | string): Promise<SkTypeface> {
+  const asset = await Asset.fromModule(module).downloadAsync();
+  if (!asset.localUri) throw new Error(`font asset ${asset.name} has no local file`);
+  const bytes = await new File(asset.localUri).bytes();
+  const face = Skia.Typeface.MakeFreeTypeFaceFromData(Skia.Data.fromBytes(bytes));
+  if (!face) throw new Error(`font asset ${asset.name} is not a valid typeface`);
+  return face;
+}
+
+/** One face from the platform's font manager, for when the bundled ones cannot load. */
+function systemTypefaces(): Typefaces | null {
+  const face = Skia.FontMgr.System().matchFamilyStyle('sans-serif', {
+    weight: FontWeight.Medium,
+    width: FontWidth.Normal,
+    slant: FontSlant.Upright,
+  });
+  return face ? { medium: face, extrabold: face, italic: face, extraboldItalic: face } : null;
+}
+
+let typefaces: Promise<Typefaces | null> | null = null;
+
+function loadTypefaces(): Promise<Typefaces | null> {
+  return (typefaces ??= Promise.all([
+    loadTypeface(FILES.medium),
+    loadTypeface(FILES.extrabold),
+    loadTypeface(FILES.italic),
+    loadTypeface(FILES.extraboldItalic),
+  ])
+    .then(([medium, extrabold, italic, extraboldItalic]) => ({ medium, extrabold, italic, extraboldItalic }))
+    .catch((err: unknown) => {
+      console.warn('[BoardFonts] Nunito could not be loaded for the canvas, using the system face', err);
+      return systemTypefaces();
+    }));
 }
 
 export function BoardFontsProvider({ children }: { children: ReactNode }) {
-  const medium = useTypeface(asSource(require('@expo-google-fonts/nunito/500Medium/Nunito_500Medium.ttf')));
-  const extrabold = useTypeface(
-    asSource(require('@expo-google-fonts/nunito/800ExtraBold/Nunito_800ExtraBold.ttf')),
-  );
-  const italic = useTypeface(
-    asSource(require('@expo-google-fonts/nunito/400Regular_Italic/Nunito_400Regular_Italic.ttf')),
-  );
-  const extraboldItalic = useTypeface(
-    asSource(require('@expo-google-fonts/nunito/800ExtraBold_Italic/Nunito_800ExtraBold_Italic.ttf')),
-  );
-
-  const value = useMemo(
-    () =>
-      medium && extrabold && italic && extraboldItalic
-        ? { medium, extrabold, italic, extraboldItalic }
-        : null,
-    [medium, extrabold, italic, extraboldItalic],
-  );
-
-  return <BoardFontsContext.Provider value={value}>{children}</BoardFontsContext.Provider>;
+  const [faces, setFaces] = useState<Typefaces | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    loadTypefaces().then((f) => mounted && setFaces(f));
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  return <BoardFontsContext.Provider value={faces}>{children}</BoardFontsContext.Provider>;
 }
 
 /** A Skia font in the app's typeface, or null until the typefaces have decoded. */
