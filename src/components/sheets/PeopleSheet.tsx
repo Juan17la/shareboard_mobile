@@ -9,11 +9,11 @@
  */
 import { Pressable, View } from 'react-native';
 
-import { Colors, Radius } from '@/constants/theme';
+import { Radius } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
 import { useBoardPermissions } from '@/features/board/use-permissions';
 import { useBoardStore } from '@/features/board/store';
-import { useSessionStore } from '@/features/session/store';
+import { useSessionStore, useColors } from '@/features/session/store';
 
 import { Avatar } from '../ui/Avatar';
 import { GlassPanel } from '../ui/Glass';
@@ -21,6 +21,7 @@ import { Sheet } from '../ui/Sheet';
 import { Txt } from '../ui/Text';
 
 export function PeopleSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const c = useColors();
   const t = useT();
   const meta = useBoardStore((s) => s.meta);
   const participants = useBoardStore((s) => s.participants);
@@ -53,7 +54,7 @@ export function PeopleSheet({ open, onClose }: { open: boolean; onClose: () => v
           const listed = meta?.editors.includes(p.userId) ?? false;
 
           return (
-            <GlassPanel key={p.userId} level="row" radius={Radius.lg} border={Colors.border}>
+            <GlassPanel key={p.userId} level="row" radius={Radius.lg} border={c.border}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, paddingVertical: 11 }}>
                 <Avatar name={p.nickname} color={p.color} avatar={p.avatar} size={36} />
                 <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
@@ -77,15 +78,15 @@ export function PeopleSheet({ open, onClose }: { open: boolean; onClose: () => v
                     paddingVertical: 7,
                     borderRadius: Radius.pill,
                     borderWidth: 1,
-                    borderColor: canEdit ? 'transparent' : Colors.borderStrong,
-                    backgroundColor: canEdit ? Colors.accentSoft : '#FFFFFF',
+                    borderColor: canEdit ? 'transparent' : c.borderStrong,
+                    backgroundColor: canEdit ? c.accentSoft : c.surface,
                     opacity: isCreator || isOwner ? 1 : 0.7,
                   }}
                 >
                   <Txt
                     weight="extrabold"
                     size={10.5}
-                    color={canEdit ? Colors.accent : Colors.textSecondary}
+                    color={canEdit ? c.accent : c.textSecondary}
                   >
                     {isOwner ? t.pillOwner : canEdit ? t.pillCan : t.pillCannot}
                   </Txt>

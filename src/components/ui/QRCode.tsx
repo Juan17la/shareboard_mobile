@@ -9,7 +9,8 @@ import { useMemo } from 'react';
 import { View } from 'react-native';
 import { Path, Svg } from 'react-native-svg';
 
-import { Colors, Radius } from '@/constants/theme';
+import { Radius } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 import { encodeQr } from '@/features/qr/encode';
 
 import { Txt } from './Text';
@@ -17,7 +18,7 @@ import { Txt } from './Text';
 export function QRCode({
   value,
   size = 96,
-  color = Colors.text,
+  color,
   /** Quiet zone in modules. The spec asks for 4; the card border stands in for
    *  most of it, so 2 keeps the code dense without hurting scans. */
   quietZone = 2,
@@ -27,6 +28,8 @@ export function QRCode({
   color?: string;
   quietZone?: number;
 }) {
+  const c = useColors();
+  color ??= c.text;
   const code = useMemo(() => {
     try {
       return encodeQr(value);
@@ -43,7 +46,7 @@ export function QRCode({
     borderRadius: Radius.md,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: c.border,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   };

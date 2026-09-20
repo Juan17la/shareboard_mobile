@@ -14,11 +14,11 @@
 import { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
-import { Colors, Fonts } from '@/constants/theme';
+import { Fonts } from '@/constants/theme';
 import { useT, useToggleLang } from '@/features/i18n/store';
 import { LIMITS } from '@/features/board/model';
 import { useBoardStore } from '@/features/board/store';
-import { useSessionStore, type AppSettings } from '@/features/session/store';
+import { useSessionStore, type AppSettings, useColors } from '@/features/session/store';
 import { renameBoard } from '@/services/api/boards';
 
 import { Button } from '../ui/Button';
@@ -40,10 +40,13 @@ export function SettingsSheet({
   onAskClear: () => void;
   onAskDelete: () => void;
 }) {
+  const c = useColors();
   const t = useT();
   const toggleLang = useToggleLang();
   const settings = useSessionStore((s) => s.settings);
   const setSetting = useSessionStore((s) => s.setSetting);
+  const theme = useSessionStore((s) => s.theme);
+  const setTheme = useSessionStore((s) => s.setTheme);
   const userId = useSessionStore((s) => s.userId);
 
   const meta = useBoardStore((s) => s.meta);
@@ -97,7 +100,7 @@ export function SettingsSheet({
     <Sheet open={open} title={t.sheetSettings} onClose={onClose} closeLabel={t.close}>
       <View style={{ gap: 9 }}>
         {meta ? (
-          <GlassPanel level="row" radius={15} border={Colors.border}>
+          <GlassPanel level="row" radius={15} border={c.border}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13 }}>
               <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                 <Txt weight="bold" size={13} leading={1.2}>
@@ -115,11 +118,11 @@ export function SettingsSheet({
                     padding: 0,
                     fontFamily: Fonts.semibold,
                     fontSize: 13,
-                    color: isCreator ? Colors.text : Colors.textSecondary,
+                    color: isCreator ? c.text : c.textSecondary,
                   }}
                 />
               </View>
-              {isCreator ? <Icon name="edit" size={16} color={Colors.textTertiary} /> : null}
+              {isCreator ? <Icon name="edit" size={16} color={c.textTertiary} /> : null}
             </View>
           </GlassPanel>
         ) : null}
@@ -139,7 +142,21 @@ export function SettingsSheet({
           />
         ))}
 
-        <GlassPanel level="row" radius={15} border={Colors.border}>
+        <SheetRow
+          title={t.settingTheme}
+          description={t.settingThemeDesc}
+          right={
+            <Toggle
+              value={theme === 'dark'}
+              onChange={(on) => setTheme(on ? 'dark' : 'light')}
+              label={t.settingTheme}
+            />
+          }
+        />
+
+        <SheetRow title={t.gestures} description={t.gesturesDesc} />
+
+        <GlassPanel level="row" radius={15} border={c.border}>
           <View
             style={{
               flexDirection: 'row',
@@ -161,8 +178,8 @@ export function SettingsSheet({
                 paddingVertical: 7,
                 borderRadius: 11,
                 borderWidth: 1,
-                borderColor: Colors.borderStrong,
-                backgroundColor: '#FFFFFF',
+                borderColor: c.borderStrong,
+                backgroundColor: c.surface,
               }}
             >
               <Txt weight="extrabold" size={11.5}>
@@ -188,10 +205,10 @@ export function SettingsSheet({
               borderRadius: 15,
               borderWidth: 1,
               borderColor: 'rgba(229,72,77,0.28)',
-              backgroundColor: Colors.dangerSoft,
+              backgroundColor: c.dangerSoft,
             }}
           >
-            <Icon name="trash" size={17} color={Colors.danger} />
+            <Icon name="trash" size={17} color={c.danger} />
             <Txt weight="extrabold" size={13} tone="danger">
               {t.clearBoard}
             </Txt>

@@ -15,9 +15,8 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
-import { useSessionStore } from '@/features/session/store';
+import { useSessionStore, useColors } from '@/features/session/store';
 import { notify, tick } from '@/utils/haptics';
 
 import { Backdrop } from '../ui/Backdrop';
@@ -36,6 +35,7 @@ export function PinScreen({
   error: string | null;
   onSubmit: (pin: string) => void;
 }) {
+  const c = useColors();
   const insets = useSafeAreaInsets();
   const t = useT();
   const haptics = useSessionStore((s) => s.settings.haptics);
@@ -92,11 +92,11 @@ export function PinScreen({
             alignItems: 'center',
             justifyContent: 'center',
             borderWidth: 1,
-            borderColor: Colors.border,
-            backgroundColor: 'rgba(255,255,255,0.8)',
+            borderColor: c.border,
+            backgroundColor: c.glassTintSolid,
           }}
         >
-          <Icon name="lock" size={22} color={Colors.text} />
+          <Icon name="lock" size={22} color={c.text} />
         </View>
 
         <View style={{ alignItems: 'center', gap: 6 }}>
@@ -121,9 +121,9 @@ export function PinScreen({
                   width: 14,
                   height: 14,
                   borderRadius: 7,
-                  backgroundColor: filled ? Colors.accent : 'transparent',
+                  backgroundColor: filled ? c.accent : 'transparent',
                   borderWidth: filled ? 0 : 2,
-                  borderColor: 'rgba(27,32,48,0.2)',
+                  borderColor: c.borderDashed,
                 }}
               />
             );
@@ -154,11 +154,11 @@ export function PinScreen({
                 justifyContent: 'center',
                 borderRadius: keySize.radius,
                 borderWidth: key ? 1 : 0,
-                borderColor: Colors.border,
+                borderColor: c.border,
                 backgroundColor: key
                   ? pressed
-                    ? Colors.surfaceSelected
-                    : 'rgba(255,255,255,0.78)'
+                    ? c.surfaceSelected
+                    : c.glassTintSolid
                   : 'transparent',
                 ...(key
                   ? {
@@ -172,7 +172,7 @@ export function PinScreen({
               })}
             >
               {key === 'back' ? (
-                <Icon name="close" size={20} color={Colors.text} />
+                <Icon name="close" size={20} color={c.text} />
               ) : (
                 <Txt weight="bold" size={21}>
                   {key}

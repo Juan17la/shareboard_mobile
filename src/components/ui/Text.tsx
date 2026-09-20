@@ -9,7 +9,8 @@
  */
 import { Text, type TextProps } from 'react-native';
 
-import { Colors, Fonts } from '@/constants/theme';
+import { Fonts, type Palette } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
 
 export type TextWeight = 'regular' | 'medium' | 'semibold' | 'bold' | 'extrabold';
 export type TextTone = 'default' | 'secondary' | 'tertiary' | 'accent' | 'danger' | 'inverse';
@@ -22,13 +23,13 @@ const FAMILY: Record<TextWeight, string> = {
   extrabold: Fonts.extrabold,
 };
 
-const TONE: Record<TextTone, string> = {
-  default: Colors.text,
-  secondary: Colors.textSecondary,
-  tertiary: Colors.textTertiary,
-  accent: Colors.accent,
-  danger: Colors.danger,
-  inverse: '#FFFFFF',
+/** The palette key behind each tone; `inverse` is always white on an accent. */
+const TONE: Record<Exclude<TextTone, 'inverse'>, keyof Palette> = {
+  default: 'text',
+  secondary: 'textSecondary',
+  tertiary: 'textTertiary',
+  accent: 'accent',
+  danger: 'danger',
 };
 
 export interface TxtProps extends TextProps {
@@ -57,6 +58,7 @@ export function Txt({
   style,
   ...rest
 }: TxtProps) {
+  const c = useColors();
   const family = mono
     ? weight === 'bold' || weight === 'extrabold'
       ? Fonts.monoBold
@@ -73,7 +75,7 @@ export function Txt({
         {
           fontFamily: family,
           fontSize: size,
-          color: color ?? TONE[tone],
+          color: color ?? (tone === 'inverse' ? '#FFFFFF' : c[TONE[tone]]),
           ...(leading ? { lineHeight: Math.round(size * leading) } : null),
           ...(tracking !== undefined ? { letterSpacing: tracking } : null),
         },
