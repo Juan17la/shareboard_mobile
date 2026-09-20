@@ -28,7 +28,10 @@ interface Typefaces {
   extraboldItalic: SkTypeface;
 }
 
-const BoardFontsContext = createContext<Typefaces | null>(null);
+const BoardFontsContext = createContext<{ faces: Typefaces | null; status: string }>({
+  faces: null,
+  status: 'no provider',
+});
 
 const FILES = {
   medium: require('@expo-google-fonts/nunito/500Medium/Nunito_500Medium.ttf'),
@@ -81,22 +84,39 @@ function loadTypefaces(): Promise<Typefaces | null> {
 
 export function BoardFontsProvider({ children }: { children: ReactNode }) {
   const [faces, setFaces] = useState<Typefaces | null>(systemTypefaces);
+  const [nunito, setNunito] = useState('loading');
   useEffect(() => {
     let mounted = true;
-    loadTypefaces().then((f) => {
-      log('nunito', f ? 'ready' : 'unavailable');
-      if (mounted && f) setFaces(f);
-    });
+    loadTypefaces().then(
+      (f) => {
+        log('nunito', f ? 'ready' : 'unavailable');
+        if (!mounted) return;
+        setNunito(f ? 'ok' : 'unavailable');
+        if (f) setFaces(f);
+      },
+      (err: unknown) => mounted && setNunito(`error ${String(err)}`),
+    );
     return () => {
       mounted = false;
     };
   }, []);
-  return <BoardFontsContext.Provider value={faces}>{children}</BoardFontsContext.Provider>;
+  // A system font manager that lists no families hands back typeface-less
+  // fonts, which draw nothing: the count is the one number that says so.
+  const value = useMemo(
+    () => ({ faces, status: `families=${Skia.FontMgr.System().countFamilies()} · nunito ${nunito}` }),
+    [faces, nunito],
+  );
+  return <BoardFontsContext.Provider value={value}>{children}</BoardFontsContext.Provider>;
+}
+
+/** Where the board's fonts stand, for the dev status line on the canvas. */
+export function useBoardFontStatus(): string {
+  return useContext(BoardFontsContext).status;
 }
 
 /** A Skia font: the system face at first, Nunito once it has decoded. */
 export function useBoardFont(size: number, bold = false, italic = false): SkFont | null {
-  const faces = useContext(BoardFontsContext);
+  const { faces } = useContext(BoardFontsContext);
   return useMemo(() => {
     if (!faces) return null;
     const face = italic
