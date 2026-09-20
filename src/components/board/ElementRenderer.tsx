@@ -9,9 +9,9 @@ import {
   RoundedRect,
   Circle,
   Skia,
-  Text as SkText,
   useImage,
   vec,
+  type SkFont,
 } from '@shopify/react-native-skia';
 import { memo, useMemo } from 'react';
 
@@ -66,14 +66,7 @@ function ShapeLabel({ el }: { el: ShapeElement }) {
   return (
     <Group>
       {lines.map((line, i) => (
-        <SkText
-          key={i}
-          x={cx - textWidth(font, line) / 2}
-          y={top + i * step}
-          text={line}
-          font={font}
-          color={el.stroke}
-        />
+        <TextPath key={i} x={cx - textWidth(font, line) / 2} y={top + i * step} text={line} font={font} color={el.stroke} />
       ))}
     </Group>
   );
@@ -247,11 +240,23 @@ function ImageView({
   return <Image image={image} x={x} y={y} width={width} height={height} fit="contain" />;
 }
 
+/**
+ * Text drawn as outlines rather than through Skia's `Text` node. Glyphs go
+ * through the GPU glyph atlas, which on some Android drivers paints nothing
+ * while plain geometry — every stroke and shape on the board — paints fine;
+ * and the native recorder silently skips a `Text` whose font it cannot read.
+ * A path is the pipeline that is known to work on the same screen.
+ */
+function TextPath({ text, x, y, font, color }: { text: string; x: number; y: number; font: SkFont; color: string }) {
+  const path = useMemo(() => Skia.Path.MakeFromText(text, x, y, font), [text, x, y, font]);
+  return path ? <Path path={path} color={color} /> : null;
+}
+
 function TextView({ el }: { el: Extract<BoardElement, { kind: 'text' }> }) {
   const font = useBoardFont(el.fontSize, !!el.bold, !!el.italic);
   if (!font) return null;
   // Skia draws text from the baseline; nudge down by ~the font size.
-  return <SkText x={el.at.x} y={el.at.y + el.fontSize} text={el.text} font={font} color={el.color} />;
+  return <TextPath x={el.at.x} y={el.at.y + el.fontSize} text={el.text} font={font} color={el.color} />;
 }
 
 /**
