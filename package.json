@@ -50,7 +50,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "check:socket": "node --import ../server/node_modules/tsx/dist/loader.mjs --import ./test/expo-stub.mjs test/socket-lifecycle.mjs"
+    "check:socket": "node --import ../server/node_modules/tsx/dist/loader.mjs --import ./test/expo-stub.mjs test/socket-lifecycle.mjs",
+    "check:geometry": "node --import ../server/node_modules/tsx/dist/loader.mjs --import ./test/expo-stub.mjs test/geometry.mjs"
   },
   "private": true
 }
