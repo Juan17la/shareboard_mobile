@@ -23,11 +23,13 @@ en la raíz del repositorio), que es la referencia visual definitiva.
 
 # Tema
 
-**Solo claro.** El diseño define un único sistema de superficies —cristal blanco
-sobre un fondo ambiental suave— y no trae contraparte oscura. Inventar una
-dejaría los paneles de cristal, que sacan su profundidad de un desenfoque claro
-sobre fondo claro, como cajas grises planas. `app.json` fija
-`userInterfaceStyle: "light"`.
+**Claro por defecto, oscuro a elección.** El tema se cambia desde la pestaña de
+ajustes de la home, la hoja de ajustes o el botón de la cabecera, y se recuerda
+por dispositivo (`session.theme`). La paleta clara es `Colors`; la oscura es
+`Palettes.dark` (mismo sistema de cristal sobre un fondo tinta `#141824`). Los
+componentes leen la paleta en uso con `useColors()`, que funciona también dentro
+de un canvas de Skia. La tinta por defecto (`#1B2030`) se **pinta** clara en la
+pizarra oscura (`inkFor`) sin cambiar el dato: quien esté en claro la ve igual.
 
 # Paleta
 
@@ -47,8 +49,8 @@ sobre fondo claro, como cajas grises planas. `app.json` fija
 
 | Token | Valor | Uso |
 |---|---|---|
-| `accent` | `#6D3FB5` | CTA principal, herramienta activa, selección |
-| `accent-soft` | `rgba(109,63,181,.11)` | fila seleccionada, chip de icono |
+| `accent` | `#7A1F2B` | CTA principal, herramienta activa, selección |
+| `accent-soft` | `rgba(122,31,43,.11)` | fila seleccionada, chip de icono |
 | `danger` | `#C4353A` | eliminar |
 | `danger-bright` | `#E5484D` | borde/realce destructivo |
 | `warn` | `#B4530A` | confirmación reversible (vaciar) |
@@ -80,7 +82,7 @@ Más un selector "Otro" (`components/ui/ColorPickerSheet.tsx`): una rejilla de
 tonos × luminosidades, no deslizadores. Se elige de un toque y no hay que saber
 qué es la saturación.
 
-**Colores de identidad** (`NicknameColors`, la pantalla de nombre): `#6D3FB5`,
+**Colores de identidad** (`NicknameColors`, la pantalla de nombre): `#7A1F2B`,
 `#E5484D`, `#F76808`, `#30A46C`, `#0091FF`, `#8E4EC6`. El color elegido viaja
 en el `join` y el servidor lo respeta salvo que ya lo tenga otra persona.
 
@@ -134,23 +136,25 @@ en el `join` y el servidor lo respeta salvo que ya lo tenga otra persona.
 
 ```
 ┌──────────────────────────────────────────────┐
-│ ░ cabecera flotante ░                    ▢▢▢ │  nombre · en línea · avatares · ⋯
-│ [código] [permisos]            [Compartir]  ▢│  ▢ = riel de herramientas
-│                                             ▢│
-│                LIENZO INFINITO              ▢│
+│ ░ cabecera flotante ░                    ▢▢▢ │  nombre · en línea · avatares
+│ [⋯] [☾] [código] [permisos]      [Compartir] │
+│                          [− 100% + │ ↶ ↷]    │  zoom y deshacer, arriba a la derecha
+│                LIENZO INFINITO               │
 │                                              │
-│ [100%]                                       │
-│ [↶ ↷]                                        │
+│          [▸ ✋ ✎ ◫ ▢ T ◆ │ ■]                 │  barra de herramientas, abajo
 └──────────────────────────────────────────────┘
 ```
 
 * **Cabecera** flotante sobre un degradado blanco → transparente, no una barra:
   el lienzo llega hasta arriba. El código se copia al tocarlo.
-* **Riel de herramientas** a la derecha (lápiz, borrador, figuras, texto,
-  relleno, color), con su columna de opciones abriéndose a la izquierda.
-* **Zoom y deshacer/rehacer** abajo a la izquierda, en la esquina opuesta al
-  riel: son lo que se toca *mientras* se dibuja, y bajo la mano que dibuja
-  taparían el lienzo.
+* **Barra de herramientas** abajo, centrada, de siete botones en este orden:
+  cursor (la herramienta por defecto), mano, lápiz, borrador, figuras, texto,
+  relleno, más el color. Las cinco figuras se pliegan en un botón; la tira de
+  opciones que se abre encima ofrece el tipo.
+* **Zoom y deshacer/rehacer** arriba a la derecha, bajo la cabecera, en un solo
+  chip de botones del mismo tamaño (− / 100 % / +, ↶ ↷), igual en móvil y web.
+* **Mantener pulsado** cualquier botón muestra su nombre (la web lo hace al pasar
+  el puntero).
 * **Todo lo demás** son hojas inferiores (`Sheet`), no pantallas: la pizarra
   sigue viéndose detrás del scrim mientras se decide quién puede editarla.
 
