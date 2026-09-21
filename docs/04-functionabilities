@@ -120,10 +120,12 @@ como una `Op`; el trazo no se ve "entrecortado" a velocidad normal.
 # Interacción táctil
 
 * **1 dedo** = herramienta activa (dibujar / borrar / colocar texto / rellenar).
-  Con el cursor, un dedo sobre el vacío **mueve el lienzo**: no hace falta
-  cambiar a la mano para mirar alrededor. Mantener pulsado (~300 ms) y
-  arrastrar dibuja el recuadro de selección.
-* **2 dedos** = mover el lienzo (pan).
+  Con el cursor, un dedo sobre el vacío dibuja el recuadro de selección y un
+  dedo sobre un elemento lo coge y lo arrastra en el mismo gesto; el cursor
+  **nunca mueve el lienzo**. Solo la mano (y quien no puede editar) mueve el
+  lienzo con un dedo.
+* **2 dedos** = mover el lienzo (pan), con cualquier herramienta. (En la web:
+  Mayús + arrastrar, rueda, botón central.)
 * **Pellizco** = zoom (25 %–600 %), manteniendo fijo el punto focal. **Doble
   toque** en el vacío acerca ×2 alrededor del dedo; desde 2× vuelve al 100 %.
   Los botones − / + del chip superior derecho hacen lo mismo por pasos.

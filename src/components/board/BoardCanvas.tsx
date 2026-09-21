@@ -4,7 +4,8 @@
  *
  * One finger is always the active tool and two fingers are always the camera —
  * the split the design relies on and the reason drawing never fights panning.
- * The hand tool, and a viewer with no tools at all, get one-finger panning.
+ * The cursor is no exception: a drag with it moves or rubber-bands. Only the
+ * hand tool, and a viewer with no tools at all, get one-finger panning.
  * The camera lives in the store but never on the wire: pan and zoom are
  * per-device (docs/05-model-date).
  */
@@ -105,15 +106,17 @@ export function BoardCanvas({
   const liveShape = useBoardStore((s) => s.liveShape);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Sorted once per change to the elements, not once per finger move: the
+  // drag preview below only patches the sorted list.
+  const sorted = useMemo(() => visibleSorted(elements), [elements]);
   const list = useMemo(() => {
-    const sorted = visibleSorted(elements);
     if (!liveEdit) return sorted;
     // The same patches the lift will commit, so the preview is the result.
     const patches = new Map(editPatches(sorted, liveEdit).map((p) => [p.id, p.patch]));
     return sorted.map((el) =>
       patches.has(el.id) ? ({ ...el, ...patches.get(el.id) } as BoardElement) : el,
     );
-  }, [elements, liveEdit]);
+  }, [sorted, liveEdit]);
 
   const selecting = tool === 'select' || tool === 'shape';
   const selected = useMemo(
@@ -160,21 +163,10 @@ export function BoardCanvas({
       return true;
     };
 
-    // One finger moves the camera for the hand tool, for anyone who has no
-    // tools — the one gesture the board still owes a viewer — and for the
-    // cursor when it lands on empty board, so nobody has to switch to the hand
-    // to look around. (The rubber band is a press-and-hold: `marquee`.)
-    const touch = { onEmpty: false };
-    const panning = () =>
-      store().tool === 'hand' || !store().canEditNow() || (store().tool === 'select' && touch.onEmpty);
-    /** Whether `p` lands on nothing: no element, and not the selection's handles. */
-    const emptyAt = (p: Point): boolean => {
-      const scale = store().camera.scale;
-      if (store().elementAt(p, 8 / scale)) return false;
-      const sel = store().selectedElements();
-      const one = sel.length === 1 ? sel[0] : null;
-      return !one || !handlesOf(one).some((h) => Math.hypot(h.x - p.x, h.y - p.y) <= 18 / scale);
-    };
+    // One finger moves the camera only for the hand tool and for anyone who
+    // has no tools — the one gesture the board still owes a viewer. Every
+    // other tool, the cursor included, leaves the camera to two fingers.
+    const panning = () => store().tool === 'hand' || !store().canEditNow();
     // Where a line was started, unsnapped: its anchor can change as the end moves.
     const lineStart = { x: 0, y: 0 };
 
@@ -200,9 +192,6 @@ export function BoardCanvas({
       // Palm rejection: a second finger belongs to the camera, never the tool.
       .maxPointers(1)
       .runOnJS(true)
-      .onBegin((e) => {
-        touch.onEmpty = store().tool === 'select' && emptyAt(screenToBoard(e.x, e.y));
-      })
       .onChange((e) => {
         if (!panning()) return;
         const c = store().camera;
@@ -222,10 +211,14 @@ export function BoardCanvas({
           store().setLiveShape(snapLine(store().config.shape, p, p));
         } else if (t === 'select' && !beginEdit(p)) {
           // On something not yet selected: pick it up and carry it at once.
+          // Off everything: rubber-band a new selection.
           const hit = store().elementAt(p, 8 / store().camera.scale);
           if (hit) {
             store().select(hit.id);
             beginEdit(p);
+          } else {
+            store().select(null);
+            store().setLiveMarquee({ from: p, to: p });
           }
         }
         // A finger rarely lands perfectly still: the slightest movement makes
@@ -245,7 +238,9 @@ export function BoardCanvas({
         if (t === 'eraser') store().eraseAt(p);
         else if (t === 'pen') store().setLiveStroke([...store().liveStroke, p.x, p.y]);
         else if (t === 'shape' || t === 'select') {
+          const box = store().liveMarquee;
           if (store().liveEdit) moveEdit(p);
+          else if (box) store().setLiveMarquee({ from: box.from, to: p });
           else if (store().liveShape) {
             store().setLiveShape(snapLine(store().config.shape, lineStart, p));
           }
@@ -256,10 +251,16 @@ export function BoardCanvas({
         // Read from the store, not through a `setState` updater: an updater
         // runs during the next render, and a store write from there is React's
         // "cannot update a component while rendering a different component".
-        const { tool: t, liveStroke: pts, liveShape: shape, liveEdit: edit } = store();
+        const { tool: t, liveStroke: pts, liveShape: shape, liveEdit: edit, liveMarquee: box } = store();
         if (t === 'pen' && pts.length >= 4) store().addStroke(simplify(pts));
         if (edit) {
           finishEdit();
+        } else if (box) {
+          const ids = elementsIn(store().visibleElements(), shapeBounds(box)).map((el) => el.id);
+          store().select(ids);
+          // Selecting something is asking to change it: the options come up.
+          store().setRailOpen(ids.length > 0);
+          store().setLiveMarquee(null);
         } else if (t === 'shape' && shape) {
           // A tap with the shape tool is a mis-hit, not a zero-size rectangle.
           const dragged = Math.hypot(shape.to.x - shape.from.x, shape.to.y - shape.from.y);
@@ -269,40 +270,6 @@ export function BoardCanvas({
         }
         store().setLiveStroke([]);
         store().setLiveShape(null);
-      });
-
-    // Press and hold with the cursor, then drag: on empty board the rubber
-    // band, on the selection an ordinary drag of it. It waits for the hold so
-    // a plain drag on empty board stays a pan.
-    const marquee = Gesture.Pan()
-      .maxPointers(1)
-      .activateAfterLongPress(300)
-      .runOnJS(true)
-      .onStart((e) => {
-        const p = screenToBoard(e.x, e.y);
-        if (store().tool !== 'select' || !editable()) return;
-        store().setRailOpen(false);
-        if (beginEdit(p)) return;
-        tick(haptics);
-        store().select(null);
-        store().setLiveMarquee({ from: p, to: p });
-      })
-      .onUpdate((e) => {
-        const p = screenToBoard(e.x, e.y);
-        const box = store().liveMarquee;
-        if (box) store().setLiveMarquee({ from: box.from, to: p });
-        else moveEdit(p);
-      })
-      .onEnd(() => {
-        const box = store().liveMarquee;
-        if (!box) {
-          finishEdit();
-          return;
-        }
-        const ids = elementsIn(store().visibleElements(), shapeBounds(box)).map((el) => el.id);
-        store().select(ids);
-        store().setRailOpen(ids.length > 0);
-        store().setLiveMarquee(null);
       });
 
     // Twice on empty board with the cursor or the hand: closer, and back home
@@ -377,7 +344,7 @@ export function BoardCanvas({
         });
       });
 
-    return Gesture.Simultaneous(pinch, panCamera, Gesture.Exclusive(marquee, draw, tap));
+    return Gesture.Simultaneous(pinch, panCamera, Gesture.Exclusive(draw, tap));
   }, [onCursorMove, haptics]);
 
   const editing = editingId ? elements[editingId] : null;
