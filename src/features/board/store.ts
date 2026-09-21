@@ -22,7 +22,7 @@ import { DrawingPalette, StrokeSizes } from '@/constants/theme';
 import type { Op } from '@/services/realtime/protocol';
 import { shortId } from '@/utils/id';
 
-import { followLinks, headsOf, isLineLike, translate } from './geometry';
+import { followLinks, headsOf, isLineLike, shapeHit, translate } from './geometry';
 import {
   LIMITS,
   canEdit,
@@ -975,11 +975,7 @@ function hitTest(elements: BoardElement[], at: Point, radius: number): ElementId
         }
       }
     } else if (el.kind === 'shape') {
-      const minX = Math.min(el.from.x, el.to.x) - radius;
-      const maxX = Math.max(el.from.x, el.to.x) + radius;
-      const minY = Math.min(el.from.y, el.to.y) - radius;
-      const maxY = Math.max(el.from.y, el.to.y) + radius;
-      if (at.x >= minX && at.x <= maxX && at.y >= minY && at.y <= maxY) hits.push(el.id);
+      if (shapeHit(el, at, radius)) hits.push(el.id);
     } else {
       const w = el.kind === 'image' ? el.width : Math.max(40, el.text.length * el.fontSize * 0.55);
       const h = el.kind === 'image' ? el.height : el.fontSize * 1.4;
