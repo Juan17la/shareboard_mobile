@@ -351,18 +351,56 @@ export function followLinks(
 export function shapeAt(elements: BoardElement[], at: Point, pad: number): ShapeElement | null {
   for (let i = elements.length - 1; i >= 0; i--) {
     const el = elements[i];
-    if (el.kind !== 'shape') continue;
-    const b = shapeBounds(el);
-    if (
-      at.x >= b.x - pad &&
-      at.x <= b.x + b.width + pad &&
-      at.y >= b.y - pad &&
-      at.y <= b.y + b.height + pad
-    ) {
-      return el;
-    }
+    if (el.kind === 'shape' && shapeHit(el, at, pad)) return el;
   }
   return null;
+}
+
+/**
+ * Whether `at` lands on a shape, within `pad`. A box is its area; a line or an
+ * arrow is only the route it is drawn along. Its bounding box would be most of
+ * the board between two shapes it connects, and every tap in there took the
+ * arrow instead of the shape underneath.
+ */
+export function shapeHit(el: ShapeElement, at: Point, pad: number): boolean {
+  if (isLineLike(el)) {
+    const pts = routePoints(el.from, el.to, el.route);
+    const reach = pad + el.strokeWidth / 2;
+    for (let i = 1; i < pts.length; i++) {
+      if (segmentDistance(pts[i - 1], pts[i], at) <= reach) return true;
+    }
+    return false;
+  }
+  const b = shapeBounds(el);
+  return (
+    at.x >= b.x - pad && at.x <= b.x + b.width + pad && at.y >= b.y - pad && at.y <= b.y + b.height + pad
+  );
+}
+
+/** Distance from `p` to the segment ab. */
+function segmentDistance(a: Point, b: Point, p: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)) : 0;
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+/** The route as a polyline: the curve is sampled, the others are their corners. */
+function routePoints(from: Point, to: Point, route: Route = 'straight'): Point[] {
+  if (route === 'elbow') return elbow(from, to);
+  if (route !== 'curved') return [from, to];
+  const c = control(from, to);
+  const pts: Point[] = [];
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    const u = 1 - t;
+    pts.push({
+      x: u * u * from.x + 2 * u * t * c.x + t * t * to.x,
+      y: u * u * from.y + 2 * u * t * c.y + t * t * to.y,
+    });
+  }
+  return pts;
 }
 
 // --- routes, dashes and markers ----------------------------------------------
