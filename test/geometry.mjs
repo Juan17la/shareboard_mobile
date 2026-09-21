@@ -73,6 +73,8 @@ assert.equal(patches.find((p) => p.id === 'L').patch.toLink, undefined);
 
 // --- marquee ---------------------------------------------------------------
 assert.deepEqual(elementsIn([A, B], { x: -10, y: -10, width: 200, height: 200 }).map((e) => e.id), ['A']);
+// Touching counts: a band that clips B's corner takes B too.
+assert.deepEqual(elementsIn([A, B], { x: 50, y: 50, width: 260, height: 100 }).map((e) => e.id), ['A', 'B']);
 
 // --- paths -----------------------------------------------------------------
 for (const kind of ALL_MARKERS) {
