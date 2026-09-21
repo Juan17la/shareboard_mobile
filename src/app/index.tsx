@@ -293,7 +293,9 @@ export default function Home() {
     <GlassScene render={backdropScene}>
       <Backdrop variant="home" />
       <KeyboardAvoidingView
-        style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+        // The gutter is the parent's padding, not the card's margin: a card at
+        // `width: '100%'` ignores its own margins and ran edge to edge.
+        style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <GlassPanel
@@ -302,7 +304,6 @@ export default function Home() {
           style={{
             width: '100%',
             maxWidth: 460,
-            marginHorizontal: 16,
             maxHeight: height - insets.top - insets.bottom - 32,
             ...Shadow.panel,
           }}
@@ -364,8 +365,12 @@ function SettingsTab() {
             <View style={{ flex: 1, minWidth: 0 }}>
               <Field
                 value={draft}
-                onChangeText={setDraft}
-                onBlur={() => setNickname(draft)}
+                // Written through as typed: a tap on the theme or language
+                // does not blur the field, so a blur-time save never came.
+                onChangeText={(v) => {
+                  setDraft(v);
+                  setNickname(v);
+                }}
                 placeholder={t.nickPlaceholder}
                 maxLength={LIMITS.maxNicknameLength}
                 autoComplete="nickname"
