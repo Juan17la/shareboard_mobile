@@ -228,11 +228,11 @@ export function resizeElement(el: BoardElement, h: number, p: Point): Partial<Bo
 
 /** Elements whose box lies entirely inside `b` — the marquee's pick. */
 export function elementsIn(elements: BoardElement[], b: Bounds): BoardElement[] {
+  // Anything the band touches, not only what it encloses: a finger cannot
+  // frame a stroke to the pixel, and a stroke's padding made it fail anyway.
   return elements.filter((el) => {
     const e = elementBounds(el);
-    return (
-      e.x >= b.x && e.y >= b.y && e.x + e.width <= b.x + b.width && e.y + e.height <= b.y + b.height
-    );
+    return e.x <= b.x + b.width && e.x + e.width >= b.x && e.y <= b.y + b.height && e.y + e.height >= b.y;
   });
 }
 
