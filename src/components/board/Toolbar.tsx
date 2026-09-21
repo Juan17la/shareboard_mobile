@@ -15,7 +15,7 @@
  * and the options wrap, so everything is visible at once on a narrow phone.
  */
 import { useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Path as SvgPath, Svg } from 'react-native-svg';
 
@@ -105,9 +105,6 @@ const TOOLS: ToolEntry[] = [
   { tool: 'fill', icon: 'fill', labelKey: 'fill' },
 ];
 
-/** Height of the bar: one row, a little shorter in landscape. */
-export const toolbarHeight = (landscape: boolean) => (landscape ? 46 : 56);
-
 export function Toolbar({ landscape }: { landscape: boolean }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
@@ -124,6 +121,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const canEdit = useBoardStore((s) => s.canEditNow());
   const haptics = useSessionStore((s) => s.settings.haptics);
   const dark = useDark();
+  const { width } = useWindowDimensions();
 
   const open = useBoardStore((s) => s.railOpen);
   const setOpen = useBoardStore((s) => s.setRailOpen);
@@ -189,6 +187,10 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const showColor =
     tool !== 'hand' && tool !== 'eraser' && (tool !== 'select' || selected.length > 0);
   const showOrder = tool === 'select' && selected.length > 0;
+  // The cursor with nothing selected, and the hand, have nothing to offer: an
+  // empty strip is noise, whatever asked for it.
+  const hasOptions =
+    showSizes || showFill || showLine || showTextOptions || showOrder || showColor;
   // A selected shape can change kind within its family: box to box, line to
   // arrow. With the shapes tool in hand, the strip is where the kind is chosen.
   const kinds: ShapeKind[] = selLine
@@ -245,6 +247,8 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
       config.dash,
   };
   const fontSize = cur.fontSize;
+  // The board ink flips on the dark theme (`inkFor`); the swatches follow it.
+  const ink = inkFor(cur.color, dark);
   const setFontSize = (next: number) => setConfig({ fontSize: next });
   const fillLevels: {
     level: FillLevel;
@@ -276,8 +280,13 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     { op: 'front', icon: 'to-front', labelKey: 'toFront' },
   ];
 
-  const buttonSize = landscape ? 34 : 44;
-  const buttonRadius = landscape ? 12 : 14;
+  // The row is seven tools, a hairline and the swatch: nine children, eight
+  // gaps, inside the panel's padding and border and the screen's own gutter.
+  // On a narrow phone the buttons shrink so the row fits instead of clipping.
+  const gap = landscape ? 3 : 4;
+  const chrome = insets.left + insets.right + 16 + 2 * (landscape ? 5 : 6) + 2 + 9 + 8 * gap;
+  const buttonSize = Math.min(landscape ? 34 : 44, Math.floor((width - chrome) / 8));
+  const buttonRadius = buttonSize < 40 ? 12 : 14;
   const rows = [TOOLS];
 
   return (
@@ -294,7 +303,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
           paddingHorizontal: 8,
         }}
       >
-        {open ? (
+        {open && hasOptions ? (
           <GlassPanel level="panel" radius={16} style={[panelShadow, { maxWidth: '100%' }]}>
             <View>
               {pickingHead ? (
@@ -390,33 +399,19 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   ) : null}
 
                   {kinds.length ? (
-
                     <Cluster>
-
                       {kinds.map((kind) => (
-
                         <MiniButton
-
                           key={kind}
-
                           label={t[SHAPES.find((e) => e.shape === kind)!.labelKey]}
-
                           active={cur.shape === kind}
-
                           onPress={() => pickKind(kind)}
-
                         >
-
                           <Icon name={kind} size={18} color={cur.shape === kind ? '#FFFFFF' : c.text} />
-
                         </MiniButton>
-
                       ))}
-
                     </Cluster>
-
                   ) : null}
-
 
                   {showFill ? (
                     <Cluster>
@@ -437,10 +432,9 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                               height: 16,
                               borderRadius: 4,
                               borderWidth: 1.5,
-                              borderColor: cur.fill === level ? '#FFFFFF' : cur.color,
+                              borderColor: cur.fill === level ? '#FFFFFF' : ink,
                               backgroundColor:
-                                fillFor(cur.fill === level ? '#FFFFFF' : cur.color, level) ??
-                                'transparent',
+                                fillFor(cur.fill === level ? '#FFFFFF' : ink, level) ?? 'transparent',
                             }}
                           />
                         </MiniButton>
@@ -667,7 +661,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                             width: 14,
                             height: 14,
                             borderRadius: 4,
-                            backgroundColor: cur.color,
+                            backgroundColor: ink,
                             borderWidth: 1,
                             borderColor: c.border,
                           }}
@@ -690,7 +684,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
           style={[panelShadow, { maxWidth: '100%' }]}
         >
           <View
-            style={{ gap: landscape ? 3 : 4, padding: landscape ? 5 : 6 }}
+            style={{ gap, padding: landscape ? 5 : 6 }}
             accessibilityRole="toolbar"
             accessibilityLabel={t.tools}
           >
@@ -701,7 +695,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: landscape ? 3 : 4,
+                  gap,
                 }}
               >
                 {row.map((entry) => (
@@ -770,8 +764,8 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
         >
           <View
             style={{
-              width: landscape ? 19 : 22,
-              height: landscape ? 19 : 22,
+              width: buttonSize / 2,
+              height: buttonSize / 2,
               borderRadius: 7,
               backgroundColor: inkFor(config.color, dark),
               borderWidth: 2,
