@@ -169,6 +169,9 @@ export function BoardCanvas({
     const panning = () => store().tool === 'hand' || !store().canEditNow();
     // Where a line was started, unsnapped: its anchor can change as the end moves.
     const lineStart = { x: 0, y: 0 };
+    // Where the finger landed. A pan activates only after it has moved a
+    // little, so `onStart` is already past the spot the user aimed at.
+    const down = { x: 0, y: 0 };
 
     /** Drags the selection (or one of its handles) to `p`. */
     const moveEdit = (p: Point) => {
@@ -192,6 +195,10 @@ export function BoardCanvas({
       // Palm rejection: a second finger belongs to the camera, never the tool.
       .maxPointers(1)
       .runOnJS(true)
+      .onBegin((e) => {
+        down.x = e.x;
+        down.y = e.y;
+      })
       .onChange((e) => {
         if (!panning()) return;
         const c = store().camera;
@@ -202,7 +209,7 @@ export function BoardCanvas({
         // Drawing is what the options were for; fold them away to give the
         // board back its width the moment the gesture starts.
         store().setRailOpen(false);
-        const p = screenToBoard(e.x, e.y);
+        const p = screenToBoard(down.x, down.y);
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
         else if (t === 'pen') store().setLiveStroke([p.x, p.y]);
