@@ -18,7 +18,8 @@ import { Txt } from './Text';
 export function QRCode({
   value,
   size = 96,
-  color,
+  /** Always dark: the card is white in both themes and scanners need dark-on-light. */
+  color = '#000000',
   /** Quiet zone in modules. The spec asks for 4; the card border stands in for
    *  most of it, so 2 keeps the code dense without hurting scans. */
   quietZone = 2,
@@ -29,7 +30,6 @@ export function QRCode({
   quietZone?: number;
 }) {
   const c = useColors();
-  color ??= c.text;
   const code = useMemo(() => {
     try {
       return encodeQr(value);

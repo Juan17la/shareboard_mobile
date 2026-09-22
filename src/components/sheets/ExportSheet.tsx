@@ -120,7 +120,9 @@ function ExportSheetBody({ onClose }: { onClose: () => void }) {
           borderRadius: Radius.lg,
           borderWidth: 1,
           borderColor: c.border,
-          backgroundColor: c.surface,
+          // The export is painted as on the light board, so a transparent one
+          // is previewed on a light well — dark ink on c.surface would vanish.
+          backgroundColor: paintBackground ? c.surface : '#F2F2F7',
           overflow: 'hidden',
         }}
       >
