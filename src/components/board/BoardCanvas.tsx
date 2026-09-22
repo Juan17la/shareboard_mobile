@@ -16,6 +16,8 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { Shadow } from '@/constants/theme';
 import {
+  bendFromDrag,
+  bendHandleOf,
   elementsIn,
   handlesOf,
   isLineLike,
@@ -58,8 +60,17 @@ function snapLine(shape: string, from: Point, to: Point): Ends {
   return linkEndpoints(others, from, to, 18 / store.camera.scale);
 }
 
+/**
+ * The handle index for a curved or elbow line's fold — past the two
+ * endpoints (0, 1) `handlesOf` gives a line, so it never collides with them.
+ */
+const BEND_HANDLE = 2;
+
 /** The patch of an edit dragged to `p`. A line's ends are re-bound after. */
 function dragPatch(edit: LiveEdit, el: BoardElement, p: Point): Partial<BoardElement> {
+  if (edit.handle === BEND_HANDLE && el.kind === 'shape' && isLineLike(el)) {
+    return { bend: bendFromDrag(el, p) };
+  }
   const next = resizeElement(el, edit.handle, p) as Partial<ShapeElement>;
   if (el.kind === 'shape' && isLineLike(el) && next.from && next.to)
     return snapLine(el.shape, next.from, next.to);
@@ -145,9 +156,13 @@ export function BoardCanvas({
       const scale = store().camera.scale;
       const hitR = 18 / scale;
       const one = sel.length === 1 ? sel[0] : null;
-      const handle = one
-        ? handlesOf(one).findIndex((h) => Math.hypot(h.x - p.x, h.y - p.y) <= hitR)
-        : -1;
+      const fold = one?.kind === 'shape' ? bendHandleOf(one) : null;
+      const onFold = fold ? Math.hypot(fold.x - p.x, fold.y - p.y) <= hitR : false;
+      const handle = onFold
+        ? BEND_HANDLE
+        : one
+          ? handlesOf(one).findIndex((h) => Math.hypot(h.x - p.x, h.y - p.y) <= hitR)
+          : -1;
       const onBody = !!store().elementAt(p, 6 / scale, sel);
       const mode = handle >= 0 ? 'resize' : onBody ? 'move' : null;
       if (!mode) return false;
@@ -270,10 +285,13 @@ export function BoardCanvas({
           store().setLiveMarquee(null);
         } else if (t === 'shape' && shape) {
           // A tap with the shape tool is a mis-hit, not a zero-size rectangle.
+          // Measured in screen pixels, like web: a board-space threshold made a
+          // small shape drawn while zoomed in read as a mis-tap and vanish
+          // instead of landing selected.
           const dragged = Math.hypot(shape.to.x - shape.from.x, shape.to.y - shape.from.y);
           // A new shape comes up selected, handles ready, so it can be sized
           // right away.
-          if (dragged > 6) store().select(store().addShape(store().config.shape, shape));
+          if (dragged * store().camera.scale > 6) store().select(store().addShape(store().config.shape, shape));
         }
         store().setLiveStroke([]);
         store().setLiveShape(null);
