@@ -5,7 +5,8 @@
  * The palette comes from the Shareboard mobile design: a light, glassy surface
  * system built on frosted white panels over a soft ambient wash, with one
  * blood-red accent doing all the "this is active / this is the CTA" work.
- * `Colors` is the light palette; `Palettes.dark` is the same set over a deep
+ * Neutrals, labels, separators and red/orange are Apple's iOS/macOS system
+ * colours. `Colors` is the light palette; `Palettes.dark` is the same set over a deep
  * ink ground. Components read the one in use through `useColors()`
  * (`features/session/store.ts`), so nothing else has to know which is on.
  */
@@ -14,13 +15,13 @@ export const Colors = {
   /** Page and canvas background. */
   background: '#FFFFFF',
   /** Flat (non-glass) card fill. */
-  surface: '#F5F6F8',
-  surfaceSelected: '#EEF0F6',
+  surface: '#F2F2F7',
+  surfaceSelected: '#E5E5EA',
   /** Primary text. */
-  text: '#1B2030',
+  text: '#000000',
   /** Supporting text, labels, hints. */
-  textSecondary: '#5A6170',
-  textTertiary: '#8B909C',
+  textSecondary: '#6C6C70',
+  textTertiary: '#8E8E93',
 
   /** The single brand accent: active tool, primary CTA, selected state. */
   accent: '#7A1F2B',
@@ -29,16 +30,16 @@ export const Colors = {
   accentSoft: 'rgba(122,31,43,0.11)',
   accentSofter: 'rgba(122,31,43,0.07)',
 
-  danger: '#C4353A',
-  dangerBright: '#E5484D',
-  dangerSoft: 'rgba(196,53,58,0.08)',
-  warn: '#B4530A',
-  warnSoft: 'rgba(247,104,8,0.12)',
+  danger: '#D70015',
+  dangerBright: '#FF3B30',
+  dangerSoft: 'rgba(255,59,48,0.08)',
+  warn: '#C93400',
+  warnSoft: 'rgba(255,149,0,0.12)',
 
   /** Hairlines and control borders. */
-  border: 'rgba(27,32,48,0.10)',
-  borderStrong: 'rgba(27,32,48,0.14)',
-  borderDashed: 'rgba(27,32,48,0.22)',
+  border: 'rgba(60,60,67,0.10)',
+  borderStrong: 'rgba(60,60,67,0.14)',
+  borderDashed: 'rgba(60,60,67,0.22)',
 
   // Frosted-panel recipe. `BlurView` supplies the blur; these are the tint and
   // the highlight painted over it so panels read as glass rather than as flat
@@ -58,41 +59,41 @@ export const Colors = {
 export type Theme = 'light' | 'dark';
 export type Palette = { [K in keyof typeof Colors]: string };
 
-/** The dark board: the same recipe over a deep ink ground. */
+/** The dark board: Apple's dark system colours (iOS elevated / macOS), same recipe. */
 export const Palettes: Record<Theme, Palette> = {
   light: Colors,
   dark: {
     ...Colors,
-    background: '#141824',
-    surface: '#1C2130',
-    surfaceSelected: '#242A3B',
-    text: '#F2F3F5',
-    textSecondary: '#A7ADBB',
-    textTertiary: '#6F7684',
+    background: '#1C1C1E',
+    surface: '#2C2C2E',
+    surfaceSelected: '#3A3A3C',
+    text: '#FFFFFF',
+    textSecondary: '#AEAEB2',
+    textTertiary: '#8E8E93',
     accent: '#A82F3F',
     accentDeep: '#82202E',
     accentSoft: 'rgba(168,47,63,0.20)',
     accentSofter: 'rgba(168,47,63,0.11)',
-    dangerBright: '#FF6B70',
-    border: 'rgba(242,243,245,0.10)',
-    borderStrong: 'rgba(242,243,245,0.16)',
-    borderDashed: 'rgba(242,243,245,0.26)',
-    glassTint: 'rgba(20,24,36,0.55)',
-    glassTintSolid: 'rgba(28,33,48,0.72)',
-    glassFlat: 'rgba(28,33,48,0.94)',
+    dangerBright: '#FF453A',
+    border: 'rgba(235,235,245,0.10)',
+    borderStrong: 'rgba(235,235,245,0.16)',
+    borderDashed: 'rgba(235,235,245,0.26)',
+    glassTint: 'rgba(28,28,30,0.55)',
+    glassTintSolid: 'rgba(44,44,46,0.72)',
+    glassFlat: 'rgba(44,44,46,0.94)',
     glassHighlight: 'rgba(255,255,255,0.08)',
     glassRim: 'rgba(255,255,255,0.10)',
   },
 };
 
 /**
- * The default ink is the light theme's text colour and vanishes on the dark
+ * The default ink is dark and vanishes on the dark
  * board, so the renderer paints it as the dark text colour instead. Only the
  * painting changes: the element keeps its colour, and a collaborator on the
  * light theme sees ink. Any fill alpha suffix is kept.
  */
 export function inkFor(color: string, dark: boolean): string {
-  return dark && color.slice(0, 7).toUpperCase() === '#1B2030' ? '#F2F3F5' + color.slice(7) : color;
+  return dark && color.slice(0, 7).toUpperCase() === '#1B2030' ? '#FFFFFF' + color.slice(7) : color;
 }
 
 /** What does not change with the theme: scrims and the blur strength. */
