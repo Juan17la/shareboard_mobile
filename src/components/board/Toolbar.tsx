@@ -9,7 +9,8 @@
  * in an options strip above the bar that only shows the options belonging to
  * the tool in hand. Picking a tool opens it; tapping the tool you already hold
  * toggles it; the colour swatch toggles it too. It closes itself the moment a
- * finger lands on the canvas (`railOpen` in the store).
+ * finger lands on the canvas and comes back when a drag ends on a selection
+ * (`railOpen` in the store).
  *
  * Nothing scrolls: in portrait the tools sit in two rows (tools, then shapes)
  * and the options wrap, so everything is visible at once on a narrow phone.
@@ -359,42 +360,52 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                     paddingVertical: 8,
                   }}
                 >
-                  {showSizes ? (
+                  {showSizes || showFill ? (
                     <Cluster>
-                      {StrokeSizes.map((value) => {
-                        const active = cur.width === value;
-                        return (
-                          <Pressable
-                            key={value}
-                            accessibilityRole="button"
-                            accessibilityLabel={`${t.size} ${value}`}
-                            accessibilityState={{ selected: active }}
-                            onPress={() => {
-                              nudge();
-                              setConfig({ width: value });
-                            }}
+                      {/* One button each, not a row of four: a tap steps to the
+                          next width / fill level and wraps around. The button
+                          shows the current value, so the row stays short. */}
+                      {showSizes ? (
+                        <MiniButton
+                          label={`${t.size} ${cur.width}`}
+                          active={false}
+                          onPress={() => {
+                            nudge();
+                            setConfig({ width: cycle(StrokeSizes, cur.width) });
+                          }}
+                        >
+                          <View
                             style={{
-                              width: 32,
-                              height: 32,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              borderRadius: 9,
-                              borderWidth: 1,
-                              borderColor: active ? 'transparent' : c.border,
-                              backgroundColor: active ? c.accentSoft : c.surface,
+                              width: Math.min(20, cur.width + 3),
+                              height: Math.min(20, cur.width + 3),
+                              borderRadius: 10,
+                              backgroundColor: c.text,
                             }}
-                          >
-                            <View
-                              style={{
-                                width: Math.min(20, value + 3),
-                                height: Math.min(20, value + 3),
-                                borderRadius: 10,
-                                backgroundColor: active ? c.accent : '#4A515F',
-                              }}
-                            />
-                          </Pressable>
-                        );
-                      })}
+                          />
+                        </MiniButton>
+                      ) : null}
+                      {showFill ? (
+                        <MiniButton
+                          label={t[fillLevels.find((f) => f.level === cur.fill)?.labelKey ?? 'fillNone']}
+                          active={false}
+                          onPress={() => {
+                            nudge();
+                            setConfig({ fill: cycle(fillLevels.map((f) => f.level), cur.fill) });
+                          }}
+                        >
+                          {/* The swatch is the fill itself: the colour at that alpha, outlined. */}
+                          <View
+                            style={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: 4,
+                              borderWidth: 1.5,
+                              borderColor: ink,
+                              backgroundColor: fillFor(ink, cur.fill) ?? 'transparent',
+                            }}
+                          />
+                        </MiniButton>
+                      ) : null}
                     </Cluster>
                   ) : null}
 
@@ -408,35 +419,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                           onPress={() => pickKind(kind)}
                         >
                           <Icon name={kind} size={18} color={cur.shape === kind ? '#FFFFFF' : c.text} />
-                        </MiniButton>
-                      ))}
-                    </Cluster>
-                  ) : null}
-
-                  {showFill ? (
-                    <Cluster>
-                      {fillLevels.map(({ level, labelKey }) => (
-                        <MiniButton
-                          key={level}
-                          label={t[labelKey]}
-                          active={cur.fill === level}
-                          onPress={() => {
-                            nudge();
-                            setConfig({ fill: level });
-                          }}
-                        >
-                          {/* The swatch is the fill itself: the colour at that alpha, outlined. */}
-                          <View
-                            style={{
-                              width: 16,
-                              height: 16,
-                              borderRadius: 4,
-                              borderWidth: 1.5,
-                              borderColor: cur.fill === level ? '#FFFFFF' : ink,
-                              backgroundColor:
-                                fillFor(cur.fill === level ? '#FFFFFF' : ink, level) ?? 'transparent',
-                            }}
-                          />
                         </MiniButton>
                       ))}
                     </Cluster>
@@ -785,6 +767,11 @@ const panelShadow = {
   shadowOffset: { width: 0, height: 12 },
   elevation: 10,
 } as const;
+
+/** The value after `current` in `list`, wrapping; the first when `current` is not in it. */
+function cycle<T>(list: readonly T[], current: T): T {
+  return list[(list.indexOf(current) + 1) % list.length];
+}
 
 /** One cluster of options, separated from the next by a hairline. */
 function Cluster({ children, last }: { children: React.ReactNode; last?: boolean }) {
