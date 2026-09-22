@@ -154,6 +154,11 @@ export function BoardCanvas({
       const sel = store().selectedElements();
       if (!sel.length) return false;
       const scale = store().camera.scale;
+      // Something drawn above the selection owns the press there. After "send
+      // to back" the selection sits hidden under another figure; a finger on
+      // that figure must pick it, not move or resize the one behind.
+      const top = store().elementAt(p, 6 / scale);
+      if (top && !sel.some((el) => el.id === top.id) && top.z > Math.max(...sel.map((el) => el.z))) return false;
       const hitR = 18 / scale;
       const one = sel.length === 1 ? sel[0] : null;
       const fold = one?.kind === 'shape' ? bendHandleOf(one) : null;
@@ -204,6 +209,8 @@ export function BoardCanvas({
       if (!edit) return;
       if (edit.dx || edit.dy || edit.patch) store().commitEdit(edit);
       store().setLiveEdit(null);
+      // The drag is over and the selection is still there: its options come back.
+      store().setRailOpen(true);
     };
 
     const draw = Gesture.Pan()
@@ -228,7 +235,13 @@ export function BoardCanvas({
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
         else if (t === 'pen') store().setLiveStroke([p.x, p.y]);
-        else if (t === 'shape' && !beginEdit(p)) {
+        else if (t === 'shape') {
+          // The shapes tool only ever draws: moving and resizing belong to the
+          // cursor. A press on a shape it had picked used to grab that shape
+          // (or a handle 18pt around it) instead of starting the new one.
+          // Drawing lets go of whatever was picked before: the new shape is
+          // the focus, and it lands unselected (below).
+          store().select(null);
           Object.assign(lineStart, p);
           store().setLiveShape(snapLine(store().config.shape, p, p));
         } else if (t === 'select' && !beginEdit(p)) {
@@ -269,7 +282,16 @@ export function BoardCanvas({
         }
         onCursorMove?.(p);
       })
-      .onEnd(() => {
+      .onEnd((_e, success) => {
+        if (!success) {
+          // Cancelled — a second finger turned it into a pinch. Nothing the
+          // first finger started is kept: a zoom must never move a figure.
+          store().setLiveEdit(null);
+          store().setLiveMarquee(null);
+          store().setLiveStroke([]);
+          store().setLiveShape(null);
+          return;
+        }
         // Read from the store, not through a `setState` updater: an updater
         // runs during the next render, and a store write from there is React's
         // "cannot update a component while rendering a different component".
@@ -289,9 +311,9 @@ export function BoardCanvas({
           // small shape drawn while zoomed in read as a mis-tap and vanish
           // instead of landing selected.
           const dragged = Math.hypot(shape.to.x - shape.from.x, shape.to.y - shape.from.y);
-          // A new shape comes up selected, handles ready, so it can be sized
-          // right away.
-          if (dragged * store().camera.scale > 6) store().select(store().addShape(store().config.shape, shape));
+          // A new shape lands bare — no handles, no options — so the next one
+          // can be drawn straight away. A tap on it picks it (see `tap`).
+          if (dragged * store().camera.scale > 6) store().addShape(store().config.shape, shape);
         }
         store().setLiveStroke([]);
         store().setLiveShape(null);
