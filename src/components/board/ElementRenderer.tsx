@@ -17,6 +17,7 @@ import { Palettes, inkFor } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 import {
   anchorsOf,
+  bendHandleOf,
   dashIntervals,
   elementBounds,
   endAngles,
@@ -72,7 +73,7 @@ function MarkerView({
             strokeWidth={width}
             color={color}
             strokeCap="round"
-            strokeJoin="round"
+            strokeJoin="miter"
           />
         </Group>
       ))}
@@ -154,6 +155,7 @@ export function SelectionFrame({
   const sy = (v: number) => v * camera.scale + camera.y;
   const one = elements.length === 1 ? elements[0] : null;
   const line = one?.kind === 'shape' && isLineLike(one) ? one : null;
+  const fold = line ? bendHandleOf(line) : null;
   const b = one ? elementBounds(one) : unionBounds(elements);
   return (
     <Group>
@@ -163,7 +165,7 @@ export function SelectionFrame({
         // can be dragged by — unmistakably not the square corners of a box.
         <Group transform={[{ translateX: camera.x }, { translateY: camera.y }, { scale: camera.scale }]}>
           <Path
-            path={routePath(line.from, line.to, line.route)}
+            path={routePath(line.from, line.to, line.route, line.bend)}
             color={c.accent}
             opacity={0.28}
             style="stroke"
@@ -175,6 +177,28 @@ export function SelectionFrame({
       ) : (
         <DashedBox b={b} camera={camera} />
       )}
+      {/* A curved or elbow line's fold: a diamond handle, dragged to reshape
+          how far it bows or where it turns. */}
+      {fold ? (
+        <Group key="fold" transform={[{ translateX: sx(fold.x) }, { translateY: sy(fold.y) }, { rotate: Math.PI / 4 }]}>
+          <Rect
+            x={-HANDLE_SIZE / 2}
+            y={-HANDLE_SIZE / 2}
+            width={HANDLE_SIZE}
+            height={HANDLE_SIZE}
+            color={c.background}
+          />
+          <Rect
+            x={-HANDLE_SIZE / 2}
+            y={-HANDLE_SIZE / 2}
+            width={HANDLE_SIZE}
+            height={HANDLE_SIZE}
+            color={c.accent}
+            style="stroke"
+            strokeWidth={1.5}
+          />
+        </Group>
+      ) : null}
       {(one ? handlesOf(one) : []).map((h, i) =>
         line ? (
           <Group key={i}>
@@ -303,12 +327,12 @@ function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
 
   // line / arrow
   const [headStart, headEnd] = headsOf(el);
-  const angles = endAngles(el.from, el.to, el.route);
+  const angles = endAngles(el.from, el.to, el.route, el.bend);
   const dash = dashIntervals(el.dash, el.strokeWidth);
   return (
     <Group>
       <Path
-        path={routePath(el.from, el.to, el.route)}
+        path={routePath(el.from, el.to, el.route, el.bend)}
         color={el.stroke}
         style="stroke"
         strokeWidth={el.strokeWidth}
