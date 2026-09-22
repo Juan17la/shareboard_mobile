@@ -102,7 +102,7 @@ export function ToastHost({
           paddingHorizontal: 15,
           paddingVertical: 9,
           borderRadius: Radius.pill,
-          backgroundColor: 'rgba(27,32,48,0.9)',
+          backgroundColor: 'rgba(28,28,30,0.9)',
           shadowColor: '#151A2D',
           shadowOpacity: 0.28,
           shadowRadius: 22,
