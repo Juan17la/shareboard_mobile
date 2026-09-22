@@ -320,7 +320,8 @@ interface BoardState {
 const DEFAULT_CONFIG: ToolConfig = {
   color: DrawingPalette[0],
   width: StrokeSizes[1],
-  fill: 'none',
+  // The second of each: a new figure comes out lightly filled, medium stroke.
+  fill: 'low',
   shape: 'rectangle',
   fontSize: 28,
   bold: false,
