@@ -198,9 +198,13 @@ export function BoardHeader({
         style={[chip, { gap: 5 }]}
       >
         <Icon name={isPrivate ? 'lock' : 'lock-open'} size={14} color={c.text} />
-        <Txt weight="bold" size={11.5}>
-          {t.privacyShort}
-        </Txt>
+        {/* Portrait has no room for both labels ("Permisos" + "Compartir" pushed
+            share off the edge): the lock says it, the long-press tip names it. */}
+        {landscape ? (
+          <Txt weight="bold" size={11.5}>
+            {t.privacyShort}
+          </Txt>
+        ) : null}
       </Pressable>
 
       <Pressable
@@ -213,6 +217,9 @@ export function BoardHeader({
           {
             gap: 6,
             paddingHorizontal: 12,
+            // Last in the row: on a phone narrower still, it is what gives way.
+            flexShrink: 1,
+            minWidth: 0,
             borderColor: 'transparent',
             backgroundColor: c.accent,
             shadowColor: c.accent,
@@ -224,7 +231,7 @@ export function BoardHeader({
         ]}
       >
         <Icon name="share" size={15} color="#FFFFFF" />
-        <Txt weight="extrabold" size={12} tone="inverse">
+        <Txt weight="extrabold" size={12} tone="inverse" numberOfLines={1} style={{ flexShrink: 1 }}>
           {t.share}
         </Txt>
       </Pressable>
