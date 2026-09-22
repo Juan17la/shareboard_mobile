@@ -12,8 +12,8 @@
 import { useRef, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
-import { Fonts, Shadow } from '@/constants/theme';
-import { useColors } from '@/features/session/store';
+import { Fonts, Shadow, inkFor } from '@/constants/theme';
+import { useColors, useDark } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 import { shapeBounds } from '@/features/board/geometry';
 import { SHAPE_TEXT_SIZE, type ShapeElement, type TextElement } from '@/features/board/model';
@@ -33,6 +33,7 @@ export function TextEditorOverlay({
   onClose: () => void;
 }) {
   const c = useColors();
+  const dark = useDark();
   const t = useT();
   const updateText = useBoardStore((s) => s.updateText);
   const updateShape = useBoardStore((s) => s.updateShape);
@@ -70,7 +71,10 @@ export function TextEditorOverlay({
     left = (b.x + b.width / 2) * camera.scale + camera.x - width / 2;
     top = (b.y + b.height / 2) * camera.scale + camera.y - fontSize * 0.75 - 4;
   }
-  const color = element.kind === 'text' ? element.color : element.stroke;
+  // The stored colour is the light-theme ink by default; flip it to the dark
+  // board's ink the same way the committed element already paints (`inked` in
+  // ElementRenderer) — otherwise typing on the dark board shows black on black.
+  const color = inkFor(element.kind === 'text' ? element.color : element.stroke, dark);
   const bold = element.kind === 'text' && element.bold;
   const italic = element.kind === 'text' && element.italic;
 
