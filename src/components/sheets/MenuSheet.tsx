@@ -11,7 +11,6 @@ import { Pressable, View } from 'react-native';
 import { useColors } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 
-import { GlassPanel } from '../ui/Glass';
 import { Icon, type IconName } from '../ui/Icon';
 import { Sheet } from '../ui/Sheet';
 import { Txt } from '../ui/Text';
@@ -46,34 +45,27 @@ export function MenuSheet({
 
   return (
     <Sheet open={open} title={t.sheetMenu} onClose={onClose} closeLabel={t.close}>
-      <View style={{ gap: 8 }}>
+      <View>
         {rows.map((row) => (
-          <GlassPanel key={row.label} level="row" radius={15} border={c.border}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={row.label}
-              onPress={row.onPress}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13 }}
-            >
-              <View
-                style={{
-                  width: 34,
-                  height: 34,
-                  flexShrink: 0,
-                  borderRadius: 11,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: c.accentSoft,
-                }}
-              >
-                <Icon name={row.icon} size={19} color={c.accent} />
-              </View>
-              <Txt weight="bold" size={13.5} leading={1.2} style={{ flex: 1 }}>
-                {row.label}
-              </Txt>
-              <Icon name="chevron" size={15} color={c.textTertiary} />
-            </Pressable>
-          </GlassPanel>
+          <Pressable
+            key={row.label}
+            accessibilityRole="button"
+            accessibilityLabel={row.label}
+            onPress={row.onPress}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              paddingVertical: 13,
+              paddingHorizontal: 8,
+              opacity: pressed ? 0.5 : 1,
+            })}
+          >
+            <Icon name={row.icon} size={19} color={c.text} />
+            <Txt weight="semibold" size={14} leading={1.2} style={{ flex: 1 }}>
+              {row.label}
+            </Txt>
+          </Pressable>
         ))}
         <View style={{ height: 8 }} />
       </View>
