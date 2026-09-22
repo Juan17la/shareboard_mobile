@@ -140,7 +140,7 @@ export function contentBounds(elements: BoardElement[]): Bounds | null {
 // for a line each handle simply moves its own endpoint, so the arrow head keeps
 // pointing the way it was drawn.
 
-export const isLineLike = (el: ShapeElement): boolean =>
+export const isLineLike = (el: Pick<ShapeElement, 'shape'>): boolean =>
   el.shape === 'line' || el.shape === 'arrow';
 
 /** Normalised box of a shape. A line's box may have zero width or height. */
@@ -364,7 +364,7 @@ export function shapeAt(elements: BoardElement[], at: Point, pad: number): Shape
  */
 export function shapeHit(el: ShapeElement, at: Point, pad: number): boolean {
   if (isLineLike(el)) {
-    const pts = routePoints(el.from, el.to, el.route);
+    const pts = routePoints(el.from, el.to, el.route, el.bend);
     const reach = pad + el.strokeWidth / 2;
     for (let i = 1; i < pts.length; i++) {
       if (segmentDistance(pts[i - 1], pts[i], at) <= reach) return true;
@@ -387,10 +387,10 @@ function segmentDistance(a: Point, b: Point, p: Point): number {
 }
 
 /** The route as a polyline: the curve is sampled, the others are their corners. */
-function routePoints(from: Point, to: Point, route: Route = 'straight'): Point[] {
-  if (route === 'elbow') return elbow(from, to);
+function routePoints(from: Point, to: Point, route: Route = 'straight', bend?: number): Point[] {
+  if (route === 'elbow') return elbow(from, to, bend);
   if (route !== 'curved') return [from, to];
-  const c = control(from, to);
+  const c = control(from, to, bend);
   const pts: Point[] = [];
   for (let i = 0; i <= 8; i++) {
     const t = i / 8;
@@ -408,30 +408,39 @@ function routePoints(from: Point, to: Point, route: Route = 'straight'): Point[]
 // (`<Path path=...>`) and so does react-native-svg, so the toolbar's option
 // icons are drawn by the very same generators as the board.
 
-/** The bend of a curved route: a quarter of the length, to the left. */
-function control(from: Point, to: Point): Point {
+/**
+ * The bend of a curved route: `bend` board units to the side of the chord's
+ * midpoint (positive: left of from→to), a quarter of the chord's length when
+ * absent — the route's original fixed look.
+ */
+export function control(from: Point, to: Point, bend?: number): Point {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const amount = bend ?? len / 4;
   return {
-    x: (from.x + to.x) / 2 - (to.y - from.y) / 4,
-    y: (from.y + to.y) / 2 + (to.x - from.x) / 4,
+    x: (from.x + to.x) / 2 - (dy / len) * amount,
+    y: (from.y + to.y) / 2 + (dx / len) * amount,
   };
 }
 
-/** Elbow: two right angles, the long axis first. */
-function elbow(from: Point, to: Point): Point[] {
+/** Elbow: two right angles, the long axis first. `bend`: where along it, 0..1 (midpoint absent). */
+function elbow(from: Point, to: Point, bend?: number): Point[] {
   const horizontal = Math.abs(to.x - from.x) >= Math.abs(to.y - from.y);
-  const mx = (from.x + to.x) / 2;
-  const my = (from.y + to.y) / 2;
+  const t = bend ?? 0.5;
+  const mx = from.x + (to.x - from.x) * t;
+  const my = from.y + (to.y - from.y) * t;
   return horizontal
     ? [from, { x: mx, y: from.y }, { x: mx, y: to.y }, to]
     : [from, { x: from.x, y: my }, { x: to.x, y: my }, to];
 }
 
-export function routePath(from: Point, to: Point, route: Route = 'straight'): string {
+export function routePath(from: Point, to: Point, route: Route = 'straight', bend?: number): string {
   if (route === 'curved') {
-    const c = control(from, to);
+    const c = control(from, to, bend);
     return `M ${n(from.x)} ${n(from.y)} Q ${n(c.x)} ${n(c.y)} ${n(to.x)} ${n(to.y)}`;
   }
-  const pts = route === 'elbow' ? elbow(from, to) : [from, to];
+  const pts = route === 'elbow' ? elbow(from, to, bend) : [from, to];
   return pts.map((p, i) => `${i ? 'L' : 'M'} ${n(p.x)} ${n(p.y)}`).join(' ');
 }
 
@@ -440,18 +449,51 @@ export function endAngles(
   from: Point,
   to: Point,
   route: Route = 'straight',
+  bend?: number,
 ): { start: number; end: number } {
   const angle = (a: Point, b: Point) => Math.atan2(b.y - a.y, b.x - a.x);
   if (route === 'curved') {
-    const c = control(from, to);
+    const c = control(from, to, bend);
     return { start: angle(c, from), end: angle(c, to) };
   }
-  const pts = route === 'elbow' ? elbow(from, to) : [from, to];
+  const pts = route === 'elbow' ? elbow(from, to, bend) : [from, to];
   const inner = (a: Point, b: Point) => (a.x === b.x && a.y === b.y ? null : b);
   // A zero-length elbow segment has no direction; fall back to the chord.
   const s = inner(from, pts[1]) ?? to;
   const e = inner(to, pts[pts.length - 2]) ?? from;
   return { start: angle(s, from), end: angle(e, to) };
+}
+
+/**
+ * Where the fold handle of a curved or elbow route sits: the curve's control
+ * point, or the midpoint of an elbow's middle segment. `null` for a route
+ * with no fold to drag (straight), or anything that is not a line.
+ */
+export function bendHandleOf(el: Pick<ShapeElement, 'shape' | 'from' | 'to' | 'route' | 'bend'>): Point | null {
+  if (!isLineLike(el) || (el.route !== 'curved' && el.route !== 'elbow')) return null;
+  if (el.route === 'curved') return control(el.from, el.to, el.bend);
+  const pts = elbow(el.from, el.to, el.bend);
+  return { x: (pts[1].x + pts[2].x) / 2, y: (pts[1].y + pts[2].y) / 2 };
+}
+
+/** The `bend` a drag of the fold handle to `p` implies, inverting `bendHandleOf`. */
+export function bendFromDrag(
+  el: Pick<ShapeElement, 'from' | 'to' | 'route'>,
+  p: Point,
+): number {
+  const dx = el.to.x - el.from.x;
+  const dy = el.to.y - el.from.y;
+  if (el.route === 'curved') {
+    const len = Math.hypot(dx, dy) || 1;
+    const mx = (el.from.x + el.to.x) / 2;
+    const my = (el.from.y + el.to.y) / 2;
+    return ((p.x - mx) * -dy + (p.y - my) * dx) / len;
+  }
+  // Elbow: how far along the long axis, clamped off the very ends so the
+  // route never collapses onto an endpoint.
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  const t = horizontal ? (dx ? (p.x - el.from.x) / dx : 0.5) : dy ? (p.y - el.from.y) / dy : 0.5;
+  return clamp(t, 0.08, 0.92);
 }
 
 /** Dash intervals for a stroke of `width`; null for solid. */
@@ -497,8 +539,10 @@ export function markerPaths(kind: Marker, tip: Point, angle: number, size: numbe
     return `M ${P(l)} A ${n(r)} ${n(r)} 0 1 0 ${P(rr)} A ${n(r)} ${n(r)} 0 1 0 ${P(l)}`;
   };
   const bar = (back: number) => `M ${P(at(back, -size / 2))} L ${P(at(back, size / 2))}`;
+  // The crow's foot spreads wider than its own length — a tight `size/2` read
+  // as a narrow arrowhead rather than the three-way fork cardinality wants.
   const crow = () =>
-    `M ${P(at(size, 0))} L ${P(at(0, -size / 2))} M ${P(at(size, 0))} L ${P(tip)} M ${P(at(size, 0))} L ${P(at(0, size / 2))}`;
+    `M ${P(at(size, 0))} L ${P(at(0, -size * 0.8))} M ${P(at(size, 0))} L ${P(tip)} M ${P(at(size, 0))} L ${P(at(0, size * 0.8))}`;
   const triangle = poly(tip, at(size, -size / 2), at(size, size / 2));
   const diamond = poly(tip, at(size / 2, -size * 0.4), at(size, 0), at(size / 2, size * 0.4));
 
