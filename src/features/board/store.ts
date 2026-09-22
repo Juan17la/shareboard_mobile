@@ -286,6 +286,7 @@ interface BoardState {
         | 'headStart'
         | 'headEnd'
         | 'route'
+        | 'bend'
         | 'dash'
         | 'fromLink'
         | 'toLink'
@@ -549,6 +550,10 @@ export const useBoardStore = create<BoardState>((set, get) => {
           for (const k of ['headStart', 'headEnd', 'route', 'dash'] as const) {
             if (patch[k] !== undefined) p[k] = patch[k];
           }
+          // A custom fold is only meaningful for the route it was dragged on
+          // (board-unit offset for a curve, an axis fraction for an elbow):
+          // switching route drops it back to that route's default look.
+          if (patch.route !== undefined && patch.route !== el.route) p.bend = null;
         }
         if (Object.keys(p).length)
           ops.push({
