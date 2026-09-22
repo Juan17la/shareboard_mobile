@@ -853,7 +853,7 @@ function MarkerIcon({ kind, end, color }: { kind: Marker; end: boolean; color: s
         <SvgPath
           key={i}
           d={part.d}
-          fill={part.fill === 'solid' ? ink : part.fill === 'hollow' ? '#FFFFFF' : 'none'}
+          fill={part.fill === 'solid' ? ink : part.fill === 'hollow' ? c.background : 'none'}
         />
       ))}
     </Svg>
