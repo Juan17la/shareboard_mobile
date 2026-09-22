@@ -101,6 +101,13 @@ export interface ShapeElement extends ElementBase {
   headStart?: Marker;
   headEnd?: Marker;
   route?: Route;
+  /**
+   * How far a curved or elbow route is folded from its default: a curve's
+   * sideways offset in board units (signed, left/right of the chord); an
+   * elbow's turn point as a fraction (0..1) along the long axis. Absent is
+   * the route's default fold — a quarter-length curve, a midpoint elbow.
+   */
+  bend?: number;
   dash?: Dash;
   /** Ends bound to a shape follow it when it moves. Null: unbound. */
   fromLink?: Link | null;
