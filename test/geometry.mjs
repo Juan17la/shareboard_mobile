@@ -10,6 +10,9 @@ import {
   ROUTES,
 } from '../src/features/board/model.ts';
 import {
+  bendFromDrag,
+  bendHandleOf,
+  control,
   elementsIn,
   followLinks,
   linkEndpoints,
@@ -171,5 +174,23 @@ s().undo();
 const wire = JSON.parse(JSON.stringify(s().outbox.at(-1)));
 assert.deepEqual(wire.patch, { fontSize: null });
 assert.equal('fontSize' in s().elements.A, false, 'the key is gone, not null');
+
+// --- curved/elbow fold -------------------------------------------------------
+// Absent `bend` must reproduce the old fixed-fold look exactly (no visual
+// change for every board saved before this field existed).
+const line = { from: { x: 0, y: 0 }, to: { x: 100, y: 0 } };
+assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'curved' }), control(line.from, line.to));
+assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow' }), { x: 50, y: 0 });
+assert.equal(bendHandleOf({ ...line, shape: 'arrow', route: 'straight' }), null, 'nothing to fold on a straight line');
+assert.equal(bendHandleOf({ ...line, shape: 'rectangle', route: 'curved' }), null, 'only lines fold');
+// Dragging the fold handle to a point, then reading it back, must return to
+// that same point. A curve only moves perpendicular to its chord — here,
+// straight up/down from the midpoint (50, 0) — so that is the point dragged.
+const draggedCurve = bendFromDrag({ ...line, route: 'curved' }, { x: 50, y: -20 });
+assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'curved', bend: draggedCurve }), { x: 50, y: -20 });
+// An elbow's fold only moves along the line's own axis (x, here); the handle
+// always sits back on the chord (y stays 0).
+const draggedElbow = bendFromDrag({ ...line, route: 'elbow' }, { x: 60, y: -20 });
+assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow', bend: draggedElbow }), { x: 60, y: 0 });
 
 console.log('geometry: ok');
