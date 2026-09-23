@@ -1,8 +1,10 @@
 /**
  * Home: the whiteboard itself, with a glass card floating over it.
  *
- * There is no landing page to get past — the board is already there behind
- * the card, and the card is three tabs: *Start* (name a new board and create
+ * There is no landing page to get past — a board is already there behind the
+ * card: the real canvas, header and tool rail over a made-up board
+ * (`features/board/demo.ts`) with collaborators drifting about, blurred just
+ * enough to read as one step away. The card is three tabs: *Start* (name a new board and create
  * it, type a join code, import a file), *Recent* (the boards this device has
  * opened) and *Settings* (who you are on a board, the theme, the language).
  * Creating a board is one field and one button; everything else a board used
@@ -14,8 +16,10 @@
  * code character by character. A pasted link goes straight through
  * `parseBoardRef`.
  */
-import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useCanvasRef, type CanvasRef } from '@shopify/react-native-skia';
+import { BlurView } from 'expo-blur';
+import { router, useIsFocused } from 'expo-router';
+import { useRef, useState, type RefObject } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -27,14 +31,19 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BoardCanvas } from '@/components/board/BoardCanvas';
+import { useBoardMirror } from '@/components/board/BoardMirror';
+import { BottomControls } from '@/components/board/BottomControls';
+import { Toolbar } from '@/components/board/Toolbar';
+import { BoardHeader, HeaderScrim } from '@/components/header/BoardHeader';
 import { AvatarPicker } from '@/components/screens/NicknameScreen';
 import { ImportSheet } from '@/components/sheets/ImportSheet';
 import { Avatar } from '@/components/ui/Avatar';
-import { Backdrop, BackdropScene } from '@/components/ui/Backdrop';
 import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
-import { GlassPanel, GlassScene, type SceneSize } from '@/components/ui/Glass';
+import { GlassPanel, GlassScene } from '@/components/ui/Glass';
 import { Icon } from '@/components/ui/Icon';
+import { LoadingBar } from '@/components/ui/LoadingBar';
 import { Segmented } from '@/components/ui/Segmented';
 import { SectionLabel } from '@/components/ui/Sheet';
 import { Txt } from '@/components/ui/Text';
@@ -42,16 +51,13 @@ import { ToastHost, toast } from '@/components/ui/Toast';
 import { Fonts, Radius, Shadow, type Theme } from '@/constants/theme';
 import { relativeTime, useT } from '@/features/i18n/store';
 import type { Lang } from '@/features/i18n/strings';
+import { useDemoBoard } from '@/features/board/demo';
 import { LIMITS, type BoardSnapshot } from '@/features/board/model';
-import { useSessionStore, useColors } from '@/features/session/store';
+import { useSessionStore, useColors, useDark } from '@/features/session/store';
 import { createBoard, importSnapshot, resolveShortCode } from '@/services/api/boards';
 import { parseBoardRef } from '@/utils/deep-link';
 import { thud } from '@/utils/haptics';
 import { SHORT_CODE_LENGTH, normalizeShortCode } from '@/utils/short-code';
-
-const backdropScene = (size: SceneSize) => (
-  <BackdropScene variant="home" width={size.width} height={size.height} />
-);
 
 type Tab = 'start' | 'recent' | 'settings';
 
@@ -73,6 +79,11 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
   const codeInput = useRef<TextInput>(null);
+  // The demo board behind the card; the glass on Android blurs a snapshot of it.
+  const canvasRef = useCanvasRef();
+  const mirror = useBoardMirror(canvasRef);
+  // Home stays mounted under a board: the demo lives only while home is shown.
+  const focused = useIsFocused();
 
   const openBoard = (boardId: string, pickName = false) => {
     router.push({
@@ -189,7 +200,7 @@ export default function Home() {
         <Pressable
           accessibilityRole="none"
           onPress={() => codeInput.current?.focus()}
-          style={{ flexDirection: 'row', gap: 6 }}
+          style={{ flexDirection: 'row', gap: 6, opacity: busy ? 0.6 : 1 }}
         >
           {Array.from({ length: SHORT_CODE_LENGTH }, (_, i) => (
             <View
@@ -290,8 +301,9 @@ export default function Home() {
   );
 
   return (
-    <GlassScene render={backdropScene}>
-      <Backdrop variant="home" />
+    <GlassScene render={mirror} style={{ backgroundColor: c.background }}>
+      {focused ? <DemoBoard canvasRef={canvasRef} /> : null}
+      {busy ? <LoadingBar /> : null}
       <KeyboardAvoidingView
         // The gutter is the parent's padding, not the card's margin: a card at
         // `width: '100%'` ignores its own margins and ran edge to edge.
@@ -338,6 +350,54 @@ export default function Home() {
         allowImagePlacement={false}
       />
     </GlassScene>
+  );
+}
+
+const noop = () => {};
+const FILL = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as const;
+
+/**
+ * The board the card floats over: the same components as the board screen,
+ * fed the demo content, out of focus and out of reach (no touches, hidden from
+ * screen readers). The drawing is blurred in Skia; iOS blurs the chrome over
+ * it natively too, Android — whose `BlurView` misdraws (see ui/Glass) — veils
+ * it instead.
+ */
+function DemoBoard({ canvasRef }: { canvasRef: RefObject<CanvasRef | null> }) {
+  useDemoBoard();
+  const c = useColors();
+  const dark = useDark();
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const landscape = width > height;
+  const headerHeight = insets.top + (landscape ? 58 : 104);
+  return (
+    <View
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={FILL}
+    >
+      <BoardCanvas canvasRef={canvasRef} blur={3} />
+      <HeaderScrim height={headerHeight} />
+      <BoardHeader
+        landscape={landscape}
+        codeCopied={false}
+        onCopyCode={noop}
+        onOpenPeople={noop}
+        onOpenMenu={noop}
+        onOpenPrivacy={noop}
+        onOpenShare={noop}
+      />
+      <Toolbar landscape={landscape} />
+      <BottomControls top={headerHeight + 6} />
+      {Platform.OS === 'ios' ? (
+        <BlurView intensity={14} tint={dark ? 'dark' : 'light'} style={FILL} />
+      ) : (
+        // `background` is a six-digit hex: + 55% alpha.
+        <View style={[FILL, { backgroundColor: c.background + '8C' }]} />
+      )}
+    </View>
   );
 }
 
