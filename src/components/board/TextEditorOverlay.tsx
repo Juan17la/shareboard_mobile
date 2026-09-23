@@ -5,22 +5,19 @@
  * and drawn at the zoomed font size, so what is being typed sits where it will
  * end up rather than in a dialog somewhere else. Committing on blur (and on
  * return) is what makes tapping elsewhere on the board finish the text
- * naturally; an empty value deletes the element the tap created. A ✓ / ✕
- * pair floats above the editor: the keyboard's return key adds a line, so the
- * tick is the one obvious way to finish.
+ * naturally; an empty value deletes the element the tap created, so nothing
+ * is left behind. No confirm button: return or a tap outside is the finish.
  */
 import { useRef, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
-import { Fonts, Shadow, inkFor } from '@/constants/theme';
+import { Fonts, inkFor } from '@/constants/theme';
 import { useColors, useDark } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 import { shapeBounds } from '@/features/board/geometry';
 import { SHAPE_TEXT_SIZE, type ShapeElement, type TextElement } from '@/features/board/model';
 import type { Camera } from '@/features/board/store';
 import { useBoardStore } from '@/features/board/store';
-
-import { Icon } from '../ui/Icon';
 
 export function TextEditorOverlay({
   element,
@@ -47,14 +44,6 @@ export function TextEditorOverlay({
     committed.current = true;
     if (element.kind === 'text') updateText(element.id, { text: value });
     else updateShape(element.id, { text: value.trim() });
-    onClose();
-  };
-
-  /** Throws the draft away: a brand-new text goes, an existing one is kept as it was. */
-  const cancel = () => {
-    if (committed.current) return;
-    committed.current = true;
-    if (element.kind === 'text' && !element.text) updateText(element.id, { text: '' });
     onClose();
   };
 
@@ -94,6 +83,8 @@ export function TextEditorOverlay({
         value={value}
         onChangeText={setValue}
         onBlur={commit}
+        // Return finishes the text (like web's Enter) instead of adding a line.
+        submitBehavior="blurAndSubmit"
         onSubmitEditing={commit}
         placeholder={t.typeHere}
         placeholderTextColor={c.borderDashed}
@@ -124,47 +115,6 @@ export function TextEditorOverlay({
           lineHeight: fontSize * 1.25,
         }}
       />
-
-      {/* Confirm / discard, just above the editor's frame. */}
-      <View
-        style={{
-          position: 'absolute',
-          left,
-          top: top - 44,
-          flexDirection: 'row',
-          gap: 4,
-          padding: 3,
-          borderRadius: 999,
-          borderWidth: 1,
-          borderColor: c.accent,
-          backgroundColor: c.surface,
-          ...Shadow.panel,
-        }}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t.save}
-          onPress={commit}
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 15,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: c.accent,
-          }}
-        >
-          <Icon name="check" size={16} color="#FFFFFF" />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t.cancel}
-          onPress={cancel}
-          style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Icon name="close" size={15} color={c.textSecondary} />
-        </Pressable>
-      </View>
     </View>
   );
 }

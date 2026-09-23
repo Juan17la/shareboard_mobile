@@ -193,4 +193,10 @@ assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'curved', bend: 
 const draggedElbow = bendFromDrag({ ...line, route: 'elbow' }, { x: 60, y: -20 });
 assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow', bend: draggedElbow }), { x: 60, y: 0 });
 
+// --- text: whitespace-only is empty, so the element goes ---------------------
+const T = { ...base('T', 9), kind: 'text', at: { x: 0, y: 0 }, text: 'hi', color: '#1B2030', fontSize: 20 };
+useBoardStore.getState().hydrate({ meta, elements: [A, T], participants: [you], you, seq: 0 });
+s().updateText('T', { text: '   ' });
+assert.equal(s().visibleElements().some((e) => e.id === 'T'), false);
+
 console.log('geometry: ok');
