@@ -846,8 +846,9 @@ export const useBoardStore = create<BoardState>((set, get) => {
           ? { ...patch, text: patch.text.slice(0, LIMITS.maxTextLength) }
           : patch;
 
-      // Clearing the text removes the element — an empty label is just litter.
-      if (clean.text === '') {
+      // Clearing the text (or leaving only spaces) removes the element — an
+      // empty label is just litter.
+      if (clean.text !== undefined && !clean.text.trim()) {
         commitLocal([{ t: 'delete', id }]);
         return;
       }
