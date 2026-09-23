@@ -23,7 +23,30 @@ import { useSessionStore } from '@/features/session/store';
 
 const WORDS: Record<
   Lang,
-  Record<'title' | 'idea' | 'sketch' | 'review' | 'done' | 'n1' | 'n2' | 'n3', string>
+  Record<
+    | 'title'
+    | 'idea'
+    | 'sketch'
+    | 'review'
+    | 'done'
+    | 'n1'
+    | 'n2'
+    | 'n3'
+    | 'd1'
+    | 'd2'
+    | 'd3'
+    | 'd4'
+    | 'todo'
+    | 't1'
+    | 't2'
+    | 't3'
+    | 'votes'
+    | 'app'
+    | 'data'
+    | 'design'
+    | 'code',
+    string
+  >
 > = {
   es: {
     title: 'Cómo funciona',
@@ -34,6 +57,19 @@ const WORDS: Record<
     n1: 'Dibuja y escribe lo que piensas',
     n2: 'Tu equipo entra con un código',
     n3: 'Comentan en vivo y lo cierran',
+    d1: 'Lun',
+    d2: 'Mar',
+    d3: 'Mié',
+    d4: 'Jue',
+    todo: 'Pendientes',
+    t1: '✓ Wireframes',
+    t2: '✓ Colores',
+    t3: '○ Pruebas',
+    votes: 'Votos',
+    app: 'App',
+    data: 'Datos',
+    design: 'Diseño',
+    code: 'Código',
   },
   en: {
     title: 'How it works',
@@ -44,6 +80,19 @@ const WORDS: Record<
     n1: 'Draw and write what you think',
     n2: 'Your team joins with a code',
     n3: 'They comment live and wrap it up',
+    d1: 'Mon',
+    d2: 'Tue',
+    d3: 'Wed',
+    d4: 'Thu',
+    todo: 'To do',
+    t1: '✓ Wireframes',
+    t2: '✓ Colours',
+    t3: '○ Tests',
+    votes: 'Votes',
+    app: 'App',
+    data: 'Data',
+    design: 'Design',
+    code: 'Code',
   },
 };
 
@@ -58,7 +107,7 @@ const node = (
   from: Point,
   to: Point,
   color: string,
-  text: string,
+  text?: string,
 ): ShapeElement => ({
   ...base(id, z),
   kind: 'shape',
@@ -107,9 +156,164 @@ const note = (id: string, z: number, at: Point, text: string): BoardElement => (
   italic: true,
 });
 
+const label = (
+  id: string,
+  z: number,
+  at: Point,
+  text: string,
+  fontSize = 14,
+  bold = false,
+): BoardElement => ({
+  ...base(id, z),
+  kind: 'text',
+  at,
+  text,
+  color: bold ? INK : NOTE,
+  fontSize,
+  bold,
+});
+const line = (
+  id: string,
+  z: number,
+  from: Point,
+  to: Point,
+  stroke: string,
+  extra: Partial<ShapeElement> = {},
+): ShapeElement => ({
+  ...base(id, z),
+  kind: 'shape',
+  shape: 'line',
+  from,
+  to,
+  stroke,
+  strokeWidth: 2,
+  ...extra,
+});
+/** A shape joined to another by a line between two points of their boxes. */
+const link = (
+  id: string,
+  z: number,
+  a: ShapeElement,
+  from: [number, number],
+  b: ShapeElement,
+  to: [number, number],
+) => ({
+  ...arrow(id, z, a, from, b, to),
+  shape: 'line' as const,
+  stroke: NOTE,
+  route: 'curved' as const,
+});
+
 /**
- * A four-step flow down the left and up the right, one short note per step:
- * the card sits in the middle, so the diagram lives around it.
+ * The smaller sketches around the edges, each a different kind of diagram, so
+ * wherever the card leaves room there is something being worked on: a
+ * timeline and a checklist along the top, a bar chart and a Venn diagram
+ * bottom left, a mind map bottom right.
+ */
+function sketches(w: (typeof WORDS)[Lang]): BoardElement[] {
+  // Timeline: a track with a dot per day; the last one is still to come.
+  const days = [w.d1, w.d2, w.d3, w.d4];
+  const dayColors = ['#8E4EC6', '#0091FF', '#F76808', '#30A46C'];
+  const timeline: BoardElement[] = [
+    line('s-track', 20, { x: -310, y: -330 }, { x: 190, y: -330 }, NOTE, { dash: 'dotted' }),
+  ];
+  days.forEach((day, k) => {
+    const x = -260 + k * 120;
+    timeline.push(
+      {
+        ...node(
+          `s-day${k}`,
+          21 + k,
+          'ellipse',
+          { x: x - 9, y: -339 },
+          { x: x + 9, y: -321 },
+          dayColors[k],
+        ),
+        fill: k < 3 ? fillFor(dayColors[k], 'full') : null,
+      },
+      label(`s-dayl${k}`, 25 + k, { x: x - 14, y: -372 }, day),
+    );
+  });
+
+  // Checklist on a sticky note.
+  const todo: BoardElement[] = [
+    node('s-sticky', 30, 'rectangle', { x: 250, y: -350 }, { x: 410, y: -240 }, '#FFB224'),
+    label('s-todo', 31, { x: 264, y: -338 }, w.todo, 15, true),
+    label('s-t1', 32, { x: 264, y: -308 }, w.t1),
+    label('s-t2', 33, { x: 264, y: -286 }, w.t2),
+    label('s-t3', 34, { x: 264, y: -264 }, w.t3),
+  ];
+
+  // Bar chart: four quarters on a baseline, the best one in green.
+  const heights = [70, 110, 60, 140];
+  const chart: BoardElement[] = [
+    label('s-votes', 40, { x: -680, y: 228 }, w.votes, 15, true),
+    line('s-base', 41, { x: -685, y: 400 }, { x: -440, y: 400 }, INK),
+  ];
+  heights.forEach((h, k) => {
+    const x = -670 + k * 58;
+    const color = k === 3 ? '#30A46C' : '#0091FF';
+    chart.push(
+      node(`s-bar${k}`, 42 + k, 'rectangle', { x, y: 400 - h }, { x: x + 40, y: 400 }, color),
+      label(`s-q${k}`, 46 + k, { x: x + 8, y: 408 }, `Q${k + 1}`, 13),
+    );
+  });
+
+  // Mind map: one idea in the middle, three branches out of it.
+  const hub = node(
+    's-hub',
+    50,
+    'ellipse',
+    { x: 470, y: 275 },
+    { x: 570, y: 330 },
+    '#E5484D',
+    w.app,
+  );
+  const ux = node('s-ux', 51, 'rectangle', { x: 360, y: 225 }, { x: 430, y: 259 }, '#FF8FAB', 'UX');
+  const api = node(
+    's-api',
+    52,
+    'rectangle',
+    { x: 620, y: 225 },
+    { x: 690, y: 259 },
+    '#0091FF',
+    'API',
+  );
+  const data = node(
+    's-data',
+    53,
+    'rectangle',
+    { x: 480, y: 380 },
+    { x: 560, y: 414 },
+    '#30A46C',
+    w.data,
+  );
+  const mind: BoardElement[] = [
+    hub,
+    ux,
+    api,
+    data,
+    link('s-l1', 54, hub, [0, 0.5], ux, [1, 0.5]),
+    link('s-l2', 55, hub, [1, 0.5], api, [0, 0.5]),
+    link('s-l3', 56, hub, [0.5, 1], data, [0.5, 0]),
+  ];
+
+  // Venn: two overlapping circles and what they share.
+  const venn: BoardElement[] = [
+    node('s-v1', 60, 'ellipse', { x: -420, y: 255 }, { x: -310, y: 335 }, '#0091FF'),
+    node('s-v2', 61, 'ellipse', { x: -340, y: 255 }, { x: -230, y: 335 }, '#FF8FAB'),
+    label('s-vl1', 62, { x: -408, y: 287 }, w.design, 13),
+    label('s-vl2', 63, { x: -300, y: 287 }, w.code, 13),
+    label('s-vl3', 64, { x: -333, y: 285 }, '✨', 14),
+  ];
+
+  return [...timeline, ...todo, ...chart, ...mind, ...venn];
+}
+
+/**
+ * A four-step flow down the left and up the right, one short note per step —
+ * the card sits in the middle, so the diagram lives around it — with a
+ * different small sketch in each corner that is left (`sketches`).
  */
 export function demoElements(lang: Lang): BoardElement[] {
   const w = WORDS[lang];
@@ -169,6 +373,7 @@ export function demoElements(lang: Lang): BoardElement[] {
     note('d-n1', 9, { x: -525, y: -70 }, w.n1),
     note('d-n2', 10, { x: -620, y: 150 }, w.n2),
     note('d-n3', 11, { x: 350, y: 150 }, w.n3),
+    ...sketches(w),
   ];
 }
 
@@ -187,6 +392,7 @@ const PEERS = [
       { x: -470, y: -60, rest: 2.4 },
       { x: -560, y: 70, rest: 4 },
       { x: -600, y: 160, rest: 2.6 },
+      { x: -560, y: 300, rest: 3 },
     ],
   },
   {
@@ -197,6 +403,7 @@ const PEERS = [
     stops: [
       { x: 520, y: 70, rest: 3.6 },
       { x: 420, y: 165, rest: 2.8 },
+      { x: 520, y: 330, rest: 3.4 },
       { x: 540, y: -165, rest: 4.4 },
       { x: 600, y: -40, rest: 2.2 },
     ],
