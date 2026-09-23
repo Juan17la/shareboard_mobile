@@ -16,7 +16,7 @@ import { useCanvasRef } from '@shopify/react-native-skia';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, View, useWindowDimensions } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BoardCanvas } from '@/components/board/BoardCanvas';
@@ -38,6 +38,7 @@ import { Backdrop } from '@/components/ui/Backdrop';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { GlassScene } from '@/components/ui/Glass';
+import { LoadingBar } from '@/components/ui/LoadingBar';
 import { Txt } from '@/components/ui/Text';
 import { ToastHost, toast } from '@/components/ui/Toast';
 import { API_BASE_URL } from '@/constants/config';
@@ -168,8 +169,8 @@ export default function BoardScreen() {
 
   if (sync.phase === 'loading' || !nickname) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.background }}>
-        <ActivityIndicator color={c.accent} />
+      <View style={{ flex: 1, backgroundColor: c.background }}>
+        <LoadingBar />
       </View>
     );
   }
