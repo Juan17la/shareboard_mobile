@@ -46,7 +46,7 @@ export function MenuSheet({
   return (
     <Sheet open={open} title={t.sheetMenu} onClose={onClose} closeLabel={t.close}>
       <View>
-        {rows.map((row) => (
+        {rows.map((row, i) => (
           <Pressable
             key={row.label}
             accessibilityRole="button"
@@ -58,7 +58,10 @@ export function MenuSheet({
               gap: 12,
               paddingVertical: 13,
               paddingHorizontal: 8,
-              opacity: pressed ? 0.5 : 1,
+              // `text` + 16% alpha: a visible press tone in both themes.
+              backgroundColor: pressed ? c.text + '29' : 'transparent',
+              borderBottomWidth: i < rows.length - 1 ? 1 : 0,
+              borderColor: c.borderStrong,
             })}
           >
             <Icon name={row.icon} size={19} color={c.text} />
