@@ -22,6 +22,7 @@ const es = {
   save: 'Guardar',
   close: 'Cerrar',
   back: 'Atrás',
+  loading: 'Abriendo la pizarra…',
   retry: 'Reintentar',
   deleteDigit: 'Borrar un dígito',
 
@@ -256,6 +257,7 @@ const en: Record<keyof typeof es, string> = {
   save: 'Save',
   close: 'Close',
   back: 'Back',
+  loading: 'Opening the board…',
   retry: 'Try again',
   deleteDigit: 'Delete a digit',
 
