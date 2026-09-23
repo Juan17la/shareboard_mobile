@@ -9,7 +9,7 @@
  * The camera lives in the store but never on the wire: pan and zoom are
  * per-device (docs/05-model-date).
  */
-import { Canvas, Group, type CanvasRef } from '@shopify/react-native-skia';
+import { Blur, Canvas, Group, Paint, type CanvasRef } from '@shopify/react-native-skia';
 import { useCallback, useMemo, useState, type RefObject } from 'react';
 import { Pressable, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -94,8 +94,11 @@ const isDoubleTap = (() => {
 export function BoardCanvas({
   onCursorMove,
   canvasRef,
+  blur,
 }: {
   onCursorMove?: (at: Point) => void;
+  /** Blurs everything drawn, in px: the home screen's out-of-focus board. */
+  blur?: number;
   /** Handed out so the glass panels can snapshot the board (`useBoardMirror`). */
   canvasRef?: RefObject<CanvasRef | null>;
 }) {
@@ -412,6 +415,7 @@ export function BoardCanvas({
     <View style={{ flex: 1, backgroundColor: c.background }} onLayout={onLayout}>
       <GestureDetector gesture={gesture}>
         <Canvas ref={canvasRef} style={{ flex: 1 }}>
+          <Group layer={blur ? <Paint><Blur blur={blur} /></Paint> : undefined}>
           {/* Outside the camera group: the grid is spaced in screen pixels, so
               it stays crisp instead of being scaled with the drawing. */}
           <GridLayer width={size.width} height={size.height} camera={camera} />
@@ -467,6 +471,7 @@ export function BoardCanvas({
           (selectedShape && isLineLike(selectedShape)) ? (
             <Anchors elements={list} camera={camera} />
           ) : null}
+          </Group>
         </Canvas>
       </GestureDetector>
 
