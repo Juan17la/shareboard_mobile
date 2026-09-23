@@ -23,38 +23,42 @@ import { useSessionStore } from '@/features/session/store';
 
 const WORDS: Record<
   Lang,
-  Record<'title' | 'research' | 'design' | 'build' | 'launch' | 'note' | 'sticky', string>
+  Record<'title' | 'idea' | 'sketch' | 'review' | 'done' | 'n1' | 'n2' | 'n3', string>
 > = {
   es: {
-    title: 'Hoja de ruta',
-    research: 'Investigar',
-    design: 'Diseñar',
-    build: 'Construir',
-    launch: 'Lanzar 🚀',
-    note: '¡Ideas bienvenidas!',
-    sticky: '¿v2?',
+    title: 'Cómo funciona',
+    idea: 'Idea',
+    sketch: 'Boceto',
+    review: 'Revisión',
+    done: 'Listo ✓',
+    n1: 'Dibuja y escribe lo que piensas',
+    n2: 'Tu equipo entra con un código',
+    n3: 'Comentan en vivo y lo cierran',
   },
   en: {
-    title: 'Product roadmap',
-    research: 'Research',
-    design: 'Design',
-    build: 'Build',
-    launch: 'Launch 🚀',
-    note: 'Ideas welcome!',
-    sticky: 'v2?',
+    title: 'How it works',
+    idea: 'Idea',
+    sketch: 'Sketch',
+    review: 'Review',
+    done: 'Done ✓',
+    n1: 'Draw and write what you think',
+    n2: 'Your team joins with a code',
+    n3: 'They comment live and wrap it up',
   },
 };
 
 const INK = '#1B2030';
+/** Notes are a quiet grey that reads on both boards (`inkFor` only flips the ink). */
+const NOTE = '#8E8E93';
 const base = (id: string, z: number) => ({ id, z, createdBy: 'demo', createdAt: 0, updatedAt: 0 });
-const box = (
+const node = (
   id: string,
   z: number,
-  shape: 'rectangle' | 'ellipse' | 'triangle',
+  shape: 'rectangle' | 'ellipse',
   from: Point,
   to: Point,
   color: string,
-  text?: string,
+  text: string,
 ): ShapeElement => ({
   ...base(id, z),
   kind: 'shape',
@@ -66,54 +70,84 @@ const box = (
   fill: fillFor(color, 'low'),
   text,
 });
+/** An arrow bound to a point (u, v) of each shape's box. */
+const arrow = (
+  id: string,
+  z: number,
+  a: ShapeElement,
+  from: [number, number],
+  b: ShapeElement,
+  to: [number, number],
+  extra: Partial<ShapeElement> = {},
+): ShapeElement => {
+  const at = (s: ShapeElement, [u, v]: [number, number]) => ({
+    x: s.from.x + (s.to.x - s.from.x) * u,
+    y: s.from.y + (s.to.y - s.from.y) * v,
+  });
+  return {
+    ...base(id, z),
+    kind: 'shape',
+    shape: 'arrow',
+    from: at(a, from),
+    to: at(b, to),
+    stroke: INK,
+    strokeWidth: 2,
+    fromLink: { id: a.id, u: from[0], v: from[1] },
+    toLink: { id: b.id, u: to[0], v: to[1] },
+    ...extra,
+  };
+};
+const note = (id: string, z: number, at: Point, text: string): BoardElement => ({
+  ...base(id, z),
+  kind: 'text',
+  at,
+  text,
+  color: NOTE,
+  fontSize: 17,
+  italic: true,
+});
 
-/** A loose hand-drawn loop around `c`: what a quick circle with a finger looks like. */
-function scribble(c: Point, r: number): number[] {
-  const points: number[] = [];
-  for (let a = 0; a <= Math.PI * 2.15; a += 0.18) {
-    const wobble = 1 + 0.08 * Math.sin(a * 3);
-    points.push(c.x + Math.cos(a) * r * 1.3 * wobble, c.y + Math.sin(a) * r * wobble);
-  }
-  return points;
-}
-
+/**
+ * A four-step flow down the left and up the right, one short note per step:
+ * the card sits in the middle, so the diagram lives around it.
+ */
 export function demoElements(lang: Lang): BoardElement[] {
   const w = WORDS[lang];
-  const research = box(
-    'd-research',
+  const idea = node(
+    'd-idea',
+    2,
+    'ellipse',
+    { x: -620, y: -210 },
+    { x: -470, y: -130 },
+    '#8E4EC6',
+    w.idea,
+  );
+  const sketch = node(
+    'd-sketch',
     3,
     'rectangle',
-    { x: -620, y: -200 },
-    { x: -420, y: -100 },
-    '#F76808',
-    w.research,
+    { x: -620, y: 20 },
+    { x: -470, y: 100 },
+    '#0091FF',
+    w.sketch,
   );
-  const design = box(
-    'd-design',
+  const review = node(
+    'd-review',
     4,
     'rectangle',
-    { x: -620, y: 20 },
-    { x: -420, y: 120 },
-    '#30A46C',
-    w.design,
+    { x: 450, y: 20 },
+    { x: 610, y: 100 },
+    '#F76808',
+    w.review,
   );
-  const build = box(
-    'd-build',
+  const done = node(
+    'd-done',
     5,
-    'rectangle',
-    { x: 400, y: 20 },
-    { x: 620, y: 130 },
-    '#0091FF',
-    w.build,
-  );
-  const launch = box(
-    'd-launch',
-    6,
     'ellipse',
-    { x: 420, y: -230 },
-    { x: 620, y: -110 },
-    '#8E4EC6',
-    w.launch,
+    { x: 450, y: -210 },
+    { x: 610, y: -130 },
+    '#30A46C',
+    w.done,
   );
   return [
     {
@@ -122,116 +156,89 @@ export function demoElements(lang: Lang): BoardElement[] {
       at: { x: -620, y: -320 },
       text: w.title,
       color: INK,
-      fontSize: 30,
+      fontSize: 28,
       bold: true,
     },
-    {
-      ...base('d-underline', 2),
-      kind: 'stroke',
-      color: '#E5484D',
-      width: 4,
-      points: [-620, -270, -540, -266, -460, -271, -380, -265],
-    },
-    research,
-    design,
-    build,
-    launch,
-    {
-      ...base('d-a1', 7),
-      kind: 'shape',
-      shape: 'arrow',
-      from: { x: -520, y: -100 },
-      to: { x: -520, y: 20 },
-      stroke: INK,
-      strokeWidth: 2,
-      fromLink: { id: research.id, u: 0.5, v: 1 },
-      toLink: { id: design.id, u: 0.5, v: 0 },
-    },
-    {
-      ...base('d-a2', 8),
-      kind: 'shape',
-      shape: 'arrow',
-      from: { x: -420, y: 70 },
-      to: { x: 400, y: 75 },
-      stroke: INK,
-      strokeWidth: 2,
-      route: 'curved',
-      dash: 'dashed',
-      fromLink: { id: design.id, u: 1, v: 0.5 },
-      toLink: { id: build.id, u: 0, v: 0.5 },
-    },
-    {
-      ...base('d-a3', 9),
-      kind: 'shape',
-      shape: 'arrow',
-      from: { x: 510, y: 20 },
-      to: { x: 520, y: -110 },
-      stroke: INK,
-      strokeWidth: 2,
-      fromLink: { id: build.id, u: 0.5, v: 0 },
-      toLink: { id: launch.id, u: 0.5, v: 1 },
-    },
-    box('d-sticky', 10, 'rectangle', { x: 240, y: 230 }, { x: 370, y: 340 }, '#FFB224', w.sticky),
-    box('d-tri', 11, 'triangle', { x: -330, y: 240 }, { x: -220, y: 340 }, '#FF8FAB'),
-    {
-      ...base('d-note', 12),
-      kind: 'text',
-      at: { x: 420, y: 190 },
-      text: w.note,
-      color: INK,
-      fontSize: 20,
-      italic: true,
-    },
-    {
-      ...base('d-loop', 13),
-      kind: 'stroke',
-      color: '#E5484D',
-      width: 3,
-      points: scribble({ x: 305, y: 285 }, 70),
-    },
-    {
-      ...base('d-check', 14),
-      kind: 'stroke',
-      color: '#30A46C',
-      width: 5,
-      points: [-600, 250, -570, 285, -500, 200],
-    },
+    idea,
+    sketch,
+    review,
+    done,
+    arrow('d-a1', 6, idea, [0.5, 1], sketch, [0.5, 0]),
+    arrow('d-a2', 7, sketch, [1, 0.5], review, [0, 0.5], { dash: 'dashed' }),
+    arrow('d-a3', 8, review, [0.5, 0], done, [0.5, 1]),
+    note('d-n1', 9, { x: -525, y: -70 }, w.n1),
+    note('d-n2', 10, { x: -620, y: 150 }, w.n2),
+    note('d-n3', 11, { x: 350, y: 150 }, w.n3),
   ];
 }
 
-/** The collaborators "working" on the demo, each drifting around its own corner. */
+/**
+ * The two collaborators. Each walks a loop of stops near the diagram, resting
+ * at every one: people point at something, read, then move on.
+ */
 const PEERS = [
   {
     userId: 'demo-ana',
     nickname: 'Ana',
     color: '#30A46C',
     avatar: '🐸',
-    center: { x: -470, y: -40 },
-    r: { x: 130, y: 110 },
+    stops: [
+      { x: -540, y: -165, rest: 3.2 },
+      { x: -470, y: -60, rest: 2.4 },
+      { x: -560, y: 70, rest: 4 },
+      { x: -600, y: 160, rest: 2.6 },
+    ],
   },
   {
     userId: 'demo-leo',
     nickname: 'Leo',
     color: '#8E4EC6',
     avatar: '🐙',
-    center: { x: 480, y: 0 },
-    r: { x: 110, y: 150 },
-  },
-  {
-    userId: 'demo-mia',
-    nickname: 'Mía',
-    color: '#E5484D',
-    avatar: '🦊',
-    center: { x: 0, y: 280 },
-    r: { x: 260, y: 40 },
+    stops: [
+      { x: 520, y: 70, rest: 3.6 },
+      { x: 420, y: 165, rest: 2.8 },
+      { x: 540, y: -165, rest: 4.4 },
+      { x: 600, y: -40, rest: 2.2 },
+    ],
   },
 ] as const;
 
-/** Where peer `i` is at time `t` (seconds): a slow, lazy figure-eight. */
+/** Board units per second: an unhurried hand. */
+const SPEED = 140;
+const ease = (s: number) => (s < 0.5 ? 4 * s * s * s : 1 - (-2 * s + 2) ** 3 / 2);
+
+/**
+ * Where peer `i` is at time `t` (seconds). A move eases out and in along a
+ * slight arc, like a wrist turning; a faint drift rides on top the whole time,
+ * like a hand that is never quite still. Pure and continuous, so the loop
+ * repeats seamlessly.
+ */
 export function demoCursor(i: number, t: number): Point {
-  const p = PEERS[i];
-  const a = t * 0.45 + i * 2.1;
-  return { x: p.center.x + Math.cos(a) * p.r.x, y: p.center.y + Math.sin(a * 2) * p.r.y * 0.6 };
+  const stops = PEERS[i].stops;
+  const legs = stops.map((to, k) => {
+    const from = stops[(k + stops.length - 1) % stops.length];
+    const move = Math.max(1.2, Math.hypot(to.x - from.x, to.y - from.y) / SPEED);
+    return { from, to, move, span: move + to.rest };
+  });
+  const loop = legs.reduce((sum, l) => sum + l.span, 0);
+  const drift = { x: Math.sin(t * 0.9) * 2.5, y: Math.cos(t * 0.7) * 2 };
+  let tt = (((t + i * 3.7) % loop) + loop) % loop;
+  for (const [k, l] of legs.entries()) {
+    if (tt >= l.span) {
+      tt -= l.span;
+      continue;
+    }
+    const s = tt < l.move ? ease(tt / l.move) : 1;
+    const dx = l.to.x - l.from.x;
+    const dy = l.to.y - l.from.y;
+    // The arc bows sideways by a tenth of the distance, alternating sides.
+    const bow = (k % 2 ? 0.1 : -0.1) * 4 * s * (1 - s);
+    return {
+      x: l.from.x + dx * s - dy * bow + drift.x,
+      y: l.from.y + dy * s + dx * bow + drift.y,
+    };
+  }
+  return stops[0];
 }
 
 const DEMO_ID = 'demo';
