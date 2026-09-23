@@ -1,7 +1,7 @@
 import { TextInput, View, type TextInputProps } from 'react-native';
 
 import { Fonts, Radius } from '@/constants/theme';
-import { useColors } from '@/features/session/store';
+import { useColors, useDark } from '@/features/session/store';
 
 import { Txt } from './Text';
 
@@ -15,6 +15,7 @@ export interface FieldProps extends TextInputProps {
 
 export function Field({ label, hint, error, mono = false, style, ...rest }: FieldProps) {
   const c = useColors();
+  const dark = useDark();
   return (
     <View style={{ gap: 7 }}>
       {label ? (
@@ -23,6 +24,10 @@ export function Field({ label, hint, error, mono = false, style, ...rest }: Fiel
         </Txt>
       ) : null}
       <TextInput
+        // Remounted on a theme switch: Android rebuilds an input's background
+        // when its colours change and drops the padding set on it, which
+        // clipped the text (the nickname field in Settings).
+        key={dark ? 'dark' : 'light'}
         placeholderTextColor={c.borderDashed}
         style={[
           {
