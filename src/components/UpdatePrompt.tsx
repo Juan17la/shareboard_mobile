@@ -1,8 +1,8 @@
 /**
  * Offers the newest GitHub release once per launch (Android: the APK opens in
  * the browser, which downloads it and hands it to the system installer).
- * ponytail: iOS ad hoc builds cannot install from GitHub, so it is skipped
- * there; OTA JS updates (expo-updates) would cover both without a download.
+ * The app ships for Android only; OTA JS updates (expo-updates) would skip
+ * the download for changes that touch no native code.
  */
 import { useEffect, useState } from 'react';
 import { Linking, Platform } from 'react-native';
