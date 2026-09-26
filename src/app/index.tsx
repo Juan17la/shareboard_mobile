@@ -95,22 +95,25 @@ export default function Home() {
     });
   };
 
+  // No `finally` and nothing conditional inside a `try` in here: the React
+  // Compiler skips a component that has either, and compiled, typing in the
+  // card no longer re-renders the demo board behind it.
   async function handleCreate() {
     setBusy(true);
+    const request = {
+      name: name.trim() || t.newBoardName,
+      access: 'public',
+      editPolicy: 'everyone',
+      creatorId: userId,
+    } as const;
     try {
-      const meta = await createBoard({
-        name: name.trim() || t.newBoardName,
-        access: 'public',
-        editPolicy: 'everyone',
-        creatorId: userId,
-      });
+      const meta = await createBoard(request);
       thud(haptics);
       openBoard(meta.id, true);
     } catch (error) {
-      toast(error instanceof Error ? error.message : t.errCreate);
-    } finally {
-      setBusy(false);
+      toast(messageOf(error, t.errCreate));
     }
+    setBusy(false);
   }
 
   async function handleJoin(raw: string) {
@@ -120,16 +123,16 @@ export default function Home() {
       return;
     }
     setBusy(true);
+    const lookup = ref.kind === 'id' ? Promise.resolve(ref.boardId) : resolveShortCode(ref.shortCode);
     try {
-      const boardId = ref.kind === 'id' ? ref.boardId : await resolveShortCode(ref.shortCode);
+      const boardId = await lookup;
       setCode('');
       openBoard(boardId);
     } catch (error) {
       setCode('');
-      toast(error instanceof Error ? error.message : t.errJoin);
-    } finally {
-      setBusy(false);
+      toast(messageOf(error, t.errJoin));
     }
+    setBusy(false);
   }
 
   /** Characters fill the boxes; a link or an id skips them and joins at once. */
@@ -354,6 +357,8 @@ export default function Home() {
 }
 
 const noop = () => {};
+const messageOf = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
 const FILL = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as const;
 
 /**
@@ -390,7 +395,7 @@ function DemoBoard({ canvasRef }: { canvasRef: RefObject<CanvasRef | null> }) {
         onOpenShare={noop}
       />
       <Toolbar landscape={landscape} />
-      <BottomControls top={headerHeight + 6} />
+      <BottomControls top={headerHeight + 6} onOpenAi={noop} />
       {Platform.OS === 'ios' ? (
         <BlurView intensity={14} tint={dark ? 'dark' : 'light'} style={FILL} />
       ) : (

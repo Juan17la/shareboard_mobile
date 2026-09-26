@@ -532,19 +532,22 @@ export function useDemoBoard() {
       else if (s.viewport !== prev.viewport || s.cameraPlaced !== prev.cameraPlaced) fitDemo();
     });
 
+    // Once a frame, both peers in one update: the drift is as smooth as the
+    // screen, and each frame costs one small re-render of the cursor layer.
     const start = Date.now();
-    const timer = still
-      ? undefined
-      : setInterval(() => {
-          const t = (Date.now() - start) / 1000;
-          PEERS.forEach((p, i) =>
-            useBoardStore.getState().setRemoteCursor(p.userId, demoCursor(i, t)),
-          );
-        }, 50);
+    let frame = 0;
+    const drift = () => {
+      const t = (Date.now() - start) / 1000;
+      const moves: Record<string, Point> = {};
+      PEERS.forEach((p, i) => (moves[p.userId] = demoCursor(i, t)));
+      useBoardStore.getState().moveCursors(moves);
+      frame = requestAnimationFrame(drift);
+    };
+    if (!still) frame = requestAnimationFrame(drift);
 
     return () => {
       unsubscribe();
-      clearInterval(timer);
+      cancelAnimationFrame(frame);
       // Only the demo is ours to clear: a real board may already be loaded.
       if (useBoardStore.getState().boardId === DEMO_ID) useBoardStore.getState().reset();
     };

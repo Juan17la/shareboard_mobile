@@ -7,23 +7,27 @@
  * app's own typography for free and, because the labels must stay a constant
  * size however far the board is zoomed out, they were never going to live in
  * board space anyway.
+ *
+ * It reads the camera itself, so the canvas does not have to re-render to
+ * move it.
  */
 import { View } from 'react-native';
 
-import type { Camera } from '@/features/board/store';
 import { useBoardStore } from '@/features/board/store';
 import { useSessionStore } from '@/features/session/store';
 
 import { Txt } from '../ui/Text';
 
-export function PeerCursors({ camera }: { camera: Camera }) {
+export function PeerCursors() {
   const participants = useBoardStore((s) => s.participants);
+  const cursors = useBoardStore((s) => s.cursors);
+  const camera = useBoardStore((s) => s.camera);
   const you = useBoardStore((s) => s.you);
   const show = useSessionStore((s) => s.settings.peers);
 
   if (!show) return null;
 
-  const peers = participants.filter((p) => p.userId !== you?.userId && p.cursor);
+  const peers = participants.filter((p) => p.userId !== you?.userId && cursors[p.userId]);
   if (peers.length === 0) return null;
 
   return (
@@ -36,8 +40,8 @@ export function PeerCursors({ camera }: { camera: Camera }) {
           key={p.userId}
           style={{
             position: 'absolute',
-            left: p.cursor!.x * camera.scale + camera.x,
-            top: p.cursor!.y * camera.scale + camera.y,
+            left: cursors[p.userId].x * camera.scale + camera.x,
+            top: cursors[p.userId].y * camera.scale + camera.y,
             flexDirection: 'row',
             alignItems: 'flex-start',
             gap: 2,
