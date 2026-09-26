@@ -8,6 +8,7 @@
  */
 import { Pressable, View } from 'react-native';
 
+import { useBoardStore } from '@/features/board/store';
 import { useColors } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 
@@ -23,6 +24,7 @@ export function MenuSheet({
   onOpenPrivacy,
   onOpenPeople,
   onOpenSettings,
+  onOpenAi,
 }: {
   open: boolean;
   onClose: () => void;
@@ -31,9 +33,11 @@ export function MenuSheet({
   onOpenPrivacy: () => void;
   onOpenPeople: () => void;
   onOpenSettings: () => void;
+  onOpenAi: () => void;
 }) {
   const c = useColors();
   const t = useT();
+  const canEdit = useBoardStore((s) => s.canEditNow());
 
   const rows: { icon: IconName; label: string; onPress: () => void }[] = [
     { icon: 'image', label: t.exportImage, onPress: onOpenExport },
@@ -41,6 +45,7 @@ export function MenuSheet({
     { icon: 'lock', label: t.whoEdits, onPress: onOpenPrivacy },
     { icon: 'people', label: t.sheetPeople, onPress: onOpenPeople },
     { icon: 'settings', label: t.sheetSettings, onPress: onOpenSettings },
+    ...(canEdit ? [{ icon: 'sparkle' as const, label: t.sheetAi, onPress: onOpenAi }] : []),
   ];
 
   return (

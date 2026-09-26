@@ -21,11 +21,19 @@ import { Icon, type IconName } from '../ui/Icon';
 import { Txt } from '../ui/Text';
 import { tip } from '../ui/Toast';
 
-export function BottomControls({ top }: { top: number }) {
+export function BottomControls({ top, onOpenAi }: { top: number; onOpenAi: () => void }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const t = useT();
-  const camera = useBoardStore((s) => s.camera);
+  // What the chip shows of the camera, not the camera: a pan changes none of
+  // it, so panning does not re-render the chip.
+  const percent = useBoardStore((s) => Math.round(s.camera.scale * 100));
+  const canZoomOut = useBoardStore((s) => s.camera.scale > MIN_ZOOM);
+  const canZoomIn = useBoardStore((s) => s.camera.scale < MAX_ZOOM);
+  const home = useBoardStore((s) => {
+    const at = s.homeCamera();
+    return s.camera.x === at.x && s.camera.y === at.y && s.camera.scale === 1;
+  });
   const setCamera = useBoardStore((s) => s.setCamera);
   const zoomBy = useBoardStore((s) => s.zoomBy);
   const homeCamera = useBoardStore((s) => s.homeCamera);
@@ -36,9 +44,7 @@ export function BottomControls({ top }: { top: number }) {
   const canEdit = useBoardStore((s) => s.canEditNow());
   const haptics = useSessionStore((s) => s.settings.haptics);
 
-  const zoom = `${Math.round(camera.scale * 100)}%`;
-  const at = homeCamera();
-  const home = camera.x === at.x && camera.y === at.y && camera.scale === 1;
+  const zoom = `${percent}%`;
   const run = (action: () => void) => () => {
     tick(haptics);
     action();
@@ -54,7 +60,7 @@ export function BottomControls({ top }: { top: number }) {
           <ControlButton
             icon="minus"
             label={t.zoomOut}
-            enabled={camera.scale > MIN_ZOOM}
+            enabled={canZoomOut}
             onPress={run(() => zoomBy(1 / ZOOM_STEP))}
           />
           <Pressable
@@ -80,7 +86,7 @@ export function BottomControls({ top }: { top: number }) {
           <ControlButton
             icon="plus"
             label={t.zoomIn}
-            enabled={camera.scale < MAX_ZOOM}
+            enabled={canZoomIn}
             onPress={run(() => zoomBy(ZOOM_STEP))}
           />
 
@@ -89,6 +95,8 @@ export function BottomControls({ top }: { top: number }) {
               <View style={{ width: 1, height: 20, marginHorizontal: 4, backgroundColor: c.border }} />
               <ControlButton icon="undo" label={t.undo} enabled={undoDepth > 0} onPress={run(undo)} />
               <ControlButton icon="redo" label={t.redo} enabled={redoDepth > 0} onPress={run(redo)} />
+              <View style={{ width: 1, height: 20, marginHorizontal: 4, backgroundColor: c.border }} />
+              <ControlButton icon="sparkle" label={t.sheetAi} enabled onPress={run(onOpenAi)} />
             </>
           ) : null}
         </View>
