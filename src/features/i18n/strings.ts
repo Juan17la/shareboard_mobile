@@ -256,6 +256,11 @@ const es = {
   errRename: 'No se pudo cambiar el nombre',
   errDelete: 'No se pudo eliminar la pizarra',
   errNicknameTaken: 'Ese nombre ya está en uso en esta pizarra',
+
+  updateTitle: 'Nueva versión #VERSION',
+  updateBody: 'Hay una versión nueva de Shareboard.',
+  updateCta: 'Descargar',
+  updateLater: 'Más tarde',
 } as const;
 
 const en: Record<keyof typeof es, string> = {
@@ -486,6 +491,11 @@ const en: Record<keyof typeof es, string> = {
   errRename: 'Could not rename the board',
   errDelete: 'Could not delete the board',
   errNicknameTaken: 'That name is already used on this board',
+
+  updateTitle: 'Version #VERSION is out',
+  updateBody: 'A new version of Shareboard is available.',
+  updateCta: 'Download',
+  updateLater: 'Later',
 };
 
 export type Strings = typeof es;
