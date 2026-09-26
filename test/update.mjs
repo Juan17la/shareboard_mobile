@@ -11,7 +11,7 @@ for (let i = 0; i < ordered.length - 1; i++) {
 assert.equal(compareVersions('v1.0.0-beta.2', '1.0.0-beta.2'), 0);
 
 const rel = (tag, apk = true, draft = false) => ({
-  tag_name: tag, name: tag, draft, html_url: '', body: `### Fixed\n\n- **Boards** saved\n\n## Install\n\nignored`,
+  tag_name: tag, name: tag, draft, html_url: '', body: '### Fixed\r\n\r\n- **Boards** saved\r\n\r\n## Install\r\n\r\nignored',
   assets: apk ? [{ name: `shareboard-${tag}.apk`, browser_download_url: `https://x/${tag}.apk` }] : [],
 });
 // Newest with an APK wins; drafts, APK-less and older releases never do.
