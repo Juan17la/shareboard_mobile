@@ -1,0 +1,34 @@
+# Publishes a GitHub release for every v* tag (git_scripts/release.sh pushes
+# them): re-runs the checks on the tagged code, then uses that version's
+# CHANGELOG.md section as the notes. A tag with a "-" (v1.0.0-beta.1) is a pre-release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Checks
+        run: npx tsc --noEmit && npx eslint src
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v v="${GITHUB_REF_NAME#v}" '/^## \[/ { p = index($0, "[" v "]") > 0; next } p' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "CHANGELOG.md has no section for $GITHUB_REF_NAME"; exit 1; }
+          printf "\\n## Install\\n\\nOpen https://expo.dev/accounts/juan17las-team/projects/judd/builds on the phone and install the %s build (Android APK, or iOS on a registered device).\\n" "$GITHUB_REF_NAME" >> notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Shareboard mobile ${{ github.ref_name }}
+          body_path: notes.md
+          prerelease: ${{ contains(github.ref_name, '-') }}
