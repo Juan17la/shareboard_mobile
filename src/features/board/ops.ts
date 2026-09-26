@@ -101,9 +101,22 @@ export function invertOps(before: ElementMap, ops: Op[]): Op[] {
   return inverses.reverse();
 }
 
-/** Visible elements in paint order — what the canvas and snapshots consume. */
+let sortedFor: ElementMap | null = null;
+let sorted: BoardElement[] = [];
+
+/**
+ * Visible elements in paint order — what the canvas and snapshots consume.
+ * Maps are never mutated (`applyOps` copies), so the last result is reused
+ * while the map is the same one: the eraser, hit tests and line snapping ask
+ * for it on every touch sample, and sorting the whole board each time was
+ * most of what a sample cost. Callers must not mutate the returned array.
+ */
 export function visibleSorted(elements: ElementMap): BoardElement[] {
-  return Object.values(elements)
-    .filter((el) => !el.deleted)
-    .sort((a, b) => a.z - b.z);
+  if (elements !== sortedFor) {
+    sortedFor = elements;
+    sorted = Object.values(elements)
+      .filter((el) => !el.deleted)
+      .sort((a, b) => a.z - b.z);
+  }
+  return sorted;
 }

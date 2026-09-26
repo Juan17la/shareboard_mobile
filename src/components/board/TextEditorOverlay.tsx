@@ -16,22 +16,20 @@ import { useColors, useDark } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 import { shapeBounds } from '@/features/board/geometry';
 import { SHAPE_TEXT_SIZE, type ShapeElement, type TextElement } from '@/features/board/model';
-import type { Camera } from '@/features/board/store';
 import { useBoardStore } from '@/features/board/store';
 
 export function TextEditorOverlay({
   element,
-  camera,
   onClose,
 }: {
   /** A text element, or a shape whose label is being typed. */
   element: TextElement | ShapeElement;
-  camera: Camera;
   onClose: () => void;
 }) {
   const c = useColors();
   const dark = useDark();
   const t = useT();
+  const camera = useBoardStore((s) => s.camera);
   const updateText = useBoardStore((s) => s.updateText);
   const updateShape = useBoardStore((s) => s.updateShape);
   const [value, setValue] = useState(element.text ?? '');

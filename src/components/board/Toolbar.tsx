@@ -15,10 +15,11 @@
  * Nothing scrolls: in portrait the tools sit in two rows (tools, then shapes)
  * and the options wrap, so everything is visible at once on a narrow phone.
  */
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Path as SvgPath, Svg } from 'react-native-svg';
+import { useShallow } from 'zustand/shallow';
 
 import { DrawingPalette, StrokeSizes, inkFor } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
@@ -58,7 +59,7 @@ import { ColorPickerSheet } from '../ui/ColorPickerSheet';
 import { GlassPanel } from '../ui/Glass';
 import { Icon, type IconName } from '../ui/Icon';
 import { Txt } from '../ui/Text';
-import { tip } from '../ui/Toast';
+import { tip, toast } from '../ui/Toast';
 
 type LabelKey =
   | 'hand'
@@ -115,10 +116,22 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const pickTool = useBoardStore((s) => s.pickTool);
   const setConfig = useBoardStore((s) => s.setConfig);
   const reorder = useBoardStore((s) => s.reorder);
+  const copySelection = useBoardStore((s) => s.copySelection);
+  const cutSelection = useBoardStore((s) => s.cutSelection);
   const group = useBoardStore((s) => s.group);
   const ungroup = useBoardStore((s) => s.ungroup);
-  const selectedIds = useBoardStore((s) => s.selectedIds);
-  const elements = useBoardStore((s) => s.elements);
+  // The selection, when a tool that has one is in hand. Only the selected
+  // elements are read, not the board: a stroke drawn elsewhere, or anything a
+  // peer does, leaves the toolbar alone.
+  const selected = useBoardStore(
+    useShallow((s) =>
+      s.tool === 'select' || s.tool === 'shape'
+        ? s.selectedIds
+            .map((id) => s.elements[id])
+            .filter((el): el is BoardElement => !!el && !el.deleted)
+        : NONE,
+    ),
+  );
   const canEdit = useBoardStore((s) => s.canEditNow());
   const haptics = useSessionStore((s) => s.settings.haptics);
   const dark = useDark();
@@ -132,16 +145,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
 
   const nudge = () => tick(haptics);
 
-  // The selection, when a tool that has one is in hand.
-  const selected = useMemo(
-    () =>
-      tool === 'select' || tool === 'shape'
-        ? selectedIds
-            .map((id) => elements[id])
-            .filter((el): el is BoardElement => !!el && !el.deleted)
-        : [],
-    [tool, selectedIds, elements],
-  );
   const has = (test: (el: BoardElement) => boolean) => selected.some(test);
   /** The first selected element's value for an option, so the strip shows what it will change. */
   const first = <T,>(pick: (el: BoardElement) => T | undefined): T | undefined => {
@@ -289,6 +292,52 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const buttonSize = Math.min(landscape ? 34 : 44, Math.floor((width - chrome) / 8));
   const buttonRadius = buttonSize < 40 ? 12 : 14;
   const rows = [TOOLS];
+
+  /* The swatch doubles as the options toggle: it is both the current colour
+     and a handle for the strip that changes it. Sits on the first row. */
+  const swatch = (
+    <>
+      <View
+        style={{
+          width: 1,
+          height: 24,
+          marginHorizontal: 4,
+          backgroundColor: c.border,
+        }}
+      />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t.color}
+        accessibilityState={{ expanded: open }}
+        onPress={() => {
+          nudge();
+          setOpen(!open);
+        }}
+        onLongPress={() => tip(t.color)}
+        style={{
+          width: buttonSize,
+          height: buttonSize,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: buttonRadius,
+          borderWidth: 1,
+          borderColor: c.border,
+          backgroundColor: c.glassTintSolid,
+        }}
+      >
+        <View
+          style={{
+            width: buttonSize / 2,
+            height: buttonSize / 2,
+            borderRadius: 7,
+            backgroundColor: inkFor(config.color, dark),
+            borderWidth: 2,
+            borderColor: '#FFFFFF',
+          }}
+        />
+      </Pressable>
+    </>
+  );
 
   return (
     <>
@@ -557,6 +606,32 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
 
                   {showOrder ? (
                     <Cluster>
+                      <MiniButton
+                        label={t.copy}
+                        active={false}
+                        onPress={() => {
+                          nudge();
+                          copySelection();
+                          toast(t.toastCopiedSelection);
+                        }}
+                      >
+                        <Icon name="copy" size={18} />
+                      </MiniButton>
+                      <MiniButton
+                        label={t.cut}
+                        active={false}
+                        onPress={() => {
+                          nudge();
+                          cutSelection();
+                        }}
+                      >
+                        <Icon name="cut" size={18} />
+                      </MiniButton>
+                    </Cluster>
+                  ) : null}
+
+                  {showOrder ? (
+                    <Cluster>
                       {orderOps.map(({ op, icon, labelKey }) => (
                         <MiniButton
                           key={op}
@@ -691,7 +766,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                     onPress={() => pick(entry)}
                   />
                 ))}
-                {i === 0 ? <Swatch /> : null}
+                {i === 0 ? swatch : null}
               </View>
             ))}
           </View>
@@ -710,55 +785,9 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
       />
     </>
   );
-
-  /* The swatch doubles as the options toggle: it is both the current colour
-     and a handle for the strip that changes it. Sits on the first row. */
-  function Swatch() {
-    return (
-      <>
-        <View
-          style={{
-            width: 1,
-            height: 24,
-            marginHorizontal: 4,
-            backgroundColor: c.border,
-          }}
-        />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t.color}
-          accessibilityState={{ expanded: open }}
-          onPress={() => {
-            nudge();
-            setOpen(!open);
-          }}
-          onLongPress={() => tip(t.color)}
-          style={{
-            width: buttonSize,
-            height: buttonSize,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: buttonRadius,
-            borderWidth: 1,
-            borderColor: c.border,
-            backgroundColor: c.glassTintSolid,
-          }}
-        >
-          <View
-            style={{
-              width: buttonSize / 2,
-              height: buttonSize / 2,
-              borderRadius: 7,
-              backgroundColor: inkFor(config.color, dark),
-              borderWidth: 2,
-              borderColor: '#FFFFFF',
-            }}
-          />
-        </Pressable>
-      </>
-    );
-  }
 }
+
+const NONE: BoardElement[] = [];
 
 const panelShadow = {
   shadowColor: '#151A2D',
