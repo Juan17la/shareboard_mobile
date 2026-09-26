@@ -18,9 +18,9 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://other.server",
-        "EXPO_PUBLIC_WS_URL": "wss://other.server/ws",
-        "EXPO_PUBLIC_RELEASE": "1.0.0-beta.3"
+        "EXPO_PUBLIC_API_URL": "https://shareboard-server.onrender.com",
+        "EXPO_PUBLIC_WS_URL": "wss://shareboard-server.onrender.com/ws",
+        "EXPO_PUBLIC_RELEASE": "1.0.0-beta.4"
       }
     },
     "production": {
