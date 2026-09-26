@@ -1,0 +1,87 @@
+/**
+ * The one way text is rendered in this app.
+ *
+ * Weight and italics are separate font *files* here rather than style flags
+ * (see `hooks/use-app-fonts.ts`), so every call site has to name a family. A
+ * component makes that a prop — `<Txt weight="extrabold">` — instead of a
+ * `fontFamily` string repeated a hundred times, and keeps one place to change
+ * if the type ramp moves.
+ */
+import { Text, type TextProps } from 'react-native';
+
+import { Fonts, type Palette } from '@/constants/theme';
+import { useColors } from '@/features/session/store';
+
+export type TextWeight = 'regular' | 'medium' | 'semibold' | 'bold' | 'extrabold';
+export type TextTone = 'default' | 'secondary' | 'tertiary' | 'accent' | 'danger' | 'inverse';
+
+const FAMILY: Record<TextWeight, string> = {
+  regular: Fonts.regular,
+  medium: Fonts.medium,
+  semibold: Fonts.semibold,
+  bold: Fonts.bold,
+  extrabold: Fonts.extrabold,
+};
+
+/** The palette key behind each tone; `inverse` is always white on an accent. */
+const TONE: Record<Exclude<TextTone, 'inverse'>, keyof Palette> = {
+  default: 'text',
+  secondary: 'textSecondary',
+  tertiary: 'textTertiary',
+  accent: 'accent',
+  danger: 'danger',
+};
+
+export interface TxtProps extends TextProps {
+  weight?: TextWeight;
+  tone?: TextTone;
+  /** JetBrains Mono — codes, PINs, percentages. Overrides `weight`'s family. */
+  mono?: boolean;
+  italic?: boolean;
+  size?: number;
+  /** Line height as a multiple of `size`. */
+  leading?: number;
+  /** Letter spacing in px; the design tightens large headings and opens codes. */
+  tracking?: number;
+  color?: string;
+}
+
+export function Txt({
+  weight = 'regular',
+  tone = 'default',
+  mono = false,
+  italic = false,
+  size = 14,
+  leading,
+  tracking,
+  color,
+  style,
+  ...rest
+}: TxtProps) {
+  const c = useColors();
+  const family = mono
+    ? weight === 'bold' || weight === 'extrabold'
+      ? Fonts.monoBold
+      : Fonts.mono
+    : italic
+      ? weight === 'extrabold' || weight === 'bold'
+        ? Fonts.extraboldItalic
+        : Fonts.italic
+      : FAMILY[weight];
+
+  return (
+    <Text
+      style={[
+        {
+          fontFamily: family,
+          fontSize: size,
+          color: color ?? (tone === 'inverse' ? '#FFFFFF' : c[TONE[tone]]),
+          ...(leading ? { lineHeight: Math.round(size * leading) } : null),
+          ...(tracking !== undefined ? { letterSpacing: tracking } : null),
+        },
+        style,
+      ]}
+      {...rest}
+    />
+  );
+}
