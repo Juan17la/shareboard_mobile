@@ -22,13 +22,22 @@ import { DrawingPalette, StrokeSizes } from '@/constants/theme';
 import type { Op } from '@/services/realtime/protocol';
 import { shortId } from '@/utils/id';
 
-import { followLinks, headsOf, isLineLike, shapeHit, translate } from './geometry';
+import {
+  contentBounds,
+  followLinks,
+  headsOf,
+  isLineLike,
+  shapeHit,
+  translate,
+  type Sketch,
+} from './geometry';
 import {
   LIMITS,
   canEdit,
   isFillable,
   type BoardElement,
   type BoardMeta,
+  type ElementBase,
   type Dash,
   type ElementId,
   type Link,
@@ -148,6 +157,36 @@ export function editPatches(
   return out;
 }
 
+/**
+ * The figure a recognised pen sketch becomes: the pen's colour and width, no
+ * fill — it stands in for a line drawn by hand — and, for a line or an arrow,
+ * the plain straight kind. Shared by the preview and the commit, so what shows
+ * under the finger is what lands.
+ */
+export function sketchElement(sketch: Sketch, config: ToolConfig, base: ElementBase): ShapeElement {
+  const line = sketch.shape === 'line' || sketch.shape === 'arrow';
+  return {
+    ...base,
+    kind: 'shape',
+    shape: sketch.shape,
+    from: sketch.from,
+    to: sketch.to,
+    stroke: config.color,
+    strokeWidth: clampWidth(config.width),
+    fill: null,
+    ...(line
+      ? {
+          headStart: 'none',
+          headEnd: sketch.shape === 'arrow' ? 'arrow' : 'none',
+          route: 'straight',
+          dash: 'solid',
+          fromLink: null,
+          toLink: null,
+        }
+      : null),
+  };
+}
+
 export type ReorderOp = 'back' | 'backward' | 'forward' | 'front';
 
 interface HistoryEntry {
@@ -161,6 +200,12 @@ interface BoardState {
   meta: BoardMeta | null;
   you: Participant | null;
   participants: Participant[];
+  /**
+   * Where each participant's cursor is, apart from `participants` so a cursor
+   * moving (dozens of times a second per person) does not hand everything
+   * that lists who is here a new array. Seeded from the list's own `cursor`s.
+   */
+  cursors: Record<UserId, Point>;
   connection: ConnectionStatus;
   serverSeq: number;
   /**
@@ -204,12 +249,22 @@ interface BoardState {
   liveEdit: LiveEdit | null;
   /** The cursor tool's rubber band, in board coordinates. */
   liveMarquee: { from: Point; to: Point } | null;
+  /**
+   * The pen stroke under the finger, read as the figure it was meant to be
+   * after a hold (`recognizeSketch`). Lifting draws that figure instead.
+   */
+  liveSketch: Sketch | null;
 
   // sync / history
   outbox: Op[];
   clientSeq: number;
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
+  /**
+   * What copy or cut took, in paint order. Outlives the board: a copy made on
+   * one board pastes on the next. Local, like the selection.
+   */
+  clipboard: BoardElement[];
 
   hydrate(args: {
     meta: BoardMeta;
@@ -224,6 +279,8 @@ interface BoardState {
   setMeta(meta: BoardMeta, you?: Participant): void;
   setBoardToken(token: string | null): void;
   setRemoteCursor(userId: UserId, at: Point): void;
+  /** Several cursors in one update — what arrived since the last frame. */
+  moveCursors(moves: Record<UserId, Point>): void;
 
   setTool(tool: ToolType): void;
   /**
@@ -244,10 +301,13 @@ interface BoardState {
   setLiveShape(shape: { from: Point; to: Point } | null): void;
   setLiveEdit(edit: LiveEdit | null): void;
   setLiveMarquee(box: { from: Point; to: Point } | null): void;
+  setLiveSketch(sketch: Sketch | null): void;
   /** Turns the drag into ops: one per element touched, all in one undo step. */
   commitEdit(edit: LiveEdit): void;
 
   addStroke(points: number[]): void;
+  /** Draws a recognised sketch as its figure, in the pen's ink (`sketchElement`). */
+  addSketch(sketch: Sketch): void;
   /** Returns the new id so the caller can select it for resizing. */
   addShape(
     shape: ShapeKind,
@@ -303,6 +363,15 @@ interface BoardState {
   addImage(at: Point, width: number, height: number, uri: string): void;
   eraseAt(at: Point, radius?: number): void;
   clearBoard(): void;
+  /** Puts the selection on the clipboard. */
+  copySelection(): void;
+  /** Puts the selection on the clipboard and takes it off the board, in one undo step. */
+  cutSelection(): void;
+  /**
+   * Adds a copy of the clipboard centred on `at` — fresh ids, on top of
+   * everything — and selects it. Without `at`, a step off where it was copied from.
+   */
+  paste(at?: Point): void;
 
   undo(): void;
   redo(): void;
@@ -336,6 +405,13 @@ const DEFAULT_CAMERA: Camera = { x: 0, y: 0, scale: 1 };
 
 const clampWidth = (w: number) =>
   Math.max(LIMITS.minStrokeWidth, Math.min(LIMITS.maxStrokeWidth, w));
+
+/** The cursors a participant list carries, by user. */
+function cursorsOf(participants: Participant[]): Record<UserId, Point> {
+  const cursors: Record<UserId, Point> = {};
+  for (const p of participants) if (p.cursor) cursors[p.userId] = p.cursor;
+  return cursors;
+}
 
 export const useBoardStore = create<BoardState>((set, get) => {
   function commitLocal(ops: Op[]) {
@@ -383,6 +459,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     meta: null,
     you: null,
     participants: [],
+    cursors: {},
     connection: 'idle',
     serverSeq: 0,
     boardToken: null,
@@ -403,11 +480,13 @@ export const useBoardStore = create<BoardState>((set, get) => {
     liveShape: null,
     liveEdit: null,
     liveMarquee: null,
+    liveSketch: null,
 
     outbox: [],
     clientSeq: 0,
     undoStack: [],
     redoStack: [],
+    clipboard: [],
 
     /** Replaces local state wholesale with the server's `joined` payload. */
     hydrate({ meta, elements, participants, you, seq }) {
@@ -422,6 +501,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         meta,
         you,
         participants,
+        cursors: cursorsOf(participants),
         elements: map,
         zCounter: maxZ,
         serverSeq: seq,
@@ -438,6 +518,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         meta: null,
         you: null,
         participants: [],
+        cursors: {},
         connection: 'idle',
         boardToken: null,
         elements: {},
@@ -456,6 +537,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         liveShape: null,
         liveEdit: null,
         liveMarquee: null,
+        liveSketch: null,
       });
     },
 
@@ -464,7 +546,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     setParticipants(list) {
-      set({ participants: list });
+      set({ participants: list, cursors: cursorsOf(list) });
     },
 
     setMeta(meta, you) {
@@ -476,9 +558,18 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     setRemoteCursor(userId, at) {
-      set((s) => ({
-        participants: s.participants.map((p) => (p.userId === userId ? { ...p, cursor: at } : p)),
-      }));
+      get().moveCursors({ [userId]: at });
+    },
+
+    moveCursors(moves) {
+      // Only people on the list have a cursor to show.
+      const { participants, cursors } = get();
+      let next: Record<UserId, Point> | null = null;
+      for (const p of participants) {
+        const at = moves[p.userId];
+        if (at) (next ??= { ...cursors })[p.userId] = at;
+      }
+      if (next) set({ cursors: next });
     },
 
     pickTool(tool, shape) {
@@ -669,6 +760,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     setLiveStroke(points) {
+      // Every gesture's end clears it; an empty one needs no new array.
+      if (!points.length && !get().liveStroke.length) return;
       set({ liveStroke: points });
     },
 
@@ -682,6 +775,10 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     setLiveMarquee(liveMarquee) {
       set({ liveMarquee });
+    },
+
+    setLiveSketch(liveSketch) {
+      set({ liveSketch });
     },
 
     commitEdit(edit) {
@@ -713,6 +810,11 @@ export const useBoardStore = create<BoardState>((set, get) => {
         width: clampWidth(config.width),
       };
       commitLocal([{ t: 'add', el }]);
+    },
+
+    addSketch(sketch) {
+      if (!get().canEditNow()) return;
+      commitLocal([{ t: 'add', el: sketchElement(sketch, get().config, baseFields()) }]);
     },
 
     addShape(shape, ends) {
@@ -751,7 +853,12 @@ export const useBoardStore = create<BoardState>((set, get) => {
         for (const el of get().visibleElements())
           if (el.group && groups.has(el.group)) all.add(el.id);
       }
-      set({ selectedIds: [...all] });
+      const next = [...all];
+      // Tapping empty board (or the same thing again) keeps the selection it
+      // already has; a fresh array would repaint the canvas and the toolbar.
+      const { selectedIds } = get();
+      if (next.length === selectedIds.length && next.every((id, i) => id === selectedIds[i])) return;
+      set({ selectedIds: next });
     },
 
     selectedElements() {
@@ -883,6 +990,54 @@ export const useBoardStore = create<BoardState>((set, get) => {
       commitLocal([{ t: 'clear' }]);
     },
 
+    copySelection() {
+      const chosen = new Set(get().selectedIds);
+      const clipboard = get()
+        .visibleElements()
+        .filter((el) => chosen.has(el.id));
+      if (clipboard.length) set({ clipboard });
+    },
+
+    cutSelection() {
+      const sel = get().selectedElements();
+      if (!sel.length || !get().canEditNow() || get().connection !== 'online') return;
+      get().copySelection();
+      commitLocal(sel.map((el) => ({ t: 'delete', id: el.id }) as Op));
+      set({ selectedIds: [] });
+    },
+
+    paste(at) {
+      const { clipboard } = get();
+      const b = contentBounds(clipboard);
+      if (!b || !get().canEditNow() || get().connection !== 'online') return;
+      const dx = at ? at.x - (b.x + b.width / 2) : 16;
+      const dy = at ? at.y - (b.y + b.height / 2) : 16;
+      // Copies are new elements: new ids, and a group of their own, so the
+      // copy of a group selects apart from the original. A line keeps its
+      // link only to a shape that was copied with it.
+      const ids = new Map(clipboard.map((el) => [el.id, shortId()]));
+      const groups = new Map<string, string>();
+      const relink = (link: Link | null | undefined) =>
+        link && ids.has(link.id) ? { ...link, id: ids.get(link.id)! } : null;
+      const copies = clipboard.map((el) => {
+        const copy = { ...el, ...translate(el, dx, dy), ...baseFields(), id: ids.get(el.id)! } as BoardElement;
+        if (el.group) {
+          if (!groups.has(el.group)) groups.set(el.group, shortId());
+          copy.group = groups.get(el.group);
+        }
+        if (copy.kind === 'shape' && el.kind === 'shape') {
+          if (el.fromLink !== undefined) copy.fromLink = relink(el.fromLink);
+          if (el.toLink !== undefined) copy.toLink = relink(el.toLink);
+        }
+        return copy;
+      });
+      commitLocal(copies.map((el) => ({ t: 'add', el }) as Op));
+      // What was pasted is in hand, ready to move: the cursor holds it, its options up.
+      if (get().tool !== 'select') get().setTool('select');
+      get().select(copies.map((el) => el.id));
+      set({ railOpen: true });
+    },
+
     // --- history -----------------------------------------------------------
     // Undo and redo replay stored ops through the outbox like any other edit,
     // so collaborators see them as ordinary changes.
@@ -918,13 +1073,15 @@ export const useBoardStore = create<BoardState>((set, get) => {
           // The server owns `z` (model/ops.ts): without taking it back here a
           // local element keeps its provisional z and sits under everything
           // drawn later by others, however long ago it was actually drawn.
-          const next = { ...elements };
+          // Usually it is the z already held, and then the map is left as it
+          // is: a new one would repaint the whole board for nothing.
+          let next: ElementMap | null = null;
           for (const op of ops) {
             if (op.t !== 'add') continue;
-            const current = next[op.el.id];
-            if (current) next[op.el.id] = { ...current, z: op.el.z };
+            const current = (next ?? elements)[op.el.id];
+            if (current && current.z !== op.el.z) (next ??= { ...elements })[op.el.id] = { ...current, z: op.el.z };
           }
-          elements = next;
+          if (next) elements = next;
         } else {
           elements = applyOps(elements, ops);
         }
@@ -959,28 +1116,68 @@ export const useBoardStore = create<BoardState>((set, get) => {
 });
 
 /**
+ * The unselected figure a press at `at` lands on when it is drawn above the
+ * selection there, or null when the press is the selection's.
+ *
+ * After "send to back" the selection sits hidden under other figures, and a
+ * press on one of those must pick it rather than move (or resize) everything
+ * selected behind it. Over a selected element anything painted on top of it
+ * wins; off every selected element — on a handle — only a figure above the
+ * whole selection does, so a handle over something lower still resizes.
+ */
+export function coveringFigure(
+  visible: BoardElement[],
+  selected: BoardElement[],
+  at: Point,
+  radius: number,
+): BoardElement | null {
+  const hits = hitTest(visible, at, radius);
+  if (!hits.length) return null;
+  const chosen = new Set(selected.map((el) => el.id));
+  // Hits come in paint order: the last one is what is drawn on top here.
+  const top = hits[hits.length - 1];
+  if (chosen.has(top)) return null;
+  const figure = visible.find((el) => el.id === top) ?? null;
+  const onSelection = hits.some((id) => chosen.has(id));
+  return figure && (onSelection || figure.z > Math.max(...selected.map((el) => el.z)))
+    ? figure
+    : null;
+}
+
+/** Whether `(x, y)` is within `reach` of the line through a stroke's points. */
+function nearStroke(points: number[], x: number, y: number, reach: number): boolean {
+  const reach2 = reach * reach;
+  for (let i = 0; i < points.length - 1; i += 2) {
+    const ax = points[i];
+    const ay = points[i + 1];
+    // Each point to the next one; the last (or only) one on its own.
+    const last = i + 3 >= points.length;
+    const dx = last ? 0 : points[i + 2] - ax;
+    const dy = last ? 0 : points[i + 3] - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2)) : 0;
+    const ex = ax + t * dx - x;
+    const ey = ay + t * dy - y;
+    if (ex * ex + ey * ey <= reach2) return true;
+  }
+  return false;
+}
+
+/**
  * Which elements sit under a point — used by the eraser and by tap-to-select.
- * Strokes are tested against their points and everything else against its
- * bounding box, which is generous but matches what a fingertip expects.
+ * Strokes are tested along the line they draw, not only at its points: a quick
+ * stroke's points are far apart, and a press between two of them landed on
+ * whatever was underneath (the selection behind it, after "send to back").
+ * Everything else is tested against its bounding box, which is generous but
+ * matches what a fingertip expects.
  */
 function hitTest(elements: BoardElement[], at: Point, radius: number): ElementId[] {
   const r2 = radius * radius;
   const hits: ElementId[] = [];
 
-  const dist2 = (ax: number, ay: number, bx: number, by: number) => {
-    const dx = ax - bx;
-    const dy = ay - by;
-    return dx * dx + dy * dy;
-  };
-
   for (const el of elements) {
     if (el.kind === 'stroke') {
-      for (let i = 0; i < el.points.length - 1; i += 2) {
-        if (dist2(el.points[i], el.points[i + 1], at.x, at.y) <= r2 + el.width * el.width) {
-          hits.push(el.id);
-          break;
-        }
-      }
+      if (nearStroke(el.points, at.x, at.y, Math.sqrt(r2 + el.width * el.width))) hits.push(el.id);
     } else if (el.kind === 'shape') {
       if (shapeHit(el, at, radius)) hits.push(el.id);
     } else {
