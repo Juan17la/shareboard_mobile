@@ -1,7 +1,7 @@
 {
   "name": "shareboard",
   "main": "expo-router/entry",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "dependencies": {
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo-google-fonts/nunito": "^0.4.2",
@@ -52,7 +52,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "check:socket": "node --import ../server/node_modules/tsx/dist/loader.mjs --import ./test/expo-stub.mjs test/socket-lifecycle.mjs",
-    "check:geometry": "node --import ../server/node_modules/tsx/dist/loader.mjs --import ./test/expo-stub.mjs test/geometry.mjs"
+    "check:geometry": "node --import ../server/node_modules/tsx/dist/loader.mjs --import ./test/expo-stub.mjs test/geometry.mjs",
+    "check:update": "node --import ../server/node_modules/tsx/dist/loader.mjs test/update.mjs"
   },
   "private": true
 }
