@@ -18,6 +18,8 @@ export type IconName =
   | 'more'
   | 'close'
   | 'copy'
+  | 'cut'
+  | 'paste'
   | 'link'
   | 'plus'
   | 'minus'
@@ -57,7 +59,8 @@ export type IconName =
   | 'forward'
   | 'to-front'
   | 'moon'
-  | 'sun';
+  | 'sun'
+  | 'sparkle';
 
 /**
  * `s` is the stroke width the design uses for that glyph — a few are drawn
@@ -90,6 +93,27 @@ const PATHS: Record<IconName, { s?: number; fill?: boolean; body: ReactElement }
       <>
         <Rect x="9" y="9" width="11" height="11" rx="2.5" />
         <Path d="M15 5.5A2.5 2.5 0 0 0 12.5 3H6.5A2.5 2.5 0 0 0 4 5.5v6A2.5 2.5 0 0 0 6.5 14" />
+      </>
+    ),
+  },
+  // Scissors: two loops, blades crossing — cut.
+  cut: {
+    body: (
+      <>
+        <Circle cx="6" cy="6" r="3" />
+        <Circle cx="6" cy="18" r="3" />
+        <Path d="M20 4L8.1 15.9" />
+        <Path d="M14.5 14.5L20 20" />
+        <Path d="M8.1 8.1L12 12" />
+      </>
+    ),
+  },
+  // A clipboard with its clip — paste.
+  paste: {
+    body: (
+      <>
+        <Path d="M16 4h1.5A2.5 2.5 0 0 1 20 6.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-13A2.5 2.5 0 0 1 6.5 4H8" />
+        <Rect x="8" y="2" width="8" height="4" rx="1.5" />
       </>
     ),
   },
@@ -361,6 +385,14 @@ const PATHS: Record<IconName, { s?: number; fill?: boolean; body: ReactElement }
     ),
   },
   moon: { body: <Path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /> },
+  sparkle: {
+    body: (
+      <>
+        <Path d="M12 3l1.9 5.6L19.5 10.5l-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z" />
+        <Path d="M19 3v4M17 5h4" />
+      </>
+    ),
+  },
   sun: {
     body: (
       <>
@@ -407,9 +439,9 @@ export interface IconProps {
   strokeWidth?: number;
 }
 
-export function Icon({ name, size = 20, color, strokeWidth }: IconProps) {
+export function Icon({ name, size = 20, color: tint, strokeWidth }: IconProps) {
   const c = useColors();
-  color ??= c.text;
+  const color = tint ?? c.text;
   const glyph = PATHS[name];
   const stroke = glyph.fill ? undefined : color;
   return (
