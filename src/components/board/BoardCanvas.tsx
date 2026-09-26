@@ -8,11 +8,19 @@
  * hand tool, and a viewer with no tools at all, get one-finger panning.
  * The camera lives in the store but never on the wire: pan and zoom are
  * per-device (docs/05-model-date).
+ *
+ * The canvas itself does not re-render when the camera moves. Skia re-records
+ * every node on each render, so a pan used to re-record the whole board every
+ * frame; instead the camera is mirrored into a shared value and the element
+ * group's transform and the dot grid follow it on the UI thread. What sits in
+ * screen space over the board (the selection, the peers' cursors, the label
+ * button, the text editor) reads the camera itself, and only while it shows.
  */
 import { Blur, Canvas, Group, Paint, type CanvasRef } from '@shopify/react-native-skia';
-import { useCallback, useMemo, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
 import { Pressable, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useDerivedValue, useSharedValue, type SharedValue } from 'react-native-reanimated';
 
 import { Shadow } from '@/constants/theme';
 import {
@@ -22,6 +30,7 @@ import {
   handlesOf,
   isLineLike,
   linkEndpoints,
+  recognizeSketch,
   resizeElement,
   shapeAt,
   shapeBounds,
@@ -29,18 +38,39 @@ import {
 } from '@/features/board/geometry';
 import type { BoardElement, Link, Point, ShapeElement } from '@/features/board/model';
 import { visibleSorted } from '@/features/board/ops';
-import { MAX_ZOOM, MIN_ZOOM, editPatches, fillFor, useBoardStore, type LiveEdit } from '@/features/board/store';
+import {
+  MAX_ZOOM,
+  MIN_ZOOM,
+  coveringFigure,
+  editPatches,
+  fillFor,
+  sketchElement,
+  useBoardStore,
+  type Camera,
+  type LiveEdit,
+} from '@/features/board/store';
 import { useT } from '@/features/i18n/store';
 import { useSessionStore, useColors } from '@/features/session/store';
 import { tick } from '@/utils/haptics';
 
-import { Anchors, DashedBox, DotGrid, ElementRenderer, SelectionFrame } from './ElementRenderer';
+import {
+  Anchors,
+  DashedBox,
+  ElementRenderer,
+  LIVE_STROKE,
+  LiveDotGrid,
+  SelectionFrame,
+} from './ElementRenderer';
 import { PeerCursors } from './PeerCursors';
 import { TextEditorOverlay } from './TextEditorOverlay';
+import { GlassPanel } from '../ui/Glass';
+import { Icon } from '../ui/Icon';
 import { Txt } from '../ui/Text';
 
+const storeCamera = () => useBoardStore.getState().camera;
+
 function screenToBoard(x: number, y: number): Point {
-  const { camera } = useBoardStore.getState();
+  const camera = storeCamera();
   return { x: (x - camera.x) / camera.scale, y: (y - camera.y) / camera.scale };
 }
 
@@ -77,6 +107,13 @@ function dragPatch(edit: LiveEdit, el: BoardElement, p: Point): Partial<BoardEle
   return next;
 }
 
+/** How long a finger holds still on empty board, with the cursor, before the paste menu opens. */
+const HOLD_MS = 500;
+/** How long a pen stroke's end is held before it is read as a figure (`recognizeSketch`). */
+const SKETCH_MS = 800;
+/** Screen pixels a finger may wander and still count as held still. */
+const STILL_PX = 8;
+
 /**
  * Whether this tap on `id` is the second within 300 ms — the cursor tool's
  * double tap. The empty board counts too (`''`): that is the zoom gesture.
@@ -103,7 +140,6 @@ export function BoardCanvas({
   canvasRef?: RefObject<CanvasRef | null>;
 }) {
   const c = useColors();
-  const camera = useBoardStore((s) => s.camera);
   const tool = useBoardStore((s) => s.tool);
   const config = useBoardStore((s) => s.config);
   const elements = useBoardStore((s) => s.elements);
@@ -118,7 +154,18 @@ export function BoardCanvas({
   const [size, setSize] = useState({ width: 0, height: 0 });
   const livePoints = useBoardStore((s) => s.liveStroke);
   const liveShape = useBoardStore((s) => s.liveShape);
+  const liveSketch = useBoardStore((s) => s.liveSketch);
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** The hold menu: where it opened on screen, and the board point a paste lands on. */
+  const [menu, setMenu] = useState<{ x: number; y: number; at: Point } | null>(null);
+  // Another tool, or another board, and the menu is not about anything any more.
+  useEffect(
+    () =>
+      useBoardStore.subscribe((s, prev) => {
+        if (s.tool !== prev.tool || s.boardId !== prev.boardId) setMenu(null);
+      }),
+    [],
+  );
 
   // Sorted once per change to the elements, not once per finger move: the
   // drag preview below only patches the sorted list.
@@ -139,6 +186,19 @@ export function BoardCanvas({
   );
   const selectedShape = selected.length === 1 && selected[0].kind === 'shape' ? selected[0] : null;
 
+  // The store's camera, on the UI thread.
+  const camera = useSharedValue<Camera>(storeCamera());
+  useEffect(() => {
+    camera.set(storeCamera());
+    return useBoardStore.subscribe((s, prev) => {
+      if (s.camera !== prev.camera) camera.set(s.camera);
+    });
+  }, [camera]);
+  const transform = useDerivedValue(() => {
+    const { x, y, scale } = camera.get();
+    return [{ translateX: x }, { translateY: y }, { scale }];
+  });
+
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
     setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
@@ -158,10 +218,9 @@ export function BoardCanvas({
       if (!sel.length) return false;
       const scale = store().camera.scale;
       // Something drawn above the selection owns the press there. After "send
-      // to back" the selection sits hidden under another figure; a finger on
-      // that figure must pick it, not move or resize the one behind.
-      const top = store().elementAt(p, 6 / scale);
-      if (top && !sel.some((el) => el.id === top.id) && top.z > Math.max(...sel.map((el) => el.z))) return false;
+      // to back" the selection sits hidden under other figures; a finger on
+      // one of them must pick it, not move or resize everything behind it.
+      if (coveringFigure(store().visibleElements(), sel, p, 6 / scale)) return false;
       const hitR = 18 / scale;
       const one = sel.length === 1 ? sel[0] : null;
       const fold = one?.kind === 'shape' ? bendHandleOf(one) : null;
@@ -195,6 +254,36 @@ export function BoardCanvas({
     // Where the finger landed. A pan activates only after it has moved a
     // little, so `onStart` is already past the spot the user aimed at.
     const down = { x: 0, y: 0 };
+    // A finger held still on empty board with the cursor opens the paste menu
+    // there. A timer on this gesture rather than a long-press gesture of its
+    // own: that one would have to fail before any drag could start, and a
+    // hold on a figure followed by a drag must still move it. Once the menu
+    // is open the rest of the touch is its, not the board's.
+    const hold = { timer: null as ReturnType<typeof setTimeout> | null, open: false };
+    const letGo = () => {
+      if (hold.timer) clearTimeout(hold.timer);
+      hold.timer = null;
+    };
+    // A pen stroke held still at its end for 800 ms becomes the figure it
+    // was meant to be: it turns into it under the finger, and lifting draws
+    // the figure instead. Moving on keeps drawing the stroke, as it was.
+    const still = { x: 0, y: 0, timer: null as ReturnType<typeof setTimeout> | null };
+    const stopSketch = () => {
+      if (still.timer) clearTimeout(still.timer);
+      still.timer = null;
+    };
+    const awaitSketch = (x: number, y: number) => {
+      stopSketch();
+      still.x = x;
+      still.y = y;
+      still.timer = setTimeout(() => {
+        still.timer = null;
+        const sketch = recognizeSketch(store().liveStroke, 24 / store().camera.scale);
+        if (!sketch) return;
+        store().setLiveSketch(sketch);
+        tick(haptics);
+      }, SKETCH_MS);
+    };
 
     /** Drags the selection (or one of its handles) to `p`. */
     const moveEdit = (p: Point) => {
@@ -223,6 +312,21 @@ export function BoardCanvas({
       .onBegin((e) => {
         down.x = e.x;
         down.y = e.y;
+        letGo();
+        hold.open = false;
+        if (store().tool !== 'select' || !editable()) return;
+        hold.timer = setTimeout(() => {
+          hold.timer = null;
+          const p = screenToBoard(down.x, down.y);
+          if (store().elementAt(p, 8 / store().camera.scale)) return;
+          hold.open = true;
+          tick(haptics);
+          setMenu({ x: down.x, y: down.y, at: p });
+        }, HOLD_MS);
+      })
+      .onFinalize(() => {
+        letGo();
+        stopSketch();
       })
       .onChange((e) => {
         if (!panning()) return;
@@ -230,14 +334,18 @@ export function BoardCanvas({
         store().setCamera({ ...c, x: c.x + e.changeX, y: c.y + e.changeY });
       })
       .onStart((e) => {
-        if (panning() || !editable()) return;
+        letGo();
+        if (hold.open || panning() || !editable()) return;
         // Drawing is what the options were for; fold them away to give the
         // board back its width the moment the gesture starts.
         store().setRailOpen(false);
         const p = screenToBoard(down.x, down.y);
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
-        else if (t === 'pen') store().setLiveStroke([p.x, p.y]);
+        else if (t === 'pen') {
+          store().setLiveStroke([p.x, p.y]);
+          awaitSketch(e.x, e.y);
+        }
         else if (t === 'shape') {
           // The shapes tool only ever draws: moving and resizing belong to the
           // cursor. A press on a shape it had picked used to grab that shape
@@ -270,11 +378,17 @@ export function BoardCanvas({
         onCursorMove?.(p);
       })
       .onUpdate((e) => {
-        if (panning() || !editable()) return;
+        if (hold.open || panning() || !editable()) return;
         const p = screenToBoard(e.x, e.y);
         const t = store().tool;
         if (t === 'eraser') store().eraseAt(p);
-        else if (t === 'pen') store().setLiveStroke([...store().liveStroke, p.x, p.y]);
+        else if (t === 'pen') {
+          if (Math.hypot(e.x - still.x, e.y - still.y) > STILL_PX) {
+            if (store().liveSketch) store().setLiveSketch(null);
+            awaitSketch(e.x, e.y);
+          }
+          store().setLiveStroke([...store().liveStroke, p.x, p.y]);
+        }
         else if (t === 'shape' || t === 'select') {
           const box = store().liveMarquee;
           if (store().liveEdit) moveEdit(p);
@@ -286,6 +400,7 @@ export function BoardCanvas({
         onCursorMove?.(p);
       })
       .onEnd((_e, success) => {
+        if (hold.open) return;
         if (!success) {
           // Cancelled — a second finger turned it into a pinch. Nothing the
           // first finger started is kept: a zoom must never move a figure.
@@ -293,13 +408,17 @@ export function BoardCanvas({
           store().setLiveMarquee(null);
           store().setLiveStroke([]);
           store().setLiveShape(null);
+          store().setLiveSketch(null);
           return;
         }
         // Read from the store, not through a `setState` updater: an updater
         // runs during the next render, and a store write from there is React's
         // "cannot update a component while rendering a different component".
         const { tool: t, liveStroke: pts, liveShape: shape, liveEdit: edit, liveMarquee: box } = store();
-        if (t === 'pen' && pts.length >= 4) store().addStroke(simplify(pts));
+        const sketch = store().liveSketch;
+        if (t === 'pen' && sketch) store().addSketch(sketch);
+        else if (t === 'pen' && pts.length >= 4) store().addStroke(simplify(pts));
+        store().setLiveSketch(null);
         if (edit) {
           finishEdit();
         } else if (box) {
@@ -333,6 +452,8 @@ export function BoardCanvas({
     const tap = Gesture.Tap()
       .runOnJS(true)
       .onEnd((e) => {
+        // A release a hair before the hold's timer fired: the menu already has it.
+        if (hold.open) return;
         const t = store().tool;
         if (t === 'hand' || !editable()) {
           if (isDoubleTap('')) zoomTap({ x: e.x, y: e.y });
@@ -398,18 +519,10 @@ export function BoardCanvas({
   }, [onCursorMove, haptics]);
 
   const editing = editingId ? elements[editingId] : null;
-
-  // The label button floats just above the selected shape.
-  const labelAt = useMemo(() => {
-    if (!selectedShape) return null;
-    const b = shapeBounds(selectedShape);
-    return {
-      x: (b.x + b.width / 2) * camera.scale + camera.x,
-      y: b.y * camera.scale + camera.y,
-    };
-  }, [selectedShape, camera]);
-
-  const transform = [{ translateX: camera.x }, { translateY: camera.y }, { scale: camera.scale }];
+  // Connection points show whenever a line or arrow could land on them.
+  const anchors =
+    (tool === 'shape' && (config.shape === 'line' || config.shape === 'arrow')) ||
+    (selectedShape && isLineLike(selectedShape));
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }} onLayout={onLayout}>
@@ -425,12 +538,23 @@ export function BoardCanvas({
               <ElementRenderer key={el.id} el={el} smooth={smooth} dark={dark} />
             ))}
 
-            {livePoints.length >= 4 ? (
+            {liveSketch ? (
+              <ElementRenderer
+                dark={dark}
+                el={sketchElement(liveSketch, config, {
+                  id: 'live-sketch',
+                  createdBy: 'local',
+                  createdAt: 0,
+                  updatedAt: 0,
+                  z: Number.MAX_SAFE_INTEGER,
+                })}
+              />
+            ) : livePoints.length >= 4 ? (
               <ElementRenderer
                 smooth={smooth}
                 dark={dark}
                 el={{
-                  id: 'live-stroke',
+                  id: LIVE_STROKE,
                   kind: 'stroke',
                   points: livePoints,
                   color: config.color,
@@ -464,46 +588,110 @@ export function BoardCanvas({
             ) : null}
           </Group>
 
-          {selected.length ? <SelectionFrame elements={selected} camera={camera} /> : null}
-          {liveMarquee ? <DashedBox b={shapeBounds(liveMarquee)} camera={camera} /> : null}
-          {/* Connection points show whenever a line or arrow could land on them. */}
-          {(tool === 'shape' && (config.shape === 'line' || config.shape === 'arrow')) ||
-          (selectedShape && isLineLike(selectedShape)) ? (
-            <Anchors elements={list} camera={camera} />
+          {selected.length || liveMarquee || anchors ? (
+            <ScreenOverlays
+              selected={selected}
+              marquee={liveMarquee}
+              anchors={anchors ? list : null}
+            />
           ) : null}
           </Group>
         </Canvas>
       </GestureDetector>
 
-      <PeerCursors camera={camera} />
+      <PeerCursors />
 
-      {labelAt && selectedShape && !editing ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t.text}
+      {selectedShape && !editing ? (
+        <LabelButton
+          shape={selectedShape}
+          label={t.text}
           onPress={() => setEditingId(selectedShape.id)}
-          style={{
-            position: 'absolute',
-            left: labelAt.x - 24,
-            top: labelAt.y - 46,
-            paddingHorizontal: 11,
-            paddingVertical: 5,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: c.accent,
-            backgroundColor: c.surface,
-            ...Shadow.panel,
+        />
+      ) : null}
+
+      {menu ? (
+        <HoldMenu
+          x={menu.x}
+          y={menu.y}
+          width={size.width}
+          onPaste={() => {
+            useBoardStore.getState().paste(menu.at);
+            setMenu(null);
           }}
-        >
-          <Txt weight="extrabold" size={12} tone="accent">
-            Aa
-          </Txt>
-        </Pressable>
+          onClose={() => setMenu(null)}
+        />
       ) : null}
 
       {editing && (editing.kind === 'text' || editing.kind === 'shape') ? (
-        <TextEditorOverlay element={editing} camera={camera} onClose={() => setEditingId(null)} />
+        <TextEditorOverlay element={editing} onClose={() => setEditingId(null)} />
       ) : null}
+    </View>
+  );
+}
+
+const FILL = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as const;
+const MENU_WIDTH = 140;
+const ROW_HEIGHT = 44;
+
+/**
+ * What a hold on empty board offers: paste, of whatever was copied or cut,
+ * centred where the finger was. Greyed out while there is nothing to paste.
+ * It floats just above the finger, so the hand does not hide it; a tap
+ * anywhere else closes it.
+ */
+function HoldMenu({
+  x,
+  y,
+  width,
+  onPaste,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  width: number;
+  onPaste: () => void;
+  onClose: () => void;
+}) {
+  const c = useColors();
+  const t = useT();
+  const ready = useBoardStore((s) => s.clipboard.length > 0);
+  const left = Math.max(8, Math.min(x - MENU_WIDTH / 2, width - MENU_WIDTH - 8));
+  const above = y - ROW_HEIGHT - 28;
+  return (
+    <View style={FILL}>
+      <Pressable
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+        onPress={onClose}
+        style={FILL}
+      />
+      <GlassPanel
+        level="panel"
+        radius={14}
+        style={{ position: 'absolute', left, top: above >= 8 ? above : y + 28, width: MENU_WIDTH, ...Shadow.panel }}
+      >
+        <Pressable
+          accessibilityRole="menuitem"
+          accessibilityLabel={t.paste}
+          accessibilityState={{ disabled: !ready }}
+          disabled={!ready}
+          onPress={onPaste}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            height: ROW_HEIGHT,
+            paddingHorizontal: 14,
+            opacity: ready ? 1 : 0.4,
+            backgroundColor: pressed ? c.surfaceSelected : 'transparent',
+          })}
+        >
+          <Icon name="paste" size={18} color={c.text} />
+          <Txt weight="bold" size={14}>
+            {t.paste}
+          </Txt>
+        </Pressable>
+      </GlassPanel>
     </View>
   );
 }
@@ -516,9 +704,74 @@ function GridLayer({
 }: {
   width: number;
   height: number;
-  camera: { x: number; y: number; scale: number };
+  camera: SharedValue<Camera>;
 }) {
   const grid = useSessionStore((s) => s.settings.grid);
   if (!grid) return null;
-  return <DotGrid width={width} height={height} camera={camera} />;
+  return <LiveDotGrid width={width} height={height} camera={camera} />;
+}
+
+/**
+ * The selection frame, the rubber band and the connection points: drawn in
+ * screen space, so they follow the camera from React. Mounted only while one
+ * of them shows — a render in here re-records the whole canvas, and with
+ * nothing to show a pan should not cost that.
+ */
+function ScreenOverlays({
+  selected,
+  marquee,
+  anchors,
+}: {
+  selected: BoardElement[];
+  marquee: { from: Point; to: Point } | null;
+  anchors: BoardElement[] | null;
+}) {
+  const camera = useBoardStore((s) => s.camera);
+  return (
+    <>
+      {selected.length ? <SelectionFrame elements={selected} camera={camera} /> : null}
+      {marquee ? <DashedBox b={shapeBounds(marquee)} camera={camera} /> : null}
+      {anchors ? <Anchors elements={anchors} camera={camera} /> : null}
+    </>
+  );
+}
+
+/** The label button, floating just above the selected shape. */
+function LabelButton({
+  shape,
+  label,
+  onPress,
+}: {
+  shape: ShapeElement;
+  label: string;
+  onPress: () => void;
+}) {
+  const c = useColors();
+  const camera = useBoardStore((s) => s.camera);
+  const b = shapeBounds(shape);
+  const x = (b.x + b.width / 2) * camera.scale + camera.x;
+  const y = b.y * camera.scale + camera.y;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={{
+        position: 'absolute',
+        left: x - 24,
+        top: y - 46,
+        paddingHorizontal: 11,
+        paddingVertical: 5,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: c.accent,
+        backgroundColor: c.surface,
+        ...Shadow.panel,
+      }}
+    >
+      <Txt weight="extrabold" size={12} tone="accent">
+        Aa
+      </Txt>
+    </Pressable>
+  );
 }
