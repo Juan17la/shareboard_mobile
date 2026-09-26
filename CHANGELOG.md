@@ -7,6 +7,13 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Updates from GitHub releases** (Android): on launch the app checks the
+  repo's releases and, when one newer than itself carries an APK, offers to
+  download it; the system installer updates the app in place, boards and
+  settings kept. `git_scripts/release.sh` now attaches the APK to the release.
+
 ## [1.0.0-beta.1] - 2026-09-25
 
 First installable beta: an Android APK and an iOS ad hoc build from EAS.

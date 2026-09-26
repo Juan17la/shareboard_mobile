@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { useColors, useDark } from '@/features/session/store';
 import { useAppFonts } from '@/hooks/use-app-fonts';
 
@@ -29,6 +30,7 @@ export default function RootLayout() {
         ) : (
           <View style={{ flex: 1, backgroundColor: c.background }} />
         )}
+        {fontsLoaded && <UpdatePrompt />}
         <StatusBar style={dark ? 'light' : 'dark'} />
       </SafeAreaProvider>
     </GestureHandlerRootView>
