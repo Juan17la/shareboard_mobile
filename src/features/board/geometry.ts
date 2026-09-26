@@ -42,7 +42,7 @@ export function simplify(flat: number[], min = 1.5): number[] {
 }
 
 /** Two decimals is well below one device pixel and keeps the path string short. */
-const n = (v: number) => Math.round(v * 100) / 100;
+export const n = (v: number) => Math.round(v * 100) / 100;
 
 /**
  * `smooth` is the settings-sheet switch. Off, the points are joined with
@@ -65,23 +65,33 @@ export function strokeToSvgPath(flat: number[], smooth = true): string {
   }
 
   let d = `M ${n(p[0].x)} ${n(p[0].y)}`;
-  for (let i = 0; i < p.length - 1; i++) {
-    // Each segment is steered by its neighbours, so the curve stays continuous
-    // across joins. The ends have no outer neighbour and reuse the endpoint.
-    const prev = p[i - 1] ?? p[i];
-    const from = p[i];
-    const to = p[i + 1];
-    const next = p[i + 2] ?? to;
-
-    // Catmull-Rom -> Bezier: the control points sit a sixth of the way along
-    // the neighbouring chord, which is the standard uniform conversion.
-    const c1x = from.x + (to.x - prev.x) / 6;
-    const c1y = from.y + (to.y - prev.y) / 6;
-    const c2x = to.x - (next.x - from.x) / 6;
-    const c2y = to.y - (next.y - from.y) / 6;
-    d += ` C ${n(c1x)} ${n(c1y)} ${n(c2x)} ${n(c2y)} ${n(to.x)} ${n(to.y)}`;
-  }
+  for (let i = 0; i < p.length - 1; i++) d += ` C ${curveSegment(p, i).join(' ')}`;
   return d;
+}
+
+/**
+ * Segment `i` of the smoothed stroke through `p` (from `p[i]` to `p[i + 1]`),
+ * as the cubic's rounded `c1x c1y c2x c2y x y`. Shared with the live stroke
+ * (`livePath`), which builds the same curve a point at a time.
+ */
+export function curveSegment(p: Point[], i: number): number[] {
+  // Each segment is steered by its neighbours, so the curve stays continuous
+  // across joins. The ends have no outer neighbour and reuse the endpoint.
+  const prev = p[i - 1] ?? p[i];
+  const from = p[i];
+  const to = p[i + 1];
+  const next = p[i + 2] ?? to;
+
+  // Catmull-Rom -> Bezier: the control points sit a sixth of the way along
+  // the neighbouring chord, which is the standard uniform conversion.
+  return [
+    n(from.x + (to.x - prev.x) / 6),
+    n(from.y + (to.y - prev.y) / 6),
+    n(to.x - (next.x - from.x) / 6),
+    n(to.y - (next.y - from.y) / 6),
+    n(to.x),
+    n(to.y),
+  ];
 }
 
 /**
@@ -598,4 +608,206 @@ export function markerPaths(kind: Marker, tip: Point, angle: number, size: numbe
         { d: bar(size), fill: 'none' },
       ];
   }
+}
+
+// --- a sketched shape, recognised ----------------------------------------------
+// A pen stroke held still at its end is read as the figure it was meant to be
+// (`recognizeSketch`): a loop becomes an ellipse — a circle when it is about as
+// tall as wide — a loop with four corners a rectangle (a square), with three a
+// triangle; a straight run becomes a line, and a straight run with a hook at
+// its tip an arrow. Anything else stays the stroke it was.
+
+export interface Sketch {
+  shape: 'ellipse' | 'rectangle' | 'triangle' | 'line' | 'arrow';
+  from: Point;
+  to: Point;
+}
+
+/** How sharply the loop has to turn, in degrees, for a corner. */
+const CORNER_DEG = 55;
+
+const dist = (a: Point, b: Point) => Math.hypot(b.x - a.x, b.y - a.y);
+
+function pathLength(p: Point[]): number {
+  let total = 0;
+  for (let i = 1; i < p.length; i++) total += dist(p[i - 1], p[i]);
+  return total;
+}
+
+function boundsOf(p: Point[]): Bounds {
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const q of p) {
+    x0 = Math.min(x0, q.x);
+    y0 = Math.min(y0, q.y);
+    x1 = Math.max(x1, q.x);
+    y1 = Math.max(y1, q.y);
+  }
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
+/** `n` points evenly spaced round the closed loop through `p`: fast and slow parts of a stroke weigh the same. */
+function resampleLoop(p: Point[], n: number): Point[] {
+  const loop = [...p, p[0]];
+  const step = pathLength(loop) / n;
+  const out: Point[] = [loop[0]];
+  let carried = 0;
+  for (let i = 1; i < loop.length && out.length < n; i++) {
+    let a = loop[i - 1];
+    const b = loop[i];
+    let d = dist(a, b);
+    while (carried + d >= step && out.length < n) {
+      const t = (step - carried) / d;
+      a = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      out.push(a);
+      d = dist(a, b);
+      carried = 0;
+    }
+    carried += d;
+  }
+  return out;
+}
+
+/** The loop's corners — where it turns sharply, one per turn — with how sharply. */
+function cornersOf(q: Point[]): { i: number; turn: number }[] {
+  const n = q.length;
+  const k = 3;
+  const turn = q.map((p, i) => {
+    const a = q[(i - k + n) % n];
+    const b = q[(i + k) % n];
+    const ux = p.x - a.x;
+    const uy = p.y - a.y;
+    const vx = b.x - p.x;
+    const vy = b.y - p.y;
+    const cos = (ux * vx + uy * vy) / (Math.hypot(ux, uy) * Math.hypot(vx, vy) || 1);
+    return (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
+  });
+  const out: { i: number; turn: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    if (turn[i] < CORNER_DEG) continue;
+    let peak = true;
+    for (let d = 1; d <= k && peak; d++) {
+      peak = turn[i] >= turn[(i + d) % n] && turn[i] > turn[(i - d + n) % n];
+    }
+    if (peak) out.push({ i, turn: turn[i] });
+  }
+  return out;
+}
+
+/** Mean distance from the loop to the polygon through `corners`, relative to its size. */
+function polygonError(q: Point[], corners: Point[], size: number): number {
+  let sum = 0;
+  for (const p of q) {
+    let best = Infinity;
+    for (let i = 0; i < corners.length; i++) {
+      best = Math.min(best, segmentDistance(corners[i], corners[(i + 1) % corners.length], p));
+    }
+    sum += best;
+  }
+  return sum / q.length / size;
+}
+
+/** Mean radial distance from the loop to the ellipse inscribed in `b`, relative to its size. */
+function ellipseError(q: Point[], b: Bounds): number {
+  const rx = b.width / 2;
+  const ry = b.height / 2;
+  if (!rx || !ry) return Infinity;
+  const cx = b.x + rx;
+  const cy = b.y + ry;
+  let sum = 0;
+  for (const p of q) sum += Math.abs(Math.hypot((p.x - cx) / rx, (p.y - cy) / ry) - 1);
+  return sum / q.length;
+}
+
+/** The figure over `b`; about as tall as wide, it was meant square (round), so it is. */
+function boxed(shape: Sketch['shape'], b: Bounds): Sketch {
+  if (shape !== 'triangle' && Math.abs(b.width - b.height) <= 0.15 * Math.max(b.width, b.height)) {
+    const s = (b.width + b.height) / 2;
+    const cx = b.x + b.width / 2;
+    const cy = b.y + b.height / 2;
+    return { shape, from: { x: cx - s / 2, y: cy - s / 2 }, to: { x: cx + s / 2, y: cy + s / 2 } };
+  }
+  return { shape, from: { x: b.x, y: b.y }, to: { x: b.x + b.width, y: b.y + b.height } };
+}
+
+function closedSketch(loop: Point[]): Sketch | null {
+  const b = boundsOf(loop);
+  const q = resampleLoop(loop, 64);
+  const size = (b.width + b.height) / 4;
+  const found = cornersOf(q);
+  // The strongest n corners, in their order round the loop.
+  const polygon = (n: number) =>
+    found.length < n
+      ? null
+      : [...found]
+          .sort((a, c) => c.turn - a.turn)
+          .slice(0, n)
+          .sort((a, c) => a.i - c.i)
+          .map((c) => q[c.i]);
+  const tri = polygon(3);
+  const quad = polygon(4);
+  const triError = tri ? polygonError(q, tri, size) : Infinity;
+  const quadError = quad ? polygonError(q, quad, size) : Infinity;
+  // A fourth corner has to earn its place: a stray one on a triangle's side
+  // fits about as well without it.
+  const [shape, error] =
+    quadError < triError * 0.7 ? (['rectangle', quadError] as const) : (['triangle', triError] as const);
+  const round = ellipseError(q, b);
+  // Corners win only when they fit clearly better than a curve: a lumpy
+  // circle has "corners" too, and is still a circle.
+  if (error <= 0.15 && error < round * 0.6) return boxed(shape, b);
+  // Lenient: this is what a really bad circle is for.
+  if (round <= 0.28) return boxed('ellipse', b);
+  return null;
+}
+
+/** Whether every point of `p` lies near the segment `a`→`b`: within 8% of its length. */
+function hugs(p: Point[], a: Point, b: Point): boolean {
+  const chord = dist(a, b);
+  return chord > 0 && p.every((q) => segmentDistance(a, b, q) <= 0.08 * chord);
+}
+
+function openSketch(p: Point[]): Sketch | null {
+  // An arrow: a straight run out to its tip — where it first gets (about)
+  // furthest from the start: a head drawn as two barbs passes the tip twice —
+  // then a short hook back from the tip, off the line, for the head.
+  const far = Math.max(...p.map((q) => dist(p[0], q)));
+  let tip = p.findIndex((q) => dist(p[0], q) >= 0.97 * far);
+  while (tip + 1 < p.length && dist(p[0], p[tip + 1]) > dist(p[0], p[tip])) tip++;
+  const shaft = dist(p[0], p[tip]);
+  const head = p.slice(tip);
+  const reach = Math.max(...head.map((q) => dist(q, p[tip])));
+  if (
+    hugs(p.slice(0, tip + 1), p[0], p[tip]) &&
+    reach >= 0.08 * shaft &&
+    reach <= 0.5 * shaft &&
+    head.some((q) => segmentDistance(p[0], p[tip], q) >= 0.04 * shaft)
+  ) {
+    return { shape: 'arrow', from: p[0], to: p[tip] };
+  }
+  if (hugs(p, p[0], p[p.length - 1])) return { shape: 'line', from: p[0], to: p[p.length - 1] };
+  return null;
+}
+
+/**
+ * The figure a stroke (flat `[x0, y0, ...]`) was meant to be, or null. Smaller
+ * than `minSize` across, it is left alone.
+ */
+export function recognizeSketch(flat: number[], minSize: number): Sketch | null {
+  const p = flatToPoints(flat);
+  if (p.length < 3) return null;
+  const all = boundsOf(p);
+  if (Math.hypot(all.width, all.height) < minSize) return null;
+  // Back where it started, it is a loop: cut any run past the start (the
+  // point nearest the start in the last stretch), then allow a gap of up to a
+  // third of its size.
+  let end = p.length - 1;
+  for (let i = Math.floor(p.length * 0.7); i < p.length; i++) {
+    if (dist(p[i], p[0]) < dist(p[end], p[0])) end = i;
+  }
+  const loop = p.slice(0, end + 1);
+  const lb = boundsOf(loop);
+  if (loop.length >= 3 && dist(loop[end], p[0]) <= 0.35 * Math.hypot(lb.width, lb.height)) {
+    return closedSketch(loop);
+  }
+  return openSketch(p);
 }
