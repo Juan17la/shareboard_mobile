@@ -122,9 +122,9 @@ export function IconButton({
   onPress,
   size = 36,
   iconSize = 18,
-  color,
+  color: tint,
   disabled,
-  background,
+  background: fill,
   radius = Radius.md,
 }: {
   icon: IconName;
@@ -138,8 +138,8 @@ export function IconButton({
   radius?: number;
 }) {
   const c = useColors();
-  color ??= c.text;
-  background ??= c.glassTintSolid;
+  const color = tint ?? c.text;
+  const background = fill ?? c.glassTintSolid;
   return (
     <Pressable
       accessibilityRole="button"

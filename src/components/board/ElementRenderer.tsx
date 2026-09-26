@@ -9,15 +9,20 @@ import {
   Circle,
   Skia,
   useImage,
+  usePathValue,
   type SkFont,
+  type SkPath,
+  type SkPathBuilder,
 } from '@shopify/react-native-skia';
 import { memo, useMemo } from 'react';
+import type { SharedValue } from 'react-native-reanimated';
 
 import { Palettes, inkFor } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 import {
   anchorsOf,
   bendHandleOf,
+  curveSegment,
   dashIntervals,
   elementBounds,
   endAngles,
@@ -25,10 +30,12 @@ import {
   headsOf,
   isLineLike,
   markerPaths,
+  n as round,
   routePath,
   shapeBounds,
   strokeToSvgPath,
   type Bounds,
+  type MarkerPart,
 } from '@/features/board/geometry';
 import {
   SHAPE_TEXT_SIZE,
@@ -37,11 +44,24 @@ import {
   type Point,
   type ShapeElement,
 } from '@/features/board/model';
+import type { Camera } from '@/features/board/store';
 
 import { textWidth, useBoardFont } from './BoardFonts';
 
 /** A marker's size grows with the stroke, and never below a fingertip's worth. */
 export const markerSize = (width: number) => Math.max(10, width * 3);
+
+/**
+ * An SVG path string as a Skia path, parsed once per distinct string.
+ *
+ * Skia re-records every node of the canvas on each repaint — every pan frame,
+ * every touch sample — and a `path` given as a string is parsed again each
+ * time, so a board full of strokes was re-parsed from text on every frame. A
+ * path object is only copied. Same parser, so the same geometry.
+ */
+function useSvgPath(d: string | null): SkPath | null {
+  return useMemo(() => (d === null ? null : Skia.Path.MakeFromSVGString(d)), [d]);
+}
 
 /** One end of a line: the marker's parts, painted after the line so a hollow one hides it. */
 function MarkerView({
@@ -63,20 +83,38 @@ function MarkerView({
   return (
     <Group>
       {markerPaths(kind, tip, angle, markerSize(width)).map((part, i) => (
-        <Group key={i}>
-          {part.fill !== 'none' ? (
-            <Path path={part.d} color={part.fill === 'solid' ? color : ground} />
-          ) : null}
-          <Path
-            path={part.d}
-            style="stroke"
-            strokeWidth={width}
-            color={color}
-            strokeCap="round"
-            strokeJoin="miter"
-          />
-        </Group>
+        <MarkerPartView key={i} d={part.d} fill={part.fill} color={color} width={width} ground={ground} />
       ))}
+    </Group>
+  );
+}
+
+function MarkerPartView({
+  d,
+  fill,
+  color,
+  width,
+  ground,
+}: {
+  d: string;
+  fill: MarkerPart['fill'];
+  color: string;
+  width: number;
+  ground: string;
+}) {
+  const path = useSvgPath(d);
+  if (!path) return null;
+  return (
+    <Group>
+      {fill !== 'none' ? <Path path={path} color={fill === 'solid' ? color : ground} /> : null}
+      <Path
+        path={path}
+        style="stroke"
+        strokeWidth={width}
+        color={color}
+        strokeCap="round"
+        strokeJoin="miter"
+      />
     </Group>
   );
 }
@@ -164,15 +202,7 @@ export function SelectionFrame({
         // accent halo along its route, and round handles at the two ends it
         // can be dragged by — unmistakably not the square corners of a box.
         <Group transform={[{ translateX: camera.x }, { translateY: camera.y }, { scale: camera.scale }]}>
-          <Path
-            path={routePath(line.from, line.to, line.route, line.bend)}
-            color={c.accent}
-            opacity={0.28}
-            style="stroke"
-            strokeWidth={line.strokeWidth + 8 / camera.scale}
-            strokeCap="round"
-            strokeJoin="round"
-          />
+          <Halo line={line} color={c.accent} width={line.strokeWidth + 8 / camera.scale} />
         </Group>
       ) : (
         <DashedBox b={b} camera={camera} />
@@ -237,6 +267,23 @@ export function SelectionFrame({
   );
 }
 
+/** The soft accent along a selected line's route. */
+function Halo({ line, color, width }: { line: ShapeElement; color: string; width: number }) {
+  const path = useSvgPath(routePath(line.from, line.to, line.route, line.bend));
+  if (!path) return null;
+  return (
+    <Path
+      path={path}
+      color={color}
+      opacity={0.28}
+      style="stroke"
+      strokeWidth={width}
+      strokeCap="round"
+      strokeJoin="round"
+    />
+  );
+}
+
 function unionBounds(elements: BoardElement[]): Bounds {
   const boxes = elements.map(elementBounds);
   const x = Math.min(...boxes.map((b) => b.x));
@@ -259,6 +306,8 @@ function ShapeView({ el, ground }: { el: ShapeElement; ground: string }) {
 }
 
 function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
+  // Only a line or an arrow is drawn along a route; the other kinds pay nothing.
+  const route = useSvgPath(isLineLike(el) ? routePath(el.from, el.to, el.route, el.bend) : null);
   const x = Math.min(el.from.x, el.to.x);
   const y = Math.min(el.from.y, el.to.y);
   const w = Math.abs(el.to.x - el.from.x);
@@ -329,10 +378,11 @@ function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
   const [headStart, headEnd] = headsOf(el);
   const angles = endAngles(el.from, el.to, el.route, el.bend);
   const dash = dashIntervals(el.dash, el.strokeWidth);
+  if (!route) return null;
   return (
     <Group>
       <Path
-        path={routePath(el.from, el.to, el.route, el.bend)}
+        path={route}
         color={el.stroke}
         style="stroke"
         strokeWidth={el.strokeWidth}
@@ -411,10 +461,78 @@ function TextView({ el }: { el: Extract<BoardElement, { kind: 'text' }> }) {
   );
 }
 
+/** The id the canvas gives the stroke still under the finger. */
+export const LIVE_STROKE = 'live-stroke';
+
+/**
+ * How far the live stroke's path has been built (see `livePath`): the points
+ * it was built from and a builder holding every segment that is final.
+ */
+const live = {
+  points: null as number[] | null,
+  smooth: true,
+  builder: null as SkPathBuilder | null,
+  done: 0,
+};
+
+/** Point `i` of a flat buffer of `m` points, or nothing past either end. */
+const pointAt = (flat: number[], i: number, m: number) =>
+  i >= 0 && i < m ? { x: flat[2 * i], y: flat[2 * i + 1] } : undefined;
+
+function addSegment(b: SkPathBuilder, flat: number[], i: number, m: number, smooth: boolean) {
+  if (!smooth) {
+    b.lineTo(round(flat[2 * i + 2]), round(flat[2 * i + 3]));
+    return;
+  }
+  const near = [-1, 0, 1, 2].map((k) => pointAt(flat, i + k, m));
+  const [c1x, c1y, c2x, c2y, x, y] = curveSegment(near as Point[], 1);
+  b.cubicTo(c1x, c1y, c2x, c2y, x, y);
+}
+
+/**
+ * The path of the stroke under the finger, grown a point at a time.
+ *
+ * It used to be rebuilt as a string from the first point and re-parsed on
+ * every touch sample, so a stroke got slower to draw the longer it was. The
+ * finger only ever appends, and a new point changes only the segment before
+ * it (a smoothed segment is steered by the point after it): everything
+ * earlier stays in the builder. The segments and their rounding are
+ * `strokeToSvgPath`'s own, so the curve is the same one.
+ */
+function livePath(flat: number[], smooth: boolean): SkPath | null {
+  const m = flat.length >> 1;
+  const prev = live.points;
+  const grows =
+    !!prev &&
+    !!live.builder &&
+    live.smooth === smooth &&
+    prev.length <= flat.length &&
+    prev.every((v, i) => v === flat[i]);
+  live.points = flat;
+  // A dot, or the first straight piece: nothing to grow yet.
+  if (m < 3) {
+    live.builder = null;
+    return Skia.Path.MakeFromSVGString(strokeToSvgPath(flat, smooth));
+  }
+  if (!grows) {
+    live.builder = Skia.PathBuilder.Make().moveTo(round(flat[0]), round(flat[1]));
+    live.smooth = smooth;
+    live.done = 0;
+  }
+  const b = live.builder!;
+  // Straight segments are final at once; a smoothed one once the point after it exists.
+  const final = smooth ? m - 2 : m - 1;
+  for (; live.done < final; live.done++) addSegment(b, flat, live.done, m, smooth);
+  if (!smooth) return b.build();
+  const out = Skia.PathBuilder.MakeFromPath(b.build());
+  addSegment(out, flat, m - 2, m, true);
+  return out.detach();
+}
+
 /**
  * The path is memoised on the points: while a stroke is being drawn the canvas
- * re-renders on every touch sample, and rebuilding the SVG string of every
- * other stroke on the board each time is what made the JS thread drop samples.
+ * re-renders on every touch sample, and rebuilding the path of every other
+ * stroke on the board each time is what made the JS thread drop samples.
  */
 function StrokeView({
   el,
@@ -423,7 +541,15 @@ function StrokeView({
   el: Extract<BoardElement, { kind: 'stroke' }>;
   smooth: boolean;
 }) {
-  const path = useMemo(() => strokeToSvgPath(el.points, smooth), [el.points, smooth]);
+  const growing = el.id === LIVE_STROKE;
+  const path = useMemo(
+    () =>
+      growing
+        ? livePath(el.points, smooth)
+        : Skia.Path.MakeFromSVGString(strokeToSvgPath(el.points, smooth)),
+    [growing, el.points, smooth],
+  );
+  if (!path) return null;
   return (
     <Path
       path={path}
@@ -523,12 +649,27 @@ export const ElementRenderer = memo(function ElementRenderer({
 });
 
 /**
- * The dot grid the settings sheet can turn off.
+ * The dots of the grid under `camera`, added to `b`. Nothing when they would
+ * be closer than ~9px: the dots read as a grey wash then, so the grid drops
+ * out — the same threshold the design uses when zoomed out.
  *
- * It is drawn as a single tiled shader rather than as thousands of circles:
- * the board is infinite, so at a low zoom a per-dot approach would be asked to
- * paint tens of thousands of nodes every frame.
+ * A single path rather than thousands of circle nodes: the board is infinite,
+ * so at a low zoom a per-dot approach would be asked to paint tens of
+ * thousands of nodes every frame.
  */
+function addDots(b: SkPathBuilder, width: number, height: number, camera: Camera) {
+  'worklet';
+  const step = 26 * camera.scale;
+  if (step <= 9 || width <= 0 || height <= 0) return;
+  const radius = camera.scale > 1.4 ? 1.4 : 1.1;
+  const startX = camera.x % step;
+  const startY = camera.y % step;
+  for (let x = startX; x < width; x += step) {
+    for (let y = startY; y < height; y += step) b.addCircle(x, y, radius);
+  }
+}
+
+/** The dot grid at a fixed camera: the wash behind the home, nickname and PIN screens. */
 export function DotGrid({
   width,
   height,
@@ -536,24 +677,38 @@ export function DotGrid({
 }: {
   width: number;
   height: number;
-  camera: { x: number; y: number; scale: number };
+  camera: Camera;
 }) {
   const c = useColors();
-  const step = 26 * camera.scale;
+  const { x, y, scale } = camera;
   const path = useMemo(() => {
-    // Below ~9px apart the dots read as a grey wash, so the grid drops out —
-    // the same threshold the design uses when zoomed out.
-    if (step <= 9 || width <= 0 || height <= 0) return null;
-    const p = Skia.PathBuilder.Make();
-    const radius = camera.scale > 1.4 ? 1.4 : 1.1;
-    const startX = camera.x % step;
-    const startY = camera.y % step;
-    for (let x = startX; x < width; x += step) {
-      for (let y = startY; y < height; y += step) p.addCircle(x, y, radius);
-    }
-    return p.detach();
-  }, [step, width, height, camera.x, camera.y, camera.scale]);
+    const b = Skia.PathBuilder.Make();
+    addDots(b, width, height, { x, y, scale });
+    return b.isEmpty() ? null : b.detach();
+  }, [width, height, x, y, scale]);
 
   if (!path) return null;
+  return <Path path={path} color={c.borderStrong} />;
+}
+
+/**
+ * The board's dot grid, the one the settings sheet can turn off. It follows
+ * the camera on the UI thread: a pan or a pinch rebuilds it there, with no
+ * React render and no re-recording of the canvas.
+ */
+export function LiveDotGrid({
+  width,
+  height,
+  camera,
+}: {
+  width: number;
+  height: number;
+  camera: SharedValue<Camera>;
+}) {
+  const c = useColors();
+  const path = usePathValue((b) => {
+    'worklet';
+    addDots(b, width, height, camera.get());
+  });
   return <Path path={path} color={c.borderStrong} />;
 }

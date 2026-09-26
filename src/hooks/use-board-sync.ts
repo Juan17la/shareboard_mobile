@@ -120,7 +120,22 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
         useBoardStore.getState().applyRemote(msg.ops, msg.seq, msg.from === userId),
       );
       conn.on('participants', (msg) => useBoardStore.getState().setParticipants(msg.participants));
-      conn.on('cursor', (msg) => useBoardStore.getState().setRemoteCursor(msg.from, msg.at));
+      // Every peer sends ~20 positions a second; applying each on arrival
+      // re-rendered the cursor layer once per packet, per peer. They are
+      // collected and applied once a frame — the latest per person, which is
+      // all a frame could have shown anyway.
+      let moves: Record<string, Point> | null = null;
+      conn.on('cursor', (msg) => {
+        if (!moves) {
+          moves = {};
+          requestAnimationFrame(() => {
+            const batch = moves!;
+            moves = null;
+            useBoardStore.getState().moveCursors(batch);
+          });
+        }
+        moves[msg.from] = msg.at;
+      });
       conn.on('permissions', (msg) => useBoardStore.getState().setMeta(msg.meta, msg.you));
       conn.on('error', (msg) => {
         setError(msg.message);
