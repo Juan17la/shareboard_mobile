@@ -73,6 +73,10 @@ const es = {
   toFront: 'Traer al frente',
   group: 'Agrupar',
   ungroup: 'Desagrupar',
+  copy: 'Copiar',
+  cut: 'Cortar',
+  paste: 'Pegar',
+  toastCopiedSelection: 'Copiado',
 
   // home
   homeTitle: 'Una pizarra para todos, en segundos.',
@@ -135,6 +139,12 @@ const es = {
   sheetImport: 'Importar',
   sheetMenu: 'Pizarra',
   sheetSettings: 'Ajustes',
+  sheetAi: 'Dibujar con IA',
+  aiPlaceholder: 'Describe qué dibujar…',
+  aiHint: 'Ej.: una casa con un árbol y el sol. Aparece en el centro de tu pantalla.',
+  aiSend: 'Dibujar',
+  aiThinking: 'Dibujando…',
+  aiAdded: 'Añadí #N elementos.',
   sheetRename: 'Nombre de la pizarra',
 
   // share
@@ -307,6 +317,10 @@ const en: Record<keyof typeof es, string> = {
   toFront: 'Bring to front',
   group: 'Group',
   ungroup: 'Ungroup',
+  copy: 'Copy',
+  cut: 'Cut',
+  paste: 'Paste',
+  toastCopiedSelection: 'Copied',
 
   homeTitle: 'One board for everyone, in seconds.',
   homeSub: 'Create a board and share the code. No sign-up.',
@@ -364,6 +378,12 @@ const en: Record<keyof typeof es, string> = {
   sheetImport: 'Import',
   sheetMenu: 'Board',
   sheetSettings: 'Settings',
+  sheetAi: 'Draw with AI',
+  aiPlaceholder: 'Describe what to draw…',
+  aiHint: 'e.g. a house with a tree and the sun. It appears in the centre of your screen.',
+  aiSend: 'Draw',
+  aiThinking: 'Drawing…',
+  aiAdded: 'Added #N elements.',
   sheetRename: 'Board name',
 
   qrHint: 'Scan to join from another device.',
