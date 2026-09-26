@@ -7,6 +7,10 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Releases ship for Android only: the APK on each GitHub release; no iOS build.
+
 ## [1.0.0-beta.2] - 2026-09-26
 
 ### Added
