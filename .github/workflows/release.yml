@@ -26,7 +26,8 @@ jobs:
         run: |
           awk -v v="${GITHUB_REF_NAME#v}" '/^## \[/ { p = index($0, "[" v "]") > 0; next } p' CHANGELOG.md > notes.md
           test -s notes.md || { echo "CHANGELOG.md has no section for $GITHUB_REF_NAME"; exit 1; }
-          printf "\\n## Install\\n\\nAndroid: download the APK below; installed apps offer it on their next launch. iOS: open https://expo.dev/accounts/juan17las-team/projects/judd/builds on a registered device.\\n" >> notes.md
+          printf "\\n## Install\\n\\nDownload the APK below and open it on the Android phone; installed apps offer each new release on their next launch.\\n\\n" >> notes.md
+          node -p '"Server: " + (require("./eas.json").build.beta.env?.EXPO_PUBLIC_API_URL ?? "not set")' >> notes.md
       - uses: softprops/action-gh-release@v2
         with:
           name: Shareboard mobile ${{ github.ref_name }}
