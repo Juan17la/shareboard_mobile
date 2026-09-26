@@ -16,6 +16,10 @@
       "autoIncrement": true,
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://192.168.10.20:3000",
+        "EXPO_PUBLIC_WS_URL": "ws://192.168.10.20:3000/ws"
       }
     },
     "production": {
