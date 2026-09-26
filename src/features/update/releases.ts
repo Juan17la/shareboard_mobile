@@ -63,6 +63,7 @@ export function pickUpdate(releases: GitHubRelease[], current: string): Update |
 /** The start of the release notes (the CHANGELOG section), as plain text. */
 function firstLines(markdown: string): string {
   const text = markdown
+    .replace(/\r/g, '')
     .split('\n## Install')[0]!
     .replace(/^#+\s*/gm, '')
     .replace(/\*\*|`/g, '')
