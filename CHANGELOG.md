@@ -7,6 +7,14 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.0.0-beta.4] - 2026-09-26
+
+### Fixed
+
+- The app talks to the deployed server again
+  (https://shareboard-server.onrender.com): 1.0.0-beta.3 was built for a
+  placeholder URL and could not open boards.
+
 ## [1.0.0-beta.3] - 2026-09-26
 
 ### Changed
