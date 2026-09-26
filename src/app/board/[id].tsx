@@ -27,6 +27,7 @@ import { Toolbar } from '@/components/board/Toolbar';
 import { BoardHeader, HeaderScrim } from '@/components/header/BoardHeader';
 import { NicknameScreen } from '@/components/screens/NicknameScreen';
 import { PinScreen } from '@/components/screens/PinScreen';
+import { AiSheet } from '@/components/sheets/AiSheet';
 import { ExportSheet } from '@/components/sheets/ExportSheet';
 import { ImportSheet } from '@/components/sheets/ImportSheet';
 import { MenuSheet } from '@/components/sheets/MenuSheet';
@@ -56,7 +57,7 @@ import { notify, thud } from '@/utils/haptics';
 // `expo.extra` if they diverge.
 const WEB_BASE_URL = API_BASE_URL;
 
-type SheetName = 'share' | 'people' | 'privacy' | 'export' | 'import' | 'menu' | 'settings';
+type SheetName = 'share' | 'people' | 'privacy' | 'export' | 'import' | 'menu' | 'settings' | 'ai';
 type ConfirmName = 'clear' | 'delete';
 
 export default function BoardScreen() {
@@ -130,8 +131,12 @@ export default function BoardScreen() {
     // The server drops the board and disconnects everyone else on it; only then
     // does this device forget it and leave.
     setDeleting(true);
+    // Read before the `try`: the React Compiler cannot compile a component
+    // with a `??` inside one, and this screen re-renders on every snapshot the
+    // glass takes of the board (Android) — compiled, its children are reused.
+    const token = useBoardStore.getState().boardToken ?? '';
     try {
-      await deleteBoard(meta.id, { userId, token: useBoardStore.getState().boardToken ?? '' });
+      await deleteBoard(meta.id, { userId, token });
     } catch (error) {
       toast(error instanceof Error ? error.message : t.errDelete);
       setDeleting(false);
@@ -199,7 +204,7 @@ export default function BoardScreen() {
       />
 
       <Toolbar landscape={landscape} />
-      <BottomControls top={headerHeight + 6} />
+      <BottomControls top={headerHeight + 6} onOpenAi={() => setSheet('ai')} />
       <ConnectionBanner top={headerHeight + 50} onRetry={sync.retry} />
 
       <ToastHost
@@ -215,6 +220,7 @@ export default function BoardScreen() {
         onOpenPrivacy={() => setSheet('privacy')}
       />
       <PeopleSheet open={sheet === 'people'} onClose={() => setSheet(null)} />
+      <AiSheet open={sheet === 'ai'} onClose={() => setSheet(null)} />
       <PrivacySheet
         open={sheet === 'privacy'}
         onClose={() => setSheet(null)}
@@ -235,6 +241,7 @@ export default function BoardScreen() {
         onOpenPrivacy={() => setSheet('privacy')}
         onOpenPeople={() => setSheet('people')}
         onOpenSettings={() => setSheet('settings')}
+        onOpenAi={() => setSheet('ai')}
       />
       <SettingsSheet
         open={sheet === 'settings'}
