@@ -1,0 +1,235 @@
+# Live Whiteboard
+
+**Descripción**
+
+Live Whiteboard es una pizarra digital colaborativa que permite a varias personas dibujar, escribir y organizar ideas en tiempo real.
+
+Una persona puede crear una pizarra y compartirla mediante un enlace o un código corto. Los demás usuarios pueden acceder desde un navegador o desde la aplicación móvil y ver los cambios al instante.
+
+El creador puede decidir quién tiene permiso para modificar la pizarra y quién solamente puede visualizarla.
+
+La pizarra debe funcionar de forma consistente tanto en **Web como en Mobile**.
+
+# Objetivos
+
+**Facilidad de uso**
+
+* Crear una pizarra sin necesidad de registrarse.
+* Entrar a una pizarra mediante un enlace o código corto.
+* Identificar a los usuarios mediante un nickname.
+* Mantener una interfaz simple y fácil de aprender.
+
+**Colaboración en tiempo real**
+
+* Mostrar los cambios de otros usuarios inmediatamente.
+* Permitir que varias personas trabajen sobre la misma pizarra.
+* Mantener la pizarra sincronizada entre Web y Mobile.
+
+**Control de acceso**
+
+* Permitir que todos los usuarios puedan editar.
+* Permitir seleccionar qué usuarios pueden editar.
+* Permitir que solamente el creador pueda editar.
+* Permitir establecer la pizarra como pública o privada.
+
+**Optimización**
+
+* Mantener una baja latencia durante la edición.
+* Evitar guardar constantemente información innecesaria en la base de datos.
+* Mantener los datos de las pizarras activas temporalmente en memoria.
+
+# Plataformas
+
+**Web**
+
+* Aplicación web accesible desde un navegador mediante un enlace.
+* Diseñada principalmente para computadores.
+* Compatible con dispositivos móviles.
+
+**Mobile**
+
+* Aplicación móvil para crear, editar y visualizar pizarras.
+* Las herramientas principales deben ser equivalentes a las disponibles en Web.
+* La interfaz debe adaptarse a la interacción mediante pantalla táctil.
+
+# Funcionalidades
+
+**Creación y acceso**
+
+* Crear una pizarra sin necesidad de registrarse.
+* Generar un identificador único para cada pizarra.
+* Compartir una pizarra mediante un enlace.
+* Compartir una pizarra mediante un código corto de letras y números.
+* Solicitar un nickname al entrar a una pizarra para identificar al usuario.
+
+**Permisos de edición**
+
+* Permitir que todos los usuarios puedan editar.
+* Permitir que solamente usuarios seleccionados puedan editar.
+* Permitir que solamente el creador pueda editar.
+* Permitir establecer una pizarra como pública o privada.
+* Las pizarras privadas deberán requerir un PIN para acceder.
+
+**Herramientas de dibujo**
+
+* Lápiz.
+* Grosor dinámico del lápiz.
+* Selector de colores.
+* Colores predeterminados.
+* Figuras geométricas.
+* Texto.
+* Relleno.
+* Borrador.
+
+**Texto**
+
+* Cambiar tamaño.
+* Aplicar negrita.
+* Aplicar cursiva.
+* Cambiar color.
+* Incorporar otras opciones de formato posteriormente.
+
+**Interacción táctil**
+
+* Detectar gestos realizados directamente sobre la pantalla.
+* Hacer que los trazos sean fluidos y precisos.
+* Minimizar líneas entrecortadas.
+* Minimizar el retraso entre el movimiento y el dibujo.
+* Evitar interferencias entre gestos y herramientas.
+
+**Colaboración en tiempo real**
+
+* Mostrar los cambios realizados por otros usuarios sin actualizar la página.
+* Sincronizar las acciones entre todos los dispositivos conectados a la misma pizarra.
+* Utilizar WebSockets para la comunicación en tiempo real.
+
+**Exportación**
+
+* Exportar una pizarra como imagen.
+* Soportar inicialmente PNG y JPG.
+* Descargar el archivo para guardarlo localmente.
+
+**Importación**
+
+* Permitir cargar un archivo previamente exportado.
+* Mostrar el contenido del archivo dentro de una nueva pizarra.
+
+**Pendiente:** definir si los archivos importados serán únicamente imágenes o si deberán recuperar elementos editables como textos, figuras y trazos.
+
+# Guardado
+
+Una pizarra activa se mantendrá temporalmente en la memoria del servidor para permitir una comunicación rápida entre los usuarios.
+
+**Cliente → WebSocket → Node.js → Memoria**
+
+Los cambios no necesitan escribirse en la base de datos después de cada acción.
+
+Cuando una pizarra permanezca inactiva durante un período determinado, su estado podrá guardarse en la base de datos.
+
+**Tiempo inicial propuesto:** 5 minutos de inactividad.
+
+**Pendiente:** definir qué ocurre si el servidor se reinicia antes de guardar la pizarra.
+
+# Arquitectura
+
+**Frontend Web**
+
+* React.
+* TypeScript.
+
+**Aplicación Mobile**
+
+* React Native.
+* Expo.
+
+**Backend**
+
+* Node.js.
+* REST API.
+* WebSockets.
+
+**Almacenamiento temporal**
+
+* Memoria del servidor para pizarras activas.
+
+**Base de datos**
+
+* MongoDB para almacenar las pizarras guardadas y su información.
+
+**Flujo general**
+
+* Web / Mobile → Node.js.
+* Node.js → WebSockets para cambios en tiempo real.
+* Node.js → REST API para operaciones que no requieren comunicación en tiempo real.
+* Node.js → Memoria para pizarras activas.
+* Memoria → MongoDB para persistencia.
+
+# Requisitos no funcionales
+
+**Rendimiento**
+
+* Objetivo de latencia inferior a 200 ms entre una acción realizada por un usuario y su visualización en los demás clientes.
+* El rendimiento dependerá de la conexión de los usuarios y de la infraestructura utilizada.
+
+**Acceso rápido**
+
+* Utilizar códigos cortos compuestos por letras y números.
+* Permitir acceder a una pizarra directamente desde un enlace.
+
+**Sesiones**
+
+* Controlar las sesiones activas de los usuarios.
+* Evitar conflictos causados por sesiones duplicadas.
+
+**Nota:** no se utilizará la dirección IP como identificador principal del usuario, ya que varias personas pueden compartir una misma IP.
+
+# Diseño de interfaz
+
+**Principios generales**
+
+* Simple.
+* Rápida.
+* Clara.
+* Fácil de aprender.
+* Enfocada en la pizarra y no en la interfaz.
+
+El usuario debe poder comenzar a dibujar sin tener que aprender previamente cómo funciona la aplicación.
+
+Las herramientas más utilizadas deben estar siempre disponibles, mientras que las opciones menos frecuentes pueden mantenerse ocultas hasta que sean necesarias.
+
+**Paleta de colores**
+
+* Principal: por definir.
+* Secundario: por definir.
+* Accent: por definir.
+* Fondo: por definir.
+* Texto: por definir.
+
+La interfaz debe utilizar una cantidad limitada de colores para evitar competir visualmente con el contenido creado dentro de la pizarra.
+
+**Layout**
+
+* Header.
+
+  * Nombre de la pizarra.
+  * Compartir.
+  * Usuarios conectados.
+  * Estado de la pizarra.
+* Barra de herramientas.
+
+  * Lápiz.
+  * Borrador.
+  * Figuras.
+  * Texto.
+  * Relleno.
+  * Colores.
+  * Grosor.
+* Área principal.
+
+  * Pizarra.
+* Controles adicionales.
+
+  * Exportar.
+  * Guardar.
+  * Configuración.
+  * Permisos.

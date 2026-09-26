@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "Live Whiteboard",
+    "name": "Shareboard",
     "slug": "judd",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "shareboard",
     "userInterfaceStyle": "automatic",
@@ -12,12 +12,15 @@
       "bundleIdentifier": "com.juan17lasteam.judd",
       "supportsTablet": true,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#EFE9F8",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -34,7 +37,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#7A1F2B",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
@@ -54,7 +57,15 @@
         }
       ],
       "expo-document-picker",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
@@ -66,8 +77,7 @@
         "projectId": "5b9cabf0-cd79-4d0b-8693-eb5641cf95b0"
       },
       "apiBaseUrl": "http://localhost:3000",
-      "wsUrl": "ws://localhost:3000/ws",
-      "useMocks": false
+      "wsUrl": "ws://localhost:3000/ws"
     },
     "owner": "juan17las-team"
   }

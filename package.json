@@ -1,21 +1,25 @@
 {
   "name": "shareboard",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "1.0.0-beta.1",
   "dependencies": {
-    "@expo/ui": "~57.0.15",
+    "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "@expo-google-fonts/nunito": "^0.4.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@shopify/react-native-skia": "2.6.2",
     "expo": "~57.0.19",
+    "expo-blur": "~57.0.2",
+    "expo-build-properties": "~57.0.22",
     "expo-clipboard": "~57.0.1",
     "expo-constants": "~57.0.17",
     "expo-crypto": "~57.0.2",
     "expo-dev-client": "~57.0.18",
-    "expo-device": "~57.0.1",
     "expo-document-picker": "~57.0.1",
+    "expo-file-system": "~57.0.6",
     "expo-font": "~57.0.3",
-    "expo-glass-effect": "~57.0.1",
+    "expo-haptics": "~57.0.2",
     "expo-image": "~57.0.4",
+    "expo-image-manipulator": "~57.0.16",
     "expo-image-picker": "~57.0.15",
     "expo-linking": "~57.0.9",
     "expo-media-library": "~57.0.4",
@@ -23,10 +27,6 @@
     "expo-sharing": "~57.0.17",
     "expo-splash-screen": "~57.0.8",
     "expo-status-bar": "~57.0.1",
-    "expo-symbols": "~57.0.2",
-    "expo-system-ui": "~57.0.3",
-    "expo-web-browser": "~57.0.2",
-    "nativewind": "^4.2.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
@@ -34,9 +34,9 @@
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
+    "react-native-svg": "15.15.4",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.10.1",
-    "tailwindcss": "^3.4.19",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
@@ -50,7 +50,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "check:socket": "node --import ../server/node_modules/tsx/dist/loader.mjs --import ./test/expo-stub.mjs test/socket-lifecycle.mjs",
+    "check:geometry": "node --import ../server/node_modules/tsx/dist/loader.mjs --import ./test/expo-stub.mjs test/geometry.mjs"
   },
   "private": true
 }
