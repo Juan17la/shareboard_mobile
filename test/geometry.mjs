@@ -455,4 +455,35 @@ assert.match(svg, /<path d="M 0 100 C/, 'the smoothed stroke');
 assert.equal(toSvg([]), null);
 assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rect x="-24"/, 'transparent: no ground');
 
+// --- a board opens on its content; a reconnect leaves the camera alone -------
+{
+  const st = () => useBoardStore.getState();
+  const onScreen = (el, { x, y, scale }) =>
+    el.from.x * scale + x >= 0 && el.to.x * scale + x <= 400 && el.from.y * scale + y >= 0 && el.to.y * scale + y <= 800;
+  const far = box('far', 900, 900, 100, 100);
+  const join = () => st().hydrate({ meta, elements: [far], participants: [you], you, seq: 1 });
+
+  st().reset();
+  st().setViewport({ width: 400, height: 800 });
+  join();
+  assert.ok(onScreen(far, st().camera), 'first join frames content that is far from the origin');
+  assert.equal(st().fitPending, false, 'fitted once');
+
+  st().setCamera({ x: 5, y: 5, scale: 1 });
+  join();
+  assert.deepEqual(st().camera, { x: 5, y: 5, scale: 1 }, 'a reconnect does not move the camera');
+
+  st().reset();
+  st().setViewport({ width: 0, height: 0 });
+  join();
+  assert.equal(st().fitPending, true, 'no size yet: still waiting');
+  st().setViewport({ width: 400, height: 800 });
+  assert.ok(onScreen(far, st().camera), 'fitted when the canvas gets its size');
+
+  st().reset();
+  st().hydrate({ meta, elements: [], participants: [you], you, seq: 1 });
+  assert.deepEqual(st().camera, st().homeCamera(), 'an empty board stays centred on the origin');
+  st().reset();
+}
+
 console.log('geometry: ok');
