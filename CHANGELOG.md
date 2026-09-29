@@ -9,6 +9,10 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ### Added
 
+- Draw with AI shows a preview of each drawing first: *Add to board* puts it
+  there as one group (one undo removes it), *Discard* drops it. The AI sheet is
+  bigger to fit it.
+
 - *Paste image* in the import sheet puts the clipboard's image on the board.
 - WebP and GIF images can be imported from the file picker.
 
