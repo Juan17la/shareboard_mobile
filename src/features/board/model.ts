@@ -180,6 +180,12 @@ export interface Participant {
   role: Role;
   /** Latest known position; never persisted. */
   cursor?: Point;
+  /**
+   * Element ids this participant has selected — and so holds: first to select
+   * wins, and nobody else can select or change them until they are let go
+   * (deselected, or the participant leaves).
+   */
+  selection?: string[];
   lastSeen: number;
 }
 
@@ -214,7 +220,7 @@ export const LIMITS = {
   maxFontSize: 400,
   minSides: 3,
   maxSides: 12,
-  maxNicknameLength: 24,
+  maxNicknameLength: 40,
   maxBoardNameLength: 80,
   /** #RRGGBB, or #RRGGBBAA for the translucent fills the shape tool paints. */
   colorPattern: /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/,
