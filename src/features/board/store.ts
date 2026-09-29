@@ -23,15 +23,18 @@ import type { Op } from '@/services/realtime/protocol';
 import { shortId } from '@/utils/id';
 
 import {
+  boxOf,
   contentBounds,
   followLinks,
   headsOf,
   isLineLike,
   shapeHit,
+  toLocal,
   translate,
   type Sketch,
 } from './geometry';
 import {
+  DEFAULT_SIDES,
   LIMITS,
   canEdit,
   isFillable,
@@ -40,6 +43,7 @@ import {
   type ElementBase,
   type Dash,
   type ElementId,
+  type FontKey,
   type Link,
   type Marker,
   type Participant,
@@ -76,9 +80,13 @@ export interface ToolConfig {
   /** How opaque a newly drawn enclosed shape's fill is; `none` for outline only. */
   fill: FillLevel;
   shape: ShapeKind;
+  /** Corners of a polygon. */
+  sides: number;
   fontSize: number;
   bold: boolean;
   italic: boolean;
+  /** Typeface of new text and of labels. */
+  font: FontKey;
   // Lines and arrows. The line/arrow buttons reset these to the kind's default.
   headStart: Marker;
   headEnd: Marker;
@@ -240,6 +248,11 @@ interface BoardState {
   /** False until the first layout has put the board origin at screen centre. */
   cameraPlaced: boolean;
   /**
+   * True from a fresh join until the camera has been fitted to what the board
+   * holds; a reconnect's `hydrate` must not move the camera again.
+   */
+  fitPending: boolean;
+  /**
    * The stroke / shape under the finger right now, before it becomes an
    * element. Store state rather than canvas state so the gesture that ends it
    * can read the final value synchronously and commit it in one step.
@@ -295,6 +308,8 @@ interface BoardState {
   setViewport(size: { width: number; height: number }): void;
   /** The "100%" camera: board (0,0) at the centre of the screen, unzoomed. */
   homeCamera(): Camera;
+  /** Frame everything on the board (the empty board goes home). */
+  fitCamera(): void;
   /** Multiplies the zoom about `focal` (screen px), or about the viewport centre. */
   zoomBy(factor: number, focal?: Point): void;
   setLiveStroke(points: number[]): void;
@@ -372,6 +387,8 @@ interface BoardState {
    * everything — and selects it. Without `at`, a step off where it was copied from.
    */
   paste(at?: Point): void;
+  /** Adds ready-made elements (an accepted AI drawing) as one undo step and selects them. */
+  addElements(elements: BoardElement[]): void;
 
   undo(): void;
   redo(): void;
@@ -392,9 +409,11 @@ const DEFAULT_CONFIG: ToolConfig = {
   // The second of each: a new figure comes out lightly filled, medium stroke.
   fill: 'low',
   shape: 'rectangle',
+  sides: DEFAULT_SIDES,
   fontSize: 28,
   bold: false,
   italic: false,
+  font: 'sans',
   headStart: 'none',
   headEnd: 'arrow',
   route: 'straight',
@@ -476,6 +495,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     selectedIds: [],
     viewport: { width: 0, height: 0 },
     cameraPlaced: false,
+    fitPending: true,
     liveStroke: [],
     liveShape: null,
     liveEdit: null,
@@ -510,6 +530,11 @@ export const useBoardStore = create<BoardState>((set, get) => {
         redoStack: [],
         outbox: [],
       });
+      // Before the first layout there is no size to fit into: `setViewport` does it.
+      if (get().fitPending && get().viewport.width > 0) {
+        get().fitCamera();
+        set({ fitPending: false });
+      }
     },
 
     reset() {
@@ -532,6 +557,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         // reconnects), so re-home on the size already known.
         camera: get().homeCamera(),
         cameraPlaced: get().viewport.width > 0,
+        fitPending: true,
         selectedIds: [],
         liveStroke: [],
         liveShape: null,
@@ -546,7 +572,15 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     setParticipants(list) {
-      set({ participants: list, cursors: cursorsOf(list) });
+      // Someone else got there first (both picked the same thing at once): the
+      // server gave it to them, so let go of it here too.
+      const held = heldByOthers(list, get().you);
+      const selectedIds = get().selectedIds.filter((id) => !held.has(id));
+      set({
+        participants: list,
+        cursors: cursorsOf(list),
+        ...(selectedIds.length !== get().selectedIds.length ? { selectedIds } : null),
+      });
     },
 
     setMeta(meta, you) {
@@ -617,6 +651,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
           if (patch.fontSize !== undefined) p.fontSize = patch.fontSize;
           if (patch.bold !== undefined) p.bold = patch.bold;
           if (patch.italic !== undefined) p.italic = patch.italic;
+          if (patch.font !== undefined) p.font = patch.font;
         } else if (el.kind === 'shape') {
           // A kind change only comes from the strip's kind cluster (the tool
           // buttons let go of the selection first) and stays in the family:
@@ -639,6 +674,10 @@ export const useBoardStore = create<BoardState>((set, get) => {
               : null;
           }
           if (patch.fontSize !== undefined) p.fontSize = patch.fontSize;
+          if (patch.font !== undefined) p.font = patch.font;
+          if (shape === 'polygon' && (patch.sides !== undefined || shape !== el.shape)) {
+            p.sides = patch.sides ?? get().config.sides;
+          }
           for (const k of ['headStart', 'headEnd', 'route', 'dash'] as const) {
             if (patch[k] !== undefined) p[k] = patch[k];
           }
@@ -741,6 +780,32 @@ export const useBoardStore = create<BoardState>((set, get) => {
       if (!get().cameraPlaced && viewport.width > 0 && viewport.height > 0) {
         set({ camera: get().homeCamera(), cameraPlaced: true });
       }
+      // The board arrived before the canvas had a size: fit it now.
+      if (get().fitPending && get().boardId && viewport.width > 0 && viewport.height > 0) {
+        get().fitCamera();
+        set({ fitPending: false });
+      }
+    },
+
+    fitCamera() {
+      const b = contentBounds(get().visibleElements());
+      const { width, height } = get().viewport;
+      if (!b || !width || !height) {
+        set({ camera: get().homeCamera() });
+        return;
+      }
+      const pad = 48;
+      const scale = Math.max(
+        MIN_ZOOM,
+        Math.min((width - pad * 2) / b.width, (height - pad * 2) / b.height, 1),
+      );
+      set({
+        camera: {
+          scale,
+          x: (width - b.width * scale) / 2 - b.x * scale,
+          y: (height - b.height * scale) / 2 - b.y * scale,
+        },
+      });
     },
 
     homeCamera() {
@@ -829,6 +894,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         stroke: config.color,
         strokeWidth: clampWidth(config.width),
         fill: isFillable(shape) ? fillFor(config.color, config.fill) : null,
+        ...(shape === 'polygon' ? { sides: config.sides } : null),
         ...(shape === 'line' || shape === 'arrow'
           ? {
               headStart: config.headStart,
@@ -845,13 +911,17 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     select(ids) {
-      const wanted = ids === null ? [] : Array.isArray(ids) ? ids : [ids];
+      // What someone else holds cannot be picked up (first come, first served).
+      const held = heldByOthers(get().participants, get().you);
+      const wanted = (ids === null ? [] : Array.isArray(ids) ? ids : [ids]).filter(
+        (id) => !held.has(id),
+      );
       const { elements } = get();
       const groups = new Set(wanted.map((id) => elements[id]?.group).filter(Boolean));
       const all = new Set(wanted);
       if (groups.size) {
         for (const el of get().visibleElements())
-          if (el.group && groups.has(el.group)) all.add(el.id);
+          if (el.group && groups.has(el.group) && !held.has(el.id)) all.add(el.id);
       }
       const next = [...all];
       // Tapping empty board (or the same thing again) keeps the selection it
@@ -902,9 +972,10 @@ export const useBoardStore = create<BoardState>((set, get) => {
     fillAt(at) {
       if (!get().canEditNow()) return false;
       const visible = get().visibleElements();
+      const held = heldByOthers(get().participants, get().you);
       for (let i = visible.length - 1; i >= 0; i--) {
         const el = visible[i];
-        if (el.kind !== 'shape' || !isFillable(el.shape)) continue;
+        if (el.kind !== 'shape' || !isFillable(el.shape) || held.has(el.id)) continue;
         const minX = Math.min(el.from.x, el.to.x);
         const maxX = Math.max(el.from.x, el.to.x);
         const minY = Math.min(el.from.y, el.to.y);
@@ -939,6 +1010,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         fontSize: config.fontSize,
         bold: config.bold,
         italic: config.italic,
+        ...(config.font !== 'sans' ? { font: config.font } : null),
       };
       commitLocal([{ t: 'add', el }]);
       return el.id;
@@ -981,7 +1053,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     eraseAt(at, radius = 12) {
       if (!get().canEditNow()) return;
-      const hits = hitTest(get().visibleElements(), at, radius);
+      const held = heldByOthers(get().participants, get().you);
+      const hits = hitTest(get().visibleElements(), at, radius).filter((id) => !held.has(id));
       if (hits.length) commitLocal(hits.map((id) => ({ t: 'delete', id }) as Op));
     },
 
@@ -1036,6 +1109,15 @@ export const useBoardStore = create<BoardState>((set, get) => {
       if (get().tool !== 'select') get().setTool('select');
       get().select(copies.map((el) => el.id));
       set({ railOpen: true });
+    },
+
+    addElements(elements) {
+      if (!elements.length || !get().canEditNow() || get().connection !== 'online') return;
+      // Ids are kept (lines are linked by them); authorship and order are ours.
+      const added = elements.map((el) => ({ ...el, ...baseFields(), id: el.id }) as BoardElement);
+      commitLocal(added.map((el) => ({ t: 'add', el }) as Op));
+      if (get().tool !== 'select') get().setTool('select');
+      get().select(added.map((el) => el.id));
     },
 
     // --- history -----------------------------------------------------------
@@ -1116,6 +1198,22 @@ export const useBoardStore = create<BoardState>((set, get) => {
 });
 
 /**
+ * The elements other participants hold — have selected — and who holds each.
+ * Theirs until they let go: this client neither selects nor changes them.
+ */
+export function heldByOthers(
+  participants: Participant[],
+  you: Participant | null,
+): Map<ElementId, Participant> {
+  const held = new Map<ElementId, Participant>();
+  for (const p of participants) {
+    if (p.userId === you?.userId) continue;
+    for (const id of p.selection ?? []) held.set(id, p);
+  }
+  return held;
+}
+
+/**
  * The unselected figure a press at `at` lands on when it is drawn above the
  * selection there, or null when the press is the selection's.
  *
@@ -1181,13 +1279,14 @@ function hitTest(elements: BoardElement[], at: Point, radius: number): ElementId
     } else if (el.kind === 'shape') {
       if (shapeHit(el, at, radius)) hits.push(el.id);
     } else {
-      const w = el.kind === 'image' ? el.width : Math.max(40, el.text.length * el.fontSize * 0.55);
-      const h = el.kind === 'image' ? el.height : el.fontSize * 1.4;
+      // Tested in the element's unturned frame, against its measured box.
+      const b = boxOf(el);
+      const q = toLocal(el, at);
       if (
-        at.x >= el.at.x - radius &&
-        at.x <= el.at.x + w + radius &&
-        at.y >= el.at.y - radius &&
-        at.y <= el.at.y + h + radius
+        q.x >= b.x - radius &&
+        q.x <= b.x + b.width + radius &&
+        q.y >= b.y - radius &&
+        q.y <= b.y + b.height + radius
       ) {
         hits.push(el.id);
       }

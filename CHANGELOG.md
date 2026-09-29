@@ -7,6 +7,67 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.1.0-beta] - 2026-09-29
+
+### Added
+
+- The selected "who can edit" option is a hairline ring with a centred dot; the
+  old 5.5 px ring looked like a heavy blob on the light theme.
+
+- A board opens framed on its content, once per join (a reconnect leaves the
+  camera alone). Unverified on a device.
+- Nicknames may be 40 characters (was 24), matching the server.
+
+- Selecting something holds it: the first person to select an element owns
+  it until they deselect it or leave. Everyone else sees it dimmed, framed in
+  that person's colour with their name on a tag, and cannot select, erase,
+  fill or edit it.
+
+- Export only what is selected: with a selection, the export sheet offers
+  *Whole board* or *Selection* (selection first); the preview, the picture and
+  the embedded board follow the choice.
+- SVG export next to PNG and JPG, shared as a vector file (a photo library
+  cannot hold one, so *Save* is for PNG/JPG).
+
+- Font picker for text and figure labels: rounded (Nunito, the default),
+  serif (Lora), monospace (JetBrains Mono) and handwritten (Caveat).
+- Typing into a figure edits its label in place: the text appears exactly as
+  it will look — centred, wrapped inside the figure, in its font and turn —
+  instead of in a separate box. Text elements are edited in place too.
+
+### Changed
+
+- A figure's label wraps to fit inside the figure.
+
+- Polygons with 3 to 12 sides: a new shape tool with a sides stepper in
+  the options strip.
+- Rotation: a selected figure, text or image has a round knob above it; drag
+  it to turn the element (it snaps to 15° steps). Handles, hit-testing and
+  arrow links follow the turned outline.
+- Images behave like figures: arrows bind to them and follow them, and
+  resizing from a corner keeps their proportions.
+- Text can be resized like an image: its corners scale the font, and the
+  handle on its right edge sets a width the text wraps to.
+
+- Draw with AI shows a preview of each drawing first: *Add to board* puts it
+  there as one group (one undo removes it), *Discard* drops it. The AI sheet is
+  bigger to fit it.
+
+- *Paste image* in the import sheet puts the clipboard's image on the board.
+- WebP and GIF images can be imported from the file picker.
+
+### Changed
+
+- The ✦ AI button in the top-right controls is filled in the brand colour so it
+  stands out.
+- The board code reads as `ABC·DEF` in a sans font; codes typed or pasted with
+  the `·` still join.
+
+### Fixed
+
+- Transparent PNG/WebP/GIF images keep their transparency instead of turning
+  black.
+
 ## [1.0.0-beta.4] - 2026-09-26
 
 ### Fixed

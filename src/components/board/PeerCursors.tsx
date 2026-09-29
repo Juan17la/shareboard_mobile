@@ -13,6 +13,8 @@
  */
 import { View } from 'react-native';
 
+import { elementBounds } from '@/features/board/geometry';
+import type { BoardElement, Participant } from '@/features/board/model';
 import { useBoardStore } from '@/features/board/store';
 import { useSessionStore } from '@/features/session/store';
 
@@ -76,6 +78,56 @@ export function PeerCursors() {
               {p.nickname}
             </Txt>
           </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Who holds what: the holder's name, in their presence colour, on a tag above
+ * each element someone else has selected — one tag per holder. Its dashed
+ * frame is drawn on the canvas (`ScreenOverlays`).
+ */
+export function HeldTags({
+  elements,
+  held,
+}: {
+  elements: BoardElement[];
+  held: ReadonlyMap<string, Participant>;
+}) {
+  const camera = useBoardStore((s) => s.camera);
+  if (!held.size) return null;
+  const tagged = new Set<string>();
+  const tags: { who: Participant; x: number; y: number }[] = [];
+  for (const el of elements) {
+    const who = held.get(el.id);
+    if (!who || tagged.has(who.userId)) continue;
+    tagged.add(who.userId);
+    const b = elementBounds(el);
+    tags.push({ who, x: b.x * camera.scale + camera.x - 4, y: b.y * camera.scale + camera.y - 28 });
+  }
+  return (
+    <View
+      pointerEvents="none"
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}
+    >
+      {tags.map(({ who, x, y }) => (
+        <View
+          key={who.userId}
+          style={{
+            position: 'absolute',
+            left: x,
+            top: y,
+            paddingHorizontal: 7,
+            paddingVertical: 2,
+            borderRadius: 6,
+            backgroundColor: who.color,
+          }}
+        >
+          <Txt weight="bold" size={10} leading={1.3} tone="inverse" numberOfLines={1}>
+            {who.nickname}
+          </Txt>
         </View>
       ))}
     </View>
