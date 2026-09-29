@@ -2,6 +2,7 @@ import {
   DashPathEffect,
   Group,
   Image,
+  Line,
   Oval,
   Path,
   Rect,
@@ -22,6 +23,8 @@ import { useColors } from '@/features/session/store';
 import {
   anchorsOf,
   bendHandleOf,
+  boxOf,
+  canRotate,
   curveSegment,
   dashIntervals,
   elementBounds,
@@ -29,11 +32,18 @@ import {
   handlesOf,
   headsOf,
   isLineLike,
+  labelLines,
   markerPaths,
   n as round,
+  polygonPoints,
+  rotateHandleOf,
+  rotationOf,
   routePath,
   shapeBounds,
   strokeToSvgPath,
+  textLines,
+  toWorld,
+  TEXT_LINE_HEIGHT,
   type Bounds,
   type MarkerPart,
 } from '@/features/board/geometry';
@@ -83,7 +93,14 @@ function MarkerView({
   return (
     <Group>
       {markerPaths(kind, tip, angle, markerSize(width)).map((part, i) => (
-        <MarkerPartView key={i} d={part.d} fill={part.fill} color={color} width={width} ground={ground} />
+        <MarkerPartView
+          key={i}
+          d={part.d}
+          fill={part.fill}
+          color={color}
+          width={width}
+          ground={ground}
+        />
       ))}
     </Group>
   );
@@ -122,11 +139,12 @@ function MarkerPartView({
 /** A shape's label: centred in its box, or floating just above a line's midpoint. */
 function ShapeLabel({ el }: { el: ShapeElement }) {
   const fontSize = el.fontSize ?? SHAPE_TEXT_SIZE;
-  const font = useBoardFont(fontSize);
+  const font = useBoardFont(fontSize, false, false, el.font);
   if (!el.text) return null;
   const { x, y, width, height } = shapeBounds(el);
-  const step = fontSize * 1.25;
-  const lines = el.text.split('\n');
+  const step = fontSize * TEXT_LINE_HEIGHT;
+  // Wrapped inside the figure (a line's label only breaks where typed).
+  const lines = labelLines(el, fontSize);
   const cx = x + width / 2;
   const cy = isLineLike(el)
     ? y + height / 2 - (lines.length * step) / 2 - fontSize * 0.4
@@ -157,27 +175,42 @@ function ShapeLabel({ el }: { el: ShapeElement }) {
  */
 export const HANDLE_SIZE = 12;
 
+/** How opaque an element someone else holds is painted. */
+export const HELD_ALPHA = 0.45;
+
 /** A dashed screen-space box round board-space bounds: the frame, and the marquee. */
 export function DashedBox({
   b,
   camera,
+  angle = 0,
+  color,
 }: {
   b: Bounds;
   camera: { x: number; y: number; scale: number };
+  /** Turns the box about its centre, for a single turned element. */
+  angle?: number;
+  /** The accent unless given: a holder's presence colour. */
+  color?: string;
 }) {
   const c = useColors();
+  const origin = {
+    x: (b.x + b.width / 2) * camera.scale + camera.x,
+    y: (b.y + b.height / 2) * camera.scale + camera.y,
+  };
   return (
-    <Rect
-      x={b.x * camera.scale + camera.x - 4}
-      y={b.y * camera.scale + camera.y - 4}
-      width={b.width * camera.scale + 8}
-      height={b.height * camera.scale + 8}
-      color={c.accent}
-      style="stroke"
-      strokeWidth={1.5}
-    >
-      <DashPathEffect intervals={[5, 4]} />
-    </Rect>
+    <Group transform={angle ? [{ rotate: angle }] : undefined} origin={origin}>
+      <Rect
+        x={b.x * camera.scale + camera.x - 4}
+        y={b.y * camera.scale + camera.y - 4}
+        width={b.width * camera.scale + 8}
+        height={b.height * camera.scale + 8}
+        color={color ?? c.accent}
+        style="stroke"
+        strokeWidth={1.5}
+      >
+        <DashPathEffect intervals={[5, 4]} />
+      </Rect>
+    </Group>
   );
 }
 
@@ -195,22 +228,57 @@ export function SelectionFrame({
   const line = one?.kind === 'shape' && isLineLike(one) ? one : null;
   const fold = line ? bendHandleOf(line) : null;
   const b = one ? elementBounds(one) : unionBounds(elements);
+  const knob = one ? rotateHandleOf(one, camera.scale) : null;
+  const top = one ? boxOf(one) : null;
+  const knobStem = one && knob && top ? toWorld(one, { x: top.x + top.width / 2, y: top.y }) : null;
   return (
     <Group>
+      {/* The rotate knob: a round handle on a short stem above the top edge. */}
+      {knob && knobStem ? (
+        <Group>
+          <Line
+            p1={{ x: sx(knobStem.x), y: sy(knobStem.y) }}
+            p2={{ x: sx(knob.x), y: sy(knob.y) }}
+            color={c.accent}
+            strokeWidth={1.5}
+          />
+          <Circle cx={sx(knob.x)} cy={sy(knob.y)} r={HANDLE_SIZE / 2 + 1} color={c.background} />
+          <Circle
+            cx={sx(knob.x)}
+            cy={sy(knob.y)}
+            r={HANDLE_SIZE / 2 + 1}
+            color={c.accent}
+            style="stroke"
+            strokeWidth={1.5}
+          />
+        </Group>
+      ) : null}
       {line ? (
         // A line has no box to frame, so the line itself lights up: a soft
         // accent halo along its route, and round handles at the two ends it
         // can be dragged by — unmistakably not the square corners of a box.
-        <Group transform={[{ translateX: camera.x }, { translateY: camera.y }, { scale: camera.scale }]}>
+        <Group
+          transform={[{ translateX: camera.x }, { translateY: camera.y }, { scale: camera.scale }]}
+        >
           <Halo line={line} color={c.accent} width={line.strokeWidth + 8 / camera.scale} />
         </Group>
+      ) : one && canRotate(one) ? (
+        // One turnable element is framed along its own (turned) box.
+        <DashedBox b={boxOf(one)} camera={camera} angle={rotationOf(one)} />
       ) : (
         <DashedBox b={b} camera={camera} />
       )}
       {/* A curved or elbow line's fold: a diamond handle, dragged to reshape
           how far it bows or where it turns. */}
       {fold ? (
-        <Group key="fold" transform={[{ translateX: sx(fold.x) }, { translateY: sy(fold.y) }, { rotate: Math.PI / 4 }]}>
+        <Group
+          key="fold"
+          transform={[
+            { translateX: sx(fold.x) },
+            { translateY: sy(fold.y) },
+            { rotate: Math.PI / 4 },
+          ]}
+        >
           <Rect
             x={-HANDLE_SIZE / 2}
             y={-HANDLE_SIZE / 2}
@@ -351,15 +419,20 @@ function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
     );
   }
 
-  if (el.shape === 'triangle') {
-    // Apex centred on the top edge, base along the bottom — the shape the tool
-    // icon promises, drawn inside the dragged box.
-    const path = Skia.PathBuilder.Make()
-      .moveTo(x + w / 2, y)
-      .lineTo(x + w, y + h)
-      .lineTo(x, y + h)
-      .close()
-      .detach();
+  if (el.shape === 'triangle' || el.shape === 'polygon') {
+    // A triangle: apex centred on the top edge, base along the bottom — the
+    // shape the tool icon promises. A polygon: regular, first corner up.
+    const pts =
+      el.shape === 'triangle'
+        ? [
+            { x: x + w / 2, y },
+            { x: x + w, y: y + h },
+            { x, y: y + h },
+          ]
+        : polygonPoints({ x, y, width: w, height: h }, el.sides);
+    const builder = Skia.PathBuilder.Make().moveTo(pts[0].x, pts[0].y);
+    for (const p of pts.slice(1)) builder.lineTo(p.x, p.y);
+    const path = builder.close().detach();
     return (
       <Group>
         {el.fill ? <Path path={path} color={el.fill} /> : null}
@@ -454,10 +527,23 @@ function TextPath({
 }
 
 function TextView({ el }: { el: Extract<BoardElement, { kind: 'text' }> }) {
-  const font = useBoardFont(el.fontSize, !!el.bold, !!el.italic);
-  // Skia draws text from the baseline; nudge down by ~the font size.
+  const font = useBoardFont(el.fontSize, !!el.bold, !!el.italic, el.font);
+  const step = el.fontSize * TEXT_LINE_HEIGHT;
+  // Its own newlines, then wrapped to its width if it has one. Skia draws text
+  // from the baseline; nudge each line down by ~the font size.
   return (
-    <TextPath x={el.at.x} y={el.at.y + el.fontSize} text={el.text} font={font} color={el.color} />
+    <Group>
+      {textLines(el).map((line, i) => (
+        <TextPath
+          key={i}
+          x={el.at.x}
+          y={el.at.y + el.fontSize + i * step}
+          text={line}
+          font={font}
+          color={el.color}
+        />
+      ))}
+    </Group>
   );
 }
 
@@ -577,7 +663,7 @@ export function Anchors({
   return (
     <Group>
       {elements.map((el) =>
-        el.kind === 'shape'
+        anchorsOf(el).length
           ? anchorsOf(el).map((a, i) => (
               <Group key={`${el.id}-${i}`}>
                 <Circle
@@ -634,6 +720,19 @@ export const ElementRenderer = memo(function ElementRenderer({
 }) {
   if (dark) el = inked(el);
   const ground = dark ? Palettes.dark.background : Palettes.light.background;
+  const angle = rotationOf(el);
+  if (angle) {
+    // Turned about the centre of its box: the element itself paints unturned.
+    const b = boxOf(el);
+    return (
+      <Group
+        transform={[{ rotate: angle }]}
+        origin={{ x: b.x + b.width / 2, y: b.y + b.height / 2 }}
+      >
+        <ElementRenderer el={{ ...el, rotation: 0 }} smooth={smooth} />
+      </Group>
+    );
+  }
   switch (el.kind) {
     case 'stroke':
       return <StrokeView el={el} smooth={smooth} />;

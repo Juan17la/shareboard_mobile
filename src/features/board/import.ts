@@ -10,6 +10,8 @@
  *   a Shareboard PNG/JPG          -> the same, read back out of the picture
  *                                    (`embed.ts`), unless the switch is off
  *   any other picture             -> placed on the board as one flat image
+ *                                    (PNG, JPG, WebP, GIF's first frame; no SVG:
+ *                                    the native decoder can't rasterise it)
  *
  * The flat-image path has a hard constraint behind it. An image element carries
  * its bytes inline as a `data:` URI, and that element travels to the server
@@ -23,6 +25,7 @@
  * even the smallest attempt is too big it is refused with a readable error
  * rather than being put on the wire. See docs/06-loading-exporting.
  */
+import * as Clipboard from 'expo-clipboard';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
@@ -60,7 +63,7 @@ const ENCODE_ATTEMPTS = [
  */
 export async function pickBoardFile(restoreEditable: boolean): Promise<ImportResult> {
   const picked = await File.pickFileAsync({
-    mimeTypes: ['application/json', 'text/json', 'image/png', 'image/jpeg', '*/*'],
+    mimeTypes: ['application/json', 'text/json', 'image/*', '*/*'],
   });
   if (picked.canceled) return { kind: 'canceled' };
 
@@ -82,8 +85,9 @@ export async function pickBoardFile(restoreEditable: boolean): Promise<ImportRes
       const embedded = extractSnapshot(bytes);
       if (embedded) return { kind: 'snapshot', snapshot: embedded };
     }
-    return shrinkToElement(picked.result.uri);
+    return shrinkToElement(picked.result.uri, container === 'png');
   }
+  if (isWebpOrGif(bytes)) return shrinkToElement(picked.result.uri, true);
 
   throw new SnapshotParseError('That file is not a Shareboard board or an image.');
 }
@@ -100,11 +104,30 @@ export async function pickImageFile(): Promise<ImportResult> {
   const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
   if (picked.canceled || !picked.assets?.length) return { kind: 'canceled' };
 
-  return shrinkToElement(picked.assets[0].uri);
+  const asset = picked.assets[0];
+  return shrinkToElement(asset.uri, !!asset.mimeType && !/jpe?g|heic|heif/i.test(asset.mimeType));
 }
 
-/** Re-encodes a picture until it fits inside one realtime frame. */
-async function shrinkToElement(uri: string): Promise<ImportResult> {
+/** An image on the system clipboard (copied from a browser, a screenshot…). */
+export async function pasteImage(): Promise<ImportResult> {
+  if (!(await Clipboard.hasImageAsync())) throw new Error('There is no image on the clipboard.');
+  const img = await Clipboard.getImageAsync({ format: 'png' });
+  if (!img) throw new Error('There is no image on the clipboard.');
+  return shrinkToElement(img.data, true);
+}
+
+/** WebP ("RIFF….WEBP") or GIF ("GIF8") — may carry transparency. */
+function isWebpOrGif(b: Uint8Array): boolean {
+  const ascii = (from: number, to: number) => String.fromCharCode(...b.subarray(from, to));
+  return (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') || ascii(0, 4) === 'GIF8';
+}
+
+/**
+ * Re-encodes a picture until it fits inside one realtime frame. `alpha`: the
+ * source may be see-through (PNG/WebP/GIF), so it is kept as PNG — a JPEG
+ * would paint the transparent parts black.
+ */
+async function shrinkToElement(uri: string, alpha = false): Promise<ImportResult> {
   // One decode up front just to learn the orientation: constraining the *longer*
   // edge is what keeps a tall photo from coming back with far more pixels than
   // a wide one at the same nominal "size".
@@ -117,7 +140,7 @@ async function shrinkToElement(uri: string): Promise<ImportResult> {
     const rendered = await context.resize(bound).renderAsync();
     const out = await rendered.saveAsync({
       compress: attempt.compress,
-      format: SaveFormat.JPEG,
+      format: alpha ? SaveFormat.PNG : SaveFormat.JPEG,
       base64: true,
     });
 
@@ -127,7 +150,7 @@ async function shrinkToElement(uri: string): Promise<ImportResult> {
 
     return {
       kind: 'image',
-      uri: `data:image/jpeg;base64,${out.base64}`,
+      uri: `data:image/${alpha ? 'png' : 'jpeg'};base64,${out.base64}`,
       width: out.width,
       height: out.height,
     };

@@ -25,6 +25,7 @@ import { Radius, StatusColors } from '@/constants/theme';
 import { useColors, useDark, useSessionStore } from '@/features/session/store';
 import { useT, useTf } from '@/features/i18n/store';
 import { useBoardStore } from '@/features/board/store';
+import { formatShortCode } from '@/utils/short-code';
 
 import { IconButton } from '../ui/Button';
 import { Avatar, AvatarOverflow } from '../ui/Avatar';
@@ -180,13 +181,12 @@ export function BoardHeader({
           color={codeCopied ? '#0B7F72' : c.text}
         />
         <Txt
-          weight="bold"
-          size={12.5}
-          mono
-          tracking={0.6}
+          weight="extrabold"
+          size={13}
+          tracking={1}
           color={codeCopied ? '#0B7F72' : c.text}
         >
-          {meta?.shortCode ?? '——————'}
+          {meta ? formatShortCode(meta.shortCode) : '———·———'}
         </Txt>
       </Pressable>
 

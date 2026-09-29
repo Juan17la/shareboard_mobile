@@ -6,7 +6,7 @@
  * `boardToken` that owner-only calls (rename, permissions, snapshot) send as
  * `Authorization: Bearer`.
  */
-import type { BoardMeta, BoardSnapshot, Point, UserId } from '@/features/board/model';
+import type { BoardElement, BoardMeta, BoardSnapshot, Point, UserId } from '@/features/board/model';
 
 import { request } from './client';
 import type {
@@ -39,10 +39,13 @@ export const joinBoard = (body: JoinBoardRequest) =>
     userId: body.userId,
   });
 
-/** Draws `prompt` centred on `at` (board coords); the elements arrive over the socket. */
+/**
+ * Draws `prompt` centred on `at` (board coords). Nothing lands on the board:
+ * the elements come back for a preview, and `addElements` puts them there.
+ */
 export const drawWithAi = (boardId: string, prompt: string, at: Point, auth: Auth) =>
-  request<{ reply: string; added: number }>('POST', `/boards/${id(boardId)}/ai`, {
-    body: { prompt, at },
+  request<{ reply: string; elements: BoardElement[] }>('POST', `/boards/${id(boardId)}/ai`, {
+    body: { prompt, at, preview: true },
     ...auth,
   });
 

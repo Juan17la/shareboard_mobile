@@ -26,17 +26,24 @@ import { Shadow } from '@/constants/theme';
 import {
   bendFromDrag,
   bendHandleOf,
+  boxOf,
+  canRotate,
+  elementBounds,
   elementsIn,
   handlesOf,
   isLineLike,
   linkEndpoints,
   recognizeSketch,
   resizeElement,
+  rotateHandleOf,
+  rotationOf,
+  rotationFromDrag,
+  ROTATE_HANDLE,
   shapeAt,
   shapeBounds,
   simplify,
 } from '@/features/board/geometry';
-import type { BoardElement, Link, Point, ShapeElement } from '@/features/board/model';
+import type { BoardElement, Link, Participant, Point, ShapeElement } from '@/features/board/model';
 import { visibleSorted } from '@/features/board/ops';
 import {
   MAX_ZOOM,
@@ -44,6 +51,7 @@ import {
   coveringFigure,
   editPatches,
   fillFor,
+  heldByOthers,
   sketchElement,
   useBoardStore,
   type Camera,
@@ -58,10 +66,11 @@ import {
   DashedBox,
   ElementRenderer,
   LIVE_STROKE,
+  HELD_ALPHA,
   LiveDotGrid,
   SelectionFrame,
 } from './ElementRenderer';
-import { PeerCursors } from './PeerCursors';
+import { HeldTags, PeerCursors } from './PeerCursors';
 import { TextEditorOverlay } from './TextEditorOverlay';
 import { GlassPanel } from '../ui/Glass';
 import { Icon } from '../ui/Icon';
@@ -101,6 +110,7 @@ function dragPatch(edit: LiveEdit, el: BoardElement, p: Point): Partial<BoardEle
   if (edit.handle === BEND_HANDLE && el.kind === 'shape' && isLineLike(el)) {
     return { bend: bendFromDrag(el, p) };
   }
+  if (edit.handle === ROTATE_HANDLE) return { rotation: rotationFromDrag(el, p) };
   const next = resizeElement(el, edit.handle, p) as Partial<ShapeElement>;
   if (el.kind === 'shape' && isLineLike(el) && next.from && next.to)
     return snapLine(el.shape, next.from, next.to);
@@ -156,6 +166,8 @@ export function BoardCanvas({
   const liveShape = useBoardStore((s) => s.liveShape);
   const liveSketch = useBoardStore((s) => s.liveSketch);
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** What is being typed: painted in place by the canvas, so the editor only holds the caret. */
+  const [draft, setDraft] = useState<string | null>(null);
   /** The hold menu: where it opened on screen, and the board point a paste lands on. */
   const [menu, setMenu] = useState<{ x: number; y: number; at: Point } | null>(null);
   // Another tool, or another board, and the menu is not about anything any more.
@@ -171,13 +183,21 @@ export function BoardCanvas({
   // drag preview below only patches the sorted list.
   const sorted = useMemo(() => visibleSorted(elements), [elements]);
   const list = useMemo(() => {
+    if (editingId && draft !== null) {
+      return sorted.map((el) => (el.id === editingId ? ({ ...el, text: draft } as BoardElement) : el));
+    }
     if (!liveEdit) return sorted;
     // The same patches the lift will commit, so the preview is the result.
     const patches = new Map(editPatches(sorted, liveEdit).map((p) => [p.id, p.patch]));
     return sorted.map((el) =>
       patches.has(el.id) ? ({ ...el, ...patches.get(el.id) } as BoardElement) : el,
     );
-  }, [sorted, liveEdit]);
+  }, [sorted, liveEdit, editingId, draft]);
+
+  // What the others hold: dimmed, framed in their colour, not for picking.
+  const participants = useBoardStore((s) => s.participants);
+  const you = useBoardStore((s) => s.you);
+  const held = useMemo(() => heldByOthers(participants, you), [participants, you]);
 
   const selecting = tool === 'select' || tool === 'shape';
   const selected = useMemo(
@@ -225,11 +245,15 @@ export function BoardCanvas({
       const one = sel.length === 1 ? sel[0] : null;
       const fold = one?.kind === 'shape' ? bendHandleOf(one) : null;
       const onFold = fold ? Math.hypot(fold.x - p.x, fold.y - p.y) <= hitR : false;
-      const handle = onFold
-        ? BEND_HANDLE
-        : one
-          ? handlesOf(one).findIndex((h) => Math.hypot(h.x - p.x, h.y - p.y) <= hitR)
-          : -1;
+      const knob = one ? rotateHandleOf(one, scale) : null;
+      const onKnob = knob ? Math.hypot(knob.x - p.x, knob.y - p.y) <= hitR : false;
+      const handle = onKnob
+        ? ROTATE_HANDLE
+        : onFold
+          ? BEND_HANDLE
+          : one
+            ? handlesOf(one).findIndex((h) => Math.hypot(h.x - p.x, h.y - p.y) <= hitR)
+            : -1;
       const onBody = !!store().elementAt(p, 6 / scale, sel);
       const mode = handle >= 0 ? 'resize' : onBody ? 'move' : null;
       if (!mode) return false;
@@ -476,14 +500,16 @@ export function BoardCanvas({
           // Selecting something is asking to change it: the options come up.
           store().setRailOpen(!!hit);
         } else if (t === 'select') {
-          const hit = store().elementAt(p, 8 / store().camera.scale);
-          store().select(hit?.id ?? null);
+          const found = store().elementAt(p, 8 / store().camera.scale);
+          store().select(found?.id ?? null);
+          // What someone else holds is not picked up (`select` leaves it out).
+          const hit = found && store().selectedIds.includes(found.id) ? found : null;
           if (hit) tick(haptics);
           store().setRailOpen(!!hit);
           // Twice on the same text or shape: type into it. Twice on nothing: zoom.
           const again = isDoubleTap(hit?.id ?? '');
           if (again && hit && (hit.kind === 'text' || hit.kind === 'shape')) setEditingId(hit.id);
-          else if (again && !hit) zoomTap({ x: e.x, y: e.y });
+          else if (again && !found) zoomTap({ x: e.x, y: e.y });
         }
         onCursorMove?.(p);
       });
@@ -534,9 +560,16 @@ export function BoardCanvas({
           <GridLayer width={size.width} height={size.height} camera={camera} />
 
           <Group transform={transform}>
-            {list.map((el) => (
-              <ElementRenderer key={el.id} el={el} smooth={smooth} dark={dark} />
-            ))}
+            {list.map((el) =>
+              held.has(el.id) ? (
+                // Someone else holds it: dimmed, framed in their colour below.
+                <Group key={el.id} opacity={HELD_ALPHA}>
+                  <ElementRenderer el={el} smooth={smooth} dark={dark} />
+                </Group>
+              ) : (
+                <ElementRenderer key={el.id} el={el} smooth={smooth} dark={dark} />
+              ),
+            )}
 
             {liveSketch ? (
               <ElementRenderer
@@ -588,11 +621,13 @@ export function BoardCanvas({
             ) : null}
           </Group>
 
-          {selected.length || liveMarquee || anchors ? (
+          {selected.length || liveMarquee || anchors || held.size ? (
             <ScreenOverlays
               selected={selected}
               marquee={liveMarquee}
               anchors={anchors ? list : null}
+              held={held}
+              elements={list}
             />
           ) : null}
           </Group>
@@ -600,6 +635,7 @@ export function BoardCanvas({
       </GestureDetector>
 
       <PeerCursors />
+      <HeldTags elements={list} held={held} />
 
       {selectedShape && !editing ? (
         <LabelButton
@@ -623,7 +659,14 @@ export function BoardCanvas({
       ) : null}
 
       {editing && (editing.kind === 'text' || editing.kind === 'shape') ? (
-        <TextEditorOverlay element={editing} onClose={() => setEditingId(null)} />
+        <TextEditorOverlay
+          element={editing}
+          onDraft={setDraft}
+          onClose={() => {
+            setEditingId(null);
+            setDraft(null);
+          }}
+        />
       ) : null}
     </View>
   );
@@ -721,14 +764,35 @@ function ScreenOverlays({
   selected,
   marquee,
   anchors,
+  held,
+  elements,
 }: {
   selected: BoardElement[];
   marquee: { from: Point; to: Point } | null;
   anchors: BoardElement[] | null;
+  /** What others hold, framed in their colour. */
+  held: ReadonlyMap<string, Participant>;
+  elements: BoardElement[];
 }) {
   const camera = useBoardStore((s) => s.camera);
   return (
     <>
+      {held.size
+        ? elements.map((el) => {
+            const who = held.get(el.id);
+            if (!who) return null;
+            const turns = canRotate(el);
+            return (
+              <DashedBox
+                key={`held-${el.id}`}
+                b={turns ? boxOf(el) : elementBounds(el)}
+                camera={camera}
+                angle={turns ? rotationOf(el) : 0}
+                color={who.color}
+              />
+            );
+          })
+        : null}
       {selected.length ? <SelectionFrame elements={selected} camera={camera} /> : null}
       {marquee ? <DashedBox b={shapeBounds(marquee)} camera={camera} /> : null}
       {anchors ? <Anchors elements={anchors} camera={camera} /> : null}

@@ -44,7 +44,7 @@ function stamp(): string {
  * before it reaches the filesystem — a name containing `/` would otherwise be
  * read as a path.
  */
-export function exportFileName(boardName: string, ext: 'png' | 'jpg' | 'json'): string {
+export function exportFileName(boardName: string, ext: 'png' | 'jpg' | 'svg' | 'json'): string {
   const safe = (boardName || 'board').replace(/[^\w-]+/g, '_').slice(0, 40);
   return `shareboard_${safe}_${stamp()}.${ext}`;
 }
@@ -111,4 +111,10 @@ export async function shareSnapshot(snapshot: BoardSnapshot): Promise<void> {
     'utf8',
   );
   await share(uri, 'application/json', 'Export whiteboard file', 'public.json');
+}
+
+/** An SVG document (`svg.ts`) to the share sheet: a photo library cannot hold one. */
+export async function shareSvg(boardName: string, svg: string): Promise<void> {
+  const uri = writeCacheFile(exportFileName(boardName, 'svg'), svg, 'utf8');
+  await share(uri, 'image/svg+xml', 'Share whiteboard', 'public.svg-image');
 }

@@ -32,6 +32,7 @@ import {
 } from '@/features/board/geometry';
 import {
   DASHES,
+  FONTS,
   LIMITS,
   MARKERS,
   ROUTES,
@@ -59,6 +60,8 @@ import { ColorPickerSheet } from '../ui/ColorPickerSheet';
 import { GlassPanel } from '../ui/Glass';
 import { Icon, type IconName } from '../ui/Icon';
 import { Txt } from '../ui/Text';
+
+import { FAMILIES } from './BoardFonts';
 import { tip, toast } from '../ui/Toast';
 
 type LabelKey =
@@ -69,6 +72,7 @@ type LabelKey =
   | 'shapeRectangle'
   | 'shapeEllipse'
   | 'shapeTriangle'
+  | 'shapePolygon'
   | 'shapeLine'
   | 'shapeArrow'
   | 'shapes'
@@ -82,11 +86,19 @@ interface ToolEntry {
   labelKey: LabelKey;
 }
 
+const FONT_LABELS = {
+  sans: 'fontSans',
+  serif: 'fontSerif',
+  mono: 'fontMono',
+  hand: 'fontHand',
+} as const;
+
 /** The shape kinds, offered in the options strip while the shapes tool is in hand. */
 const SHAPES: ToolEntry[] = [
   { tool: 'shape', shape: 'rectangle', icon: 'rectangle', labelKey: 'shapeRectangle' },
   { tool: 'shape', shape: 'ellipse', icon: 'ellipse', labelKey: 'shapeEllipse' },
   { tool: 'shape', shape: 'triangle', icon: 'triangle', labelKey: 'shapeTriangle' },
+  { tool: 'shape', shape: 'polygon', icon: 'polygon', labelKey: 'shapePolygon' },
   { tool: 'shape', shape: 'line', icon: 'line', labelKey: 'shapeLine' },
   { tool: 'shape', shape: 'arrow', icon: 'arrow', labelKey: 'shapeArrow' },
 ];
@@ -94,7 +106,7 @@ const SHAPES: ToolEntry[] = [
 /**
  * One row of seven, in the order a hand reaches for them: the cursor first
  * (it is the tool in hand by default — it looks, picks up, moves the board),
- * the hand, then the marks. The five shape kinds fold into one button so the
+ * the hand, then the marks. The six shape kinds fold into one button so the
  * row fits a phone; the strip above offers the kind.
  */
 const TOOLS: ToolEntry[] = [
@@ -185,6 +197,9 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     selShape;
   const showFill = (shapeTool && isFillable(config.shape)) || selBox;
   const showLine = lineTool || selLine;
+  const showSides =
+    (shapeTool && config.shape === 'polygon') ||
+    has((el) => el.kind === 'shape' && el.shape === 'polygon');
   // A selected shape borrows the text tool's size stepper for its label.
   const showTextOptions = tool === 'text' || selText || selShape;
   const showStyle = tool === 'text' || selText;
@@ -200,7 +215,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const kinds: ShapeKind[] = selLine
     ? ['line', 'arrow']
     : selShape
-      ? ['rectangle', 'ellipse', 'triangle']
+      ? ['rectangle', 'ellipse', 'triangle', 'polygon']
       : shapeTool
         ? SHAPES.map((e) => e.shape!)
         : [];
@@ -233,6 +248,13 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
             ? (el.fontSize ?? SHAPE_TEXT_SIZE)
             : undefined,
       ) ?? config.fontSize,
+    sides:
+      first((el) => (el.kind === 'shape' && el.shape === 'polygon' ? el.sides : undefined)) ??
+      config.sides,
+    font:
+      first((el) =>
+        el.kind === 'text' || el.kind === 'shape' ? (el.font ?? 'sans') : undefined,
+      ) ?? config.font,
     bold: first((el) => (el.kind === 'text' ? !!el.bold : undefined)) ?? config.bold,
     italic: first((el) => (el.kind === 'text' ? !!el.italic : undefined)) ?? config.italic,
     headStart:
@@ -551,6 +573,35 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                     </>
                   ) : null}
 
+                  {showSides ? (
+                    <Cluster>
+                      <StepperButton
+                        icon="minus"
+                        label={t.fewerSides}
+                        onPress={() => {
+                          nudge();
+                          setConfig({ sides: Math.max(LIMITS.minSides, cur.sides - 1) });
+                        }}
+                      />
+                      <Txt
+                        weight="extrabold"
+                        size={11}
+                        mono
+                        style={{ width: 52, textAlign: 'center' }}
+                      >
+                        {cur.sides} {t.sides}
+                      </Txt>
+                      <StepperButton
+                        icon="plus"
+                        label={t.moreSides}
+                        onPress={() => {
+                          nudge();
+                          setConfig({ sides: Math.min(LIMITS.maxSides, cur.sides + 1) });
+                        }}
+                      />
+                    </Cluster>
+                  ) : null}
+
                   {showTextOptions ? (
                     <Cluster>
                       <StepperButton
@@ -577,6 +628,25 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                           setFontSize(Math.min(LIMITS.maxFontSize, fontSize + 4));
                         }}
                       />
+                      {FONTS.map((font) => (
+                        <MiniButton
+                          key={font}
+                          label={t[FONT_LABELS[font]]}
+                          active={cur.font === font}
+                          onPress={() => {
+                            nudge();
+                            setConfig({ font });
+                          }}
+                        >
+                          <Txt
+                            size={14}
+                            color={cur.font === font ? '#FFFFFF' : undefined}
+                            style={{ fontFamily: FAMILIES[font][0] }}
+                          >
+                            Aa
+                          </Txt>
+                        </MiniButton>
+                      ))}
                       {showStyle ? (
                         <>
                           <MiniButton

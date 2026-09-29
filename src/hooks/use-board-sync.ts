@@ -108,6 +108,9 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
           you: msg.you,
           seq: msg.seq,
         });
+        // A reconnect starts with no hold on the server: claim the selection again.
+        const now = useBoardStore.getState();
+        conn.send({ type: 'select', boardId, ids: now.canEditNow() ? now.selectedIds : [] });
         rememberBoard({
           id: msg.meta.id,
           shortCode: msg.meta.shortCode,
@@ -218,6 +221,27 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
     });
     return () => sub.remove();
   }, []);
+
+  // What this user has selected is what they hold: sent as it changes,
+  // throttled like the cursor. A viewer holds nothing.
+  useEffect(() => {
+    let last = '';
+    const send = throttle(() => {
+      const s = useBoardStore.getState();
+      const ids = s.canEditNow() ? s.selectedIds : [];
+      const key = ids.join(',');
+      if (key === last) return;
+      last = key;
+      connRef.current?.send({ type: 'select', boardId, ids });
+    }, REALTIME.cursorThrottleMs);
+    const unsub = useBoardStore.subscribe((state, prev) => {
+      if (state.selectedIds !== prev.selectedIds) send();
+    });
+    return () => {
+      send.cancel();
+      unsub();
+    };
+  }, [boardId]);
 
   // Throttled cursor broadcaster, rebuilt per board.
   const cursorSenderRef = useRef<((at: Point) => void) | null>(null);
