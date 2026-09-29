@@ -32,6 +32,9 @@ import {
   linkEndpoints,
   recognizeSketch,
   resizeElement,
+  rotateHandleOf,
+  rotationFromDrag,
+  ROTATE_HANDLE,
   shapeAt,
   shapeBounds,
   simplify,
@@ -101,6 +104,7 @@ function dragPatch(edit: LiveEdit, el: BoardElement, p: Point): Partial<BoardEle
   if (edit.handle === BEND_HANDLE && el.kind === 'shape' && isLineLike(el)) {
     return { bend: bendFromDrag(el, p) };
   }
+  if (edit.handle === ROTATE_HANDLE) return { rotation: rotationFromDrag(el, p) };
   const next = resizeElement(el, edit.handle, p) as Partial<ShapeElement>;
   if (el.kind === 'shape' && isLineLike(el) && next.from && next.to)
     return snapLine(el.shape, next.from, next.to);
@@ -225,11 +229,15 @@ export function BoardCanvas({
       const one = sel.length === 1 ? sel[0] : null;
       const fold = one?.kind === 'shape' ? bendHandleOf(one) : null;
       const onFold = fold ? Math.hypot(fold.x - p.x, fold.y - p.y) <= hitR : false;
-      const handle = onFold
-        ? BEND_HANDLE
-        : one
-          ? handlesOf(one).findIndex((h) => Math.hypot(h.x - p.x, h.y - p.y) <= hitR)
-          : -1;
+      const knob = one ? rotateHandleOf(one, scale) : null;
+      const onKnob = knob ? Math.hypot(knob.x - p.x, knob.y - p.y) <= hitR : false;
+      const handle = onKnob
+        ? ROTATE_HANDLE
+        : onFold
+          ? BEND_HANDLE
+          : one
+            ? handlesOf(one).findIndex((h) => Math.hypot(h.x - p.x, h.y - p.y) <= hitR)
+            : -1;
       const onBody = !!store().elementAt(p, 6 / scale, sel);
       const mode = handle >= 0 ? 'resize' : onBody ? 'move' : null;
       if (!mode) return false;

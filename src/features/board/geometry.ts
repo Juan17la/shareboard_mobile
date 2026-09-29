@@ -10,7 +10,18 @@
  * to the cubic Beziers SVG understands), which is what keeps freehand lines
  * smooth: the "minimizar líneas entrecortadas" requirement in docs/01.
  */
-import type { BoardElement, Dash, Link, Marker, Point, Route, ShapeElement } from './model';
+import {
+  DEFAULT_SIDES,
+  LIMITS,
+  type BoardElement,
+  type Dash,
+  type Link,
+  type Marker,
+  type Point,
+  type Route,
+  type ShapeElement,
+  type TextElement,
+} from './model';
 
 export interface Bounds {
   x: number;
@@ -121,21 +132,18 @@ export function contentBounds(elements: BoardElement[]): Bounds | null {
         break;
       }
       case 'shape': {
+        if (!isLineLike(el)) {
+          growTurned(shapeBounds(el), el.strokeWidth / 2, el.rotation ?? 0, grow);
+          break;
+        }
         const pad = el.strokeWidth / 2;
         grow(el.from.x, el.from.y, pad);
         grow(el.to.x, el.to.y, pad);
         break;
       }
-      case 'text': {
-        // Skia only measures text once a font is resolved, which this module has
-        // no access to, so approximate from the glyph count.
-        grow(el.at.x, el.at.y);
-        grow(el.at.x + el.text.length * el.fontSize * 0.55, el.at.y + el.fontSize * 1.4);
-        break;
-      }
+      case 'text':
       case 'image':
-        grow(el.at.x, el.at.y);
-        grow(el.at.x + el.width, el.at.y + el.height);
+        growTurned(boxOf(el), 0, el.rotation ?? 0, grow);
         break;
     }
   }
@@ -143,6 +151,131 @@ export function contentBounds(elements: BoardElement[]): Bounds | null {
   if (!Number.isFinite(minX)) return null;
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
+
+/** Feeds the four corners of `b` (grown by `pad`), turned by `angle` about its centre, to `grow`. */
+function growTurned(b: Bounds, pad: number, angle: number, grow: (x: number, y: number) => void) {
+  const c = centreOf(b);
+  const x0 = b.x - pad;
+  const y0 = b.y - pad;
+  const x1 = b.x + b.width + pad;
+  const y1 = b.y + b.height + pad;
+  for (const corner of [
+    { x: x0, y: y0 },
+    { x: x1, y: y0 },
+    { x: x1, y: y1 },
+    { x: x0, y: y1 },
+  ]) {
+    const q = angle ? turn(corner, c, angle) : corner;
+    grow(q.x, q.y);
+  }
+}
+
+// --- text layout -------------------------------------------------------------
+// Text is measured by whoever can: the board fonts install Skia's
+// `measureText` (`setTextMeasure`); without one (tests) a glyph-count estimate.
+
+/** Text is drawn from its baseline, so a line sits `fontSize` below `at.y`; lines are this far apart. */
+export const TEXT_LINE_HEIGHT = 1.25;
+
+type TextFont = Pick<TextElement, 'fontSize' | 'bold' | 'italic'>;
+type TextMeasure = (text: string, font: TextFont) => number;
+
+let measureWidth: TextMeasure = (text, font) => text.length * font.fontSize * 0.55;
+// ponytail: one cache per element object (elements are replaced, never mutated);
+// widths taken before the web font loads stay a little off until the next edit.
+const textBoxes = new WeakMap<TextElement, Bounds>();
+
+export function setTextMeasure(measure: TextMeasure): void {
+  measureWidth = measure;
+}
+
+/** The lines a text element draws: its own newlines, then word-wrapped to `width` if it has one. */
+export function textLines(el: Pick<TextElement, 'text' | 'width'> & TextFont): string[] {
+  const paragraphs = el.text.split('\n');
+  if (!el.width) return paragraphs;
+  const out: string[] = [];
+  for (const para of paragraphs) {
+    let line = '';
+    for (const word of para.split(' ')) {
+      const next = line ? `${line} ${word}` : word;
+      // A single word longer than the width keeps its own line rather than being cut.
+      if (line && measureWidth(next, el) > el.width) {
+        out.push(line);
+        line = word;
+      } else {
+        line = next;
+      }
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+/** A text element's block, unturned: its wrap width (or longest line) by its lines. */
+export function textBox(el: TextElement): Bounds {
+  const cached = textBoxes.get(el);
+  if (cached) return cached;
+  const lines = textLines(el);
+  const longest = Math.max(...lines.map((line) => measureWidth(line, el)));
+  const box = {
+    x: el.at.x,
+    y: el.at.y,
+    width: Math.max(el.width ?? longest, el.fontSize),
+    height: el.fontSize * (0.15 + lines.length * TEXT_LINE_HEIGHT),
+  };
+  textBoxes.set(el, box);
+  return box;
+}
+
+// --- rotation ----------------------------------------------------------------
+// A box, a text or an image turns about the centre of its unturned box
+// (`boxOf`). Hit tests and handles work in that unturned ("local") frame: the
+// pointer is turned back first (`toLocal`), and answers turned forward (`toWorld`).
+
+const centreOf = (b: Bounds): Point => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
+
+function turn(p: Point, c: Point, angle: number): Point {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const dx = p.x - c.x;
+  const dy = p.y - c.y;
+  return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
+}
+
+/** Whether `el` can turn: boxes, text and images; lines and strokes cannot. */
+export const canRotate = (el: BoardElement): boolean =>
+  el.kind === 'text' || el.kind === 'image' || (el.kind === 'shape' && !isLineLike(el));
+
+export const rotationOf = (el: BoardElement): number => (canRotate(el) ? (el.rotation ?? 0) : 0);
+
+/** The box an element is drawn in before it is turned. */
+export function boxOf(el: BoardElement): Bounds {
+  switch (el.kind) {
+    case 'shape':
+      return shapeBounds(el);
+    case 'text':
+      return textBox(el);
+    case 'image':
+      return { x: el.at.x, y: el.at.y, width: el.width, height: el.height };
+    default:
+      return contentBounds([el]) ?? { x: 0, y: 0, width: 0, height: 0 };
+  }
+}
+
+/** A board point in `el`'s unturned frame. */
+export function toLocal(el: BoardElement, p: Point): Point {
+  const angle = rotationOf(el);
+  return angle ? turn(p, centreOf(boxOf(el)), -angle) : p;
+}
+
+/** A point of `el`'s unturned frame on the board. */
+export function toWorld(el: BoardElement, p: Point): Point {
+  const angle = rotationOf(el);
+  return angle ? turn(p, centreOf(boxOf(el)), angle) : p;
+}
+
+const inBox = (p: Point, b: Bounds, pad: number) =>
+  p.x >= b.x - pad && p.x <= b.x + b.width + pad && p.y >= b.y - pad && p.y <= b.y + b.height + pad;
 
 // --- selecting and reshaping a shape ---------------------------------------
 // A selected shape shows one handle per corner (two, the endpoints, for a line
@@ -211,29 +344,109 @@ export function translate(el: BoardElement, dx: number, dy: number): Partial<Boa
   }
 }
 
-/** Resize handles of any element: corners for a box or an image, ends for a line, none otherwise. */
+/** The handle on a text's right edge: drags its wrap width (the corners scale it). */
+export const TEXT_WIDTH_HANDLE = 4;
+/** The knob above a box, a text or an image that turns it (`rotateHandleOf`). */
+export const ROTATE_HANDLE = 5;
+
+const cornersOfBox = (b: Bounds): Point[] => [
+  { x: b.x, y: b.y },
+  { x: b.x + b.width, y: b.y },
+  { x: b.x + b.width, y: b.y + b.height },
+  { x: b.x, y: b.y + b.height },
+];
+
+/**
+ * Resize handles of any element, on the board: TL, TR, BR, BL of its turned
+ * box — plus the right edge's middle for a text (`TEXT_WIDTH_HANDLE`) — or the
+ * two ends of a line; none for a stroke.
+ */
 export function handlesOf(el: BoardElement): Point[] {
-  if (el.kind === 'shape') return shapeHandles(el);
-  if (el.kind !== 'image') return [];
-  const { at, width, height } = el;
-  return [
-    at,
-    { x: at.x + width, y: at.y },
-    { x: at.x + width, y: at.y + height },
-    { x: at.x, y: at.y + height },
-  ];
+  if (el.kind === 'stroke') return [];
+  if (el.kind === 'shape' && isLineLike(el)) return [el.from, el.to];
+  const b = boxOf(el);
+  const local = cornersOfBox(b);
+  if (el.kind === 'text') local.push({ x: b.x + b.width, y: b.y + b.height / 2 });
+  return local.map((p) => toWorld(el, p));
 }
 
-/** `el` after handle `h` is dragged to `p`, as a patch. */
+/** Where the rotate knob sits: 24 screen px above the top edge's middle. Null if `el` can't turn. */
+export function rotateHandleOf(el: BoardElement, scale: number): Point | null {
+  if (!canRotate(el)) return null;
+  const b = boxOf(el);
+  return toWorld(el, { x: b.x + b.width / 2, y: b.y - 24 / scale });
+}
+
+/** The rotation a drag of the knob to `p` implies; within 4° of a 15° step it snaps there. */
+export function rotationFromDrag(el: BoardElement, p: Point): number {
+  const c = centreOf(boxOf(el));
+  const angle = Math.atan2(p.y - c.y, p.x - c.x) + Math.PI / 2;
+  const step = Math.PI / 12;
+  const snapped = Math.round(angle / step) * step;
+  const out = Math.abs(angle - snapped) < Math.PI / 45 ? snapped : angle;
+  return Math.atan2(Math.sin(out), Math.cos(out));
+}
+
+/**
+ * The patch that makes `el`'s unturned box `nb` (given in its current local
+ * frame) while it keeps its rotation — so whatever `nb` shares with the old
+ * box, e.g. the pinned corner, stays exactly where it was on the board.
+ */
+function placeBox(el: BoardElement, nb: Bounds): Partial<BoardElement> {
+  const c = toWorld(el, centreOf(nb));
+  const at = { x: c.x - nb.width / 2, y: c.y - nb.height / 2 };
+  if (el.kind === 'shape') return { from: at, to: { x: at.x + nb.width, y: at.y + nb.height } };
+  if (el.kind === 'image') return { at, width: nb.width, height: nb.height };
+  return { at };
+}
+
+/**
+ * `el` after handle `h` is dragged to `p`, as a patch. A box stretches freely;
+ * an image and a text scale (an image keeps its proportions, a text grows its
+ * font); a text's edge handle re-wraps it. The opposite corner stays put.
+ */
 export function resizeElement(el: BoardElement, h: number, p: Point): Partial<BoardElement> {
-  if (el.kind === 'shape') return resizeShape(el, h, p);
-  if (el.kind !== 'image') return {};
-  const o = handlesOf(el)[(h + 2) % 4];
-  return {
-    at: { x: Math.min(o.x, p.x), y: Math.min(o.y, p.y) },
-    width: Math.max(8, Math.abs(p.x - o.x)),
-    height: Math.max(8, Math.abs(p.y - o.y)),
-  };
+  if (el.kind === 'stroke') return {};
+  if (el.kind === 'shape' && isLineLike(el)) return resizeShape(el, h, p);
+  const b = boxOf(el);
+  const q = toLocal(el, p);
+
+  if (el.kind === 'text' && h === TEXT_WIDTH_HANDLE) {
+    const width = Math.max(el.fontSize, q.x - b.x);
+    const nb = textBox({ ...el, width });
+    return { width, ...placeBox(el, { ...nb, x: b.x, y: b.y }) };
+  }
+
+  const o = cornersOfBox(b)[(h + 2) % 4];
+  // The new box grows from the pinned corner `o` towards the pointer.
+  const boxFrom = (width: number, height: number): Bounds => ({
+    x: q.x < o.x ? o.x - width : o.x,
+    y: q.y < o.y ? o.y - height : o.y,
+    width,
+    height,
+  });
+  const dw = Math.abs(q.x - o.x);
+  const dh = Math.abs(q.y - o.y);
+  if (el.kind === 'shape') return placeBox(el, boxFrom(Math.max(1, dw), Math.max(1, dh)));
+
+  const s = Math.max(dw / (b.width || 1), dh / (b.height || 1));
+  if (el.kind === 'image') {
+    return placeBox(el, boxFrom(Math.max(8, b.width * s), Math.max(8, b.height * s)));
+  }
+  const fontSize = Math.round(clamp(el.fontSize * s, LIMITS.minFontSize, LIMITS.maxFontSize));
+  const k = fontSize / el.fontSize;
+  const width = el.width ? el.width * k : undefined;
+  const nb = textBox({ ...el, fontSize, width });
+  return { fontSize, ...(width ? { width } : null), ...placeBox(el, boxFrom(nb.width, nb.height)) };
+}
+
+/** A regular polygon's corners inside `b`, the first straight up, on the box's inscribed ellipse. */
+export function polygonPoints(b: Bounds, sides = DEFAULT_SIDES): Point[] {
+  const n = Math.round(clamp(sides, LIMITS.minSides, LIMITS.maxSides));
+  return Array.from({ length: n }, (_, i) => {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    return { x: b.x + (b.width / 2) * (1 + Math.cos(a)), y: b.y + (b.height / 2) * (1 + Math.sin(a)) };
+  });
 }
 
 /** Elements whose box lies entirely inside `b` — the marquee's pick. */
@@ -253,17 +466,19 @@ export function elementsIn(elements: BoardElement[], b: Bounds): BoardElement[] 
 // The one dot shown on a shape is its centre: dropping there aims at the other
 // end instead of pinning a spot.
 
-/** The connection hint of an enclosed shape: its centre. */
-export function anchorsOf(el: ShapeElement): Point[] {
-  if (isLineLike(el)) return [];
-  const b = shapeBounds(el);
-  return [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }];
+/** What a line end can bind to: an enclosed shape or an image. */
+export const isLinkTarget = (el: BoardElement): boolean =>
+  el.kind === 'image' || (el.kind === 'shape' && !isLineLike(el));
+
+/** The connection hint of a link target: its centre. */
+export function anchorsOf(el: BoardElement): Point[] {
+  return isLinkTarget(el) ? [centreOf(boxOf(el))] : [];
 }
 
-/** Where a link lands on its shape's current box. */
-export function linkPoint(el: Pick<ShapeElement, 'from' | 'to'>, link: Link): Point {
-  const b = shapeBounds(el);
-  return { x: b.x + link.u * b.width, y: b.y + link.v * b.height };
+/** Where a link lands on its target's current (turned) box. */
+export function linkPoint(el: BoardElement, link: Link): Point {
+  const b = boxOf(el);
+  return toWorld(el, { x: b.x + link.u * b.width, y: b.y + link.v * b.height });
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -305,15 +520,18 @@ export function linkEndpoints(
   to: Point,
   radius: number,
 ): { from: Point; to: Point; fromLink: Link | null; toLink: Link | null } {
-  const enclosed = elements.filter((el) => el.kind === 'shape' && !isLineLike(el));
-  const centre = (el: ShapeElement) => anchorsOf(el)[0];
-  const bind = (el: ShapeElement | null, p: Point, other: Point) => {
+  const enclosed = elements.filter(isLinkTarget);
+  const centre = (el: BoardElement) => centreOf(boxOf(el));
+  // Worked out in the target's unturned frame, then turned back onto the board.
+  const bind = (el: BoardElement | null, p: Point, other: Point) => {
     if (!el) return { p, link: null };
-    const b = shapeBounds(el);
+    const b = boxOf(el);
     const c = centre(el);
-    const at = Math.hypot(p.x - c.x, p.y - c.y) <= radius ? rayToBox(other, b) : edgePoint(p, b);
+    const lp = toLocal(el, p);
+    const at =
+      Math.hypot(lp.x - c.x, lp.y - c.y) <= radius ? rayToBox(toLocal(el, other), b) : edgePoint(lp, b);
     return {
-      p: at,
+      p: toWorld(el, at),
       link: {
         id: el.id,
         u: b.width ? (at.x - b.x) / b.width : 0.5,
@@ -321,8 +539,8 @@ export function linkEndpoints(
       },
     };
   };
-  const a = shapeAt(enclosed, from, radius);
-  const b = shapeAt(enclosed, to, radius);
+  const a = targetAt(enclosed, from, radius);
+  const b = targetAt(enclosed, to, radius);
   // Both ends bound: face the other shape's centre, so the ends stay put while
   // the finger wanders inside its box.
   const f = bind(a, from, b && b !== a ? centre(b) : to);
@@ -348,7 +566,7 @@ export function followLinks(
     // one too would make an undo rewind wherever a collaborator had put it.
     const end = (link: Link | null | undefined) => {
       const target = link && ids.has(link.id) ? byId.get(link.id) : undefined;
-      return target?.kind === 'shape' ? linkPoint(target, link!) : undefined;
+      return target && isLinkTarget(target) ? linkPoint(target, link!) : undefined;
     };
     const from = end(el.fromLink);
     const to = end(el.toLink);
@@ -362,6 +580,15 @@ export function shapeAt(elements: BoardElement[], at: Point, pad: number): Shape
   for (let i = elements.length - 1; i >= 0; i--) {
     const el = elements[i];
     if (el.kind === 'shape' && shapeHit(el, at, pad)) return el;
+  }
+  return null;
+}
+
+/** The topmost link target (shape or image) under `at`. */
+function targetAt(elements: BoardElement[], at: Point, pad: number): BoardElement | null {
+  for (let i = elements.length - 1; i >= 0; i--) {
+    const el = elements[i];
+    if (el.kind === 'shape' ? shapeHit(el, at, pad) : inBox(toLocal(el, at), boxOf(el), pad)) return el;
   }
   return null;
 }
@@ -381,10 +608,7 @@ export function shapeHit(el: ShapeElement, at: Point, pad: number): boolean {
     }
     return false;
   }
-  const b = shapeBounds(el);
-  return (
-    at.x >= b.x - pad && at.x <= b.x + b.width + pad && at.y >= b.y - pad && at.y <= b.y + b.height + pad
-  );
+  return inBox(toLocal(el, at), shapeBounds(el), pad);
 }
 
 /** Distance from `p` to the segment ab. */
