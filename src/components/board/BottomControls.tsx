@@ -96,7 +96,7 @@ export function BottomControls({ top, onOpenAi }: { top: number; onOpenAi: () =>
               <ControlButton icon="undo" label={t.undo} enabled={undoDepth > 0} onPress={run(undo)} />
               <ControlButton icon="redo" label={t.redo} enabled={redoDepth > 0} onPress={run(redo)} />
               <View style={{ width: 1, height: 20, marginHorizontal: 4, backgroundColor: c.border }} />
-              <ControlButton icon="sparkle" label={t.sheetAi} enabled onPress={run(onOpenAi)} />
+              <ControlButton icon="sparkle" label={t.sheetAi} enabled accent onPress={run(onOpenAi)} />
             </>
           ) : null}
         </View>
@@ -117,11 +117,14 @@ function ControlButton({
   icon,
   label,
   enabled,
+  accent = false,
   onPress,
 }: {
   icon: IconName;
   label: string;
   enabled: boolean;
+  /** Lit in the brand colour so the one entry point to AI is easy to spot. */
+  accent?: boolean;
   onPress: () => void;
 }) {
   const c = useColors();
@@ -139,10 +142,16 @@ function ControlButton({
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 10,
-        backgroundColor: pressed ? c.surfaceSelected : 'transparent',
+        backgroundColor: accent
+          ? pressed
+            ? c.accentDeep
+            : c.accent
+          : pressed
+            ? c.surfaceSelected
+            : 'transparent',
       })}
     >
-      <Icon name={icon} size={15} color={enabled ? c.text : c.borderDashed} />
+      <Icon name={icon} size={15} color={accent ? '#FFFFFF' : enabled ? c.text : c.borderDashed} />
     </Pressable>
   );
 }
