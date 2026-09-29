@@ -7,6 +7,8 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.1.0-beta] - 2026-09-29
+
 ### Added
 
 - The selected "who can edit" option is a hairline ring with a centred dot; the
