@@ -57,7 +57,7 @@ import { useSessionStore, useColors, useDark } from '@/features/session/store';
 import { createBoard, importSnapshot, resolveShortCode } from '@/services/api/boards';
 import { parseBoardRef } from '@/utils/deep-link';
 import { thud } from '@/utils/haptics';
-import { SHORT_CODE_LENGTH, normalizeShortCode } from '@/utils/short-code';
+import { SHORT_CODE_LENGTH, formatShortCode, normalizeShortCode } from '@/utils/short-code';
 
 type Tab = 'start' | 'recent' | 'settings';
 
@@ -292,7 +292,7 @@ export default function Home() {
                   {board.name}
                 </Txt>
                 <Txt size={11} mono tone="secondary" numberOfLines={1}>
-                  {board.shortCode} · {relativeTime(t, board.lastOpenedAt)}
+                  {formatShortCode(board.shortCode)} · {relativeTime(t, board.lastOpenedAt)}
                 </Txt>
               </View>
               <Icon name="chevron" size={16} color={c.textTertiary} />

@@ -13,6 +13,7 @@ import { Radius } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 import { useBoardStore } from '@/features/board/store';
+import { formatShortCode } from '@/utils/short-code';
 
 import { GlassPanel } from '../ui/Glass';
 import { Icon } from '../ui/Icon';
@@ -69,8 +70,8 @@ export function ShareSheet({
                   backgroundColor: c.surface,
                 }}
               >
-                <Txt weight="bold" size={16} mono tracking={1.4}>
-                  {code}
+                <Txt weight="extrabold" size={17} tracking={1.6}>
+                  {formatShortCode(code)}
                 </Txt>
                 <Icon name="copy" size={15} color={c.text} />
               </Pressable>
