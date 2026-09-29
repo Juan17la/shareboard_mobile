@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+import { LIMITS } from '@/features/board/model';
 import { Avatars, Palettes, avatarColor, type Palette, type Theme } from '@/constants/theme';
 import type { Lang } from '@/features/i18n/strings';
 import { newUserId } from '@/utils/id';
@@ -108,7 +109,7 @@ export const useSessionStore = create<SessionState>()(
       hydrated: false,
 
       setNickname(nickname) {
-        set({ nickname: nickname.trim().slice(0, 24) });
+        set({ nickname: nickname.trim().slice(0, LIMITS.maxNicknameLength) });
       },
 
       /** The icon brings its colour along: one choice, not two. */
