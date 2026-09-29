@@ -43,6 +43,7 @@ import {
   type ElementBase,
   type Dash,
   type ElementId,
+  type FontKey,
   type Link,
   type Marker,
   type Participant,
@@ -84,6 +85,8 @@ export interface ToolConfig {
   fontSize: number;
   bold: boolean;
   italic: boolean;
+  /** Typeface of new text and of labels. */
+  font: FontKey;
   // Lines and arrows. The line/arrow buttons reset these to the kind's default.
   headStart: Marker;
   headEnd: Marker;
@@ -403,6 +406,7 @@ const DEFAULT_CONFIG: ToolConfig = {
   fontSize: 28,
   bold: false,
   italic: false,
+  font: 'sans',
   headStart: 'none',
   headEnd: 'arrow',
   route: 'straight',
@@ -625,6 +629,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
           if (patch.fontSize !== undefined) p.fontSize = patch.fontSize;
           if (patch.bold !== undefined) p.bold = patch.bold;
           if (patch.italic !== undefined) p.italic = patch.italic;
+          if (patch.font !== undefined) p.font = patch.font;
         } else if (el.kind === 'shape') {
           // A kind change only comes from the strip's kind cluster (the tool
           // buttons let go of the selection first) and stays in the family:
@@ -647,6 +652,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
               : null;
           }
           if (patch.fontSize !== undefined) p.fontSize = patch.fontSize;
+          if (patch.font !== undefined) p.font = patch.font;
           if (shape === 'polygon' && (patch.sides !== undefined || shape !== el.shape)) {
             p.sides = patch.sides ?? get().config.sides;
           }
@@ -951,6 +957,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         fontSize: config.fontSize,
         bold: config.bold,
         italic: config.italic,
+        ...(config.font !== 'sans' ? { font: config.font } : null),
       };
       commitLocal([{ t: 'add', el }]);
       return el.id;

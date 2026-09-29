@@ -177,16 +177,17 @@ function growTurned(b: Bounds, pad: number, angle: number, grow: (x: number, y: 
 /** Text is drawn from its baseline, so a line sits `fontSize` below `at.y`; lines are this far apart. */
 export const TEXT_LINE_HEIGHT = 1.25;
 
-type TextFont = Pick<TextElement, 'fontSize' | 'bold' | 'italic'>;
+type TextFont = Pick<TextElement, 'fontSize' | 'bold' | 'italic' | 'font'>;
 type TextMeasure = (text: string, font: TextFont) => number;
 
 let measureWidth: TextMeasure = (text, font) => text.length * font.fontSize * 0.55;
-// ponytail: one cache per element object (elements are replaced, never mutated);
-// widths taken before the web font loads stay a little off until the next edit.
-const textBoxes = new WeakMap<TextElement, Bounds>();
+// One cache per element object (elements are replaced, never mutated), dropped
+// whenever the measure changes — e.g. a typeface finished loading.
+let textBoxes = new WeakMap<TextElement, Bounds>();
 
 export function setTextMeasure(measure: TextMeasure): void {
   measureWidth = measure;
+  textBoxes = new WeakMap();
 }
 
 /** The lines a text element draws: its own newlines, then word-wrapped to `width` if it has one. */
@@ -225,6 +226,24 @@ export function textBox(el: TextElement): Bounds {
   };
   textBoxes.set(el, box);
   return box;
+}
+
+/** How far a figure's label keeps from its outline, each side. */
+export const LABEL_PAD = 6;
+
+/**
+ * The lines of a figure's label: wrapped to the inside of its box, so typing
+ * a long label fills the figure rather than running out of it. A line's label
+ * floats above it and only breaks where it was typed to.
+ */
+export function labelLines(
+  el: Pick<ShapeElement, 'shape' | 'from' | 'to' | 'text' | 'fontSize' | 'font'>,
+  fontSize: number,
+): string[] {
+  const text = el.text ?? '';
+  if (isLineLike(el)) return text.split('\n');
+  const inner = shapeBounds(el).width - LABEL_PAD * 2;
+  return textLines({ text, fontSize, font: el.font, width: Math.max(fontSize, inner) });
 }
 
 // --- rotation ----------------------------------------------------------------

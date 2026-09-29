@@ -43,6 +43,9 @@ export const ROUTES = ['straight', 'curved', 'elbow'] as const;
 export type Route = (typeof ROUTES)[number];
 export const DASHES = ['solid', 'dashed', 'dotted'] as const;
 export type Dash = (typeof DASHES)[number];
+/** Typefaces a text or a figure's label can be set in; absent is `sans` (Nunito). */
+export const FONTS = ['sans', 'serif', 'mono', 'hand'] as const;
+export type FontKey = (typeof FONTS)[number];
 
 /** A line end bound to a shape: the point is (u, v) ∈ [0,1]² of that shape's box. */
 export interface Link {
@@ -106,6 +109,8 @@ export interface ShapeElement extends ElementBase {
   text?: string;
   /** Label size; `SHAPE_TEXT_SIZE` when absent. */
   fontSize?: number;
+  /** Label typeface; `sans` when absent. */
+  font?: FontKey;
   /** A polygon's corner count, `LIMITS.minSides`..`maxSides`; `DEFAULT_SIDES` when absent. */
   sides?: number;
   // Lines and arrows only. Absent: no start marker, an `arrow` head on an arrow.
@@ -133,6 +138,8 @@ export interface TextElement extends ElementBase {
   fontSize: number;
   bold?: boolean;
   italic?: boolean;
+  /** Typeface; `sans` when absent. */
+  font?: FontKey;
   /** Wrap width in board units; absent, each line is as long as it is typed. */
   width?: number;
 }
