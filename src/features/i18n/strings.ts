@@ -197,6 +197,7 @@ const es = {
   importEditableHint:
     'Las imágenes exportadas desde Shareboard llevan la pizarra dentro. Si lo desactivas se añade como una imagen plana.',
   addImage: 'Añadir una imagen',
+  pasteImage: 'Pegar imagen',
 
   // settings
   settingGrid: 'Cuadrícula de puntos',
@@ -436,6 +437,7 @@ const en: Record<keyof typeof es, string> = {
   importEditableHint:
     'Images exported from Shareboard carry the board inside them. Turn this off to add the file as a flat picture.',
   addImage: 'Add an image',
+  pasteImage: 'Paste image',
 
   settingGrid: 'Dot grid',
   settingGridDesc: 'Visual guide on the canvas.',

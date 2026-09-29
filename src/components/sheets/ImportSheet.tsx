@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useT } from '@/features/i18n/store';
-import { pickBoardFile, pickImageFile } from '@/features/board/import';
+import { pasteImage, pickBoardFile, pickImageFile, type ImportResult } from '@/features/board/import';
 import { useBoardStore } from '@/features/board/store';
 import { useSessionStore } from '@/features/session/store';
 import type { BoardSnapshot } from '@/features/board/model';
@@ -83,10 +83,10 @@ export function ImportSheet({
     }
   }
 
-  async function addPhoto() {
+  async function addFrom(source: () => Promise<ImportResult>) {
     setBusy(true);
     try {
-      const result = await pickImageFile();
+      const result = await source();
       if (result.kind !== 'image') return;
       placeImage(result.uri, result.width, result.height);
       toast(t.toastImportImage);
@@ -125,7 +125,17 @@ export function ImportSheet({
             label={t.addImage}
             icon="image"
             variant="secondary"
-            onPress={addPhoto}
+            onPress={() => addFrom(pickImageFile)}
+            disabled={busy || !canEdit}
+            fullWidth
+          />
+        ) : null}
+        {allowImagePlacement ? (
+          <Button
+            label={t.pasteImage}
+            icon="paste"
+            variant="secondary"
+            onPress={() => addFrom(pasteImage)}
             disabled={busy || !canEdit}
             fullWidth
           />
