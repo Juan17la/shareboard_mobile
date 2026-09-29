@@ -28,6 +28,8 @@ import { File } from 'expo-file-system';
 import { useMemo } from 'react';
 import { create } from 'zustand';
 
+import { setTextMeasure } from '@/features/board/geometry';
+
 interface Typefaces {
   medium: SkTypeface;
   extrabold: SkTypeface;
@@ -75,19 +77,34 @@ Promise.all([
   (err: unknown) => console.warn('[BoardFonts] Nunito could not be loaded for the canvas', err),
 );
 
+function faceFor(faces: Typefaces, bold: boolean, italic: boolean): SkTypeface {
+  return italic
+    ? bold
+      ? faces.extraboldItalic
+      : faces.italic
+    : bold
+      ? faces.extrabold
+      : faces.medium;
+}
+
+// Board geometry (bounds, wrapping, hit tests) measures text with the faces the
+// canvas paints it in. Fonts are kept per size/style until the faces change.
+const measureFonts = new Map<string, SkFont>();
+useTypefaces.subscribe(() => measureFonts.clear());
+setTextMeasure((text, { fontSize, bold = false, italic = false }) => {
+  const key = `${fontSize}|${bold}|${italic}`;
+  let font = measureFonts.get(key);
+  if (!font) {
+    font = Skia.Font(faceFor(useTypefaces.getState(), bold, italic), fontSize);
+    measureFonts.set(key, font);
+  }
+  return textWidth(font, text);
+});
+
 /** A Skia font: the system face at first, Nunito once it has decoded. */
 export function useBoardFont(size: number, bold = false, italic = false): SkFont {
   const faces = useTypefaces();
-  return useMemo(() => {
-    const face = italic
-      ? bold
-        ? faces.extraboldItalic
-        : faces.italic
-      : bold
-        ? faces.extrabold
-        : faces.medium;
-    return Skia.Font(face, size);
-  }, [faces, size, bold, italic]);
+  return useMemo(() => Skia.Font(faceFor(faces, bold, italic), size), [faces, size, bold, italic]);
 }
 
 /** Advance width of `text`, the distance the next glyph would start at. */
