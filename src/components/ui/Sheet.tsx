@@ -39,12 +39,15 @@ export function Sheet({
   onClose,
   children,
   closeLabel = 'Close',
+  tall = false,
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
   closeLabel?: string;
+  /** Up to 92% of the screen instead of 78%, for sheets with a preview (AI). */
+  tall?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -92,7 +95,7 @@ export function Sheet({
                 { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) },
               ],
               opacity: anim,
-              maxHeight: height * 0.78,
+              maxHeight: height * (tall ? 0.92 : 0.78),
             }}
           >
             <GlassPanel
