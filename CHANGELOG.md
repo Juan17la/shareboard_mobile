@@ -7,6 +7,23 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- *Paste image* in the import sheet puts the clipboard's image on the board.
+- WebP and GIF images can be imported from the file picker.
+
+### Changed
+
+- The ✦ AI button in the top-right controls is filled in the brand colour so it
+  stands out.
+- The board code reads as `ABC·DEF` in a sans font; codes typed or pasted with
+  the `·` still join.
+
+### Fixed
+
+- Transparent PNG/WebP/GIF images keep their transparency instead of turning
+  black.
+
 ## [1.0.0-beta.4] - 2026-09-26
 
 ### Fixed
