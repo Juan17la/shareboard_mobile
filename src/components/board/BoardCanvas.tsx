@@ -160,6 +160,8 @@ export function BoardCanvas({
   const liveShape = useBoardStore((s) => s.liveShape);
   const liveSketch = useBoardStore((s) => s.liveSketch);
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** What is being typed: painted in place by the canvas, so the editor only holds the caret. */
+  const [draft, setDraft] = useState<string | null>(null);
   /** The hold menu: where it opened on screen, and the board point a paste lands on. */
   const [menu, setMenu] = useState<{ x: number; y: number; at: Point } | null>(null);
   // Another tool, or another board, and the menu is not about anything any more.
@@ -175,13 +177,16 @@ export function BoardCanvas({
   // drag preview below only patches the sorted list.
   const sorted = useMemo(() => visibleSorted(elements), [elements]);
   const list = useMemo(() => {
+    if (editingId && draft !== null) {
+      return sorted.map((el) => (el.id === editingId ? ({ ...el, text: draft } as BoardElement) : el));
+    }
     if (!liveEdit) return sorted;
     // The same patches the lift will commit, so the preview is the result.
     const patches = new Map(editPatches(sorted, liveEdit).map((p) => [p.id, p.patch]));
     return sorted.map((el) =>
       patches.has(el.id) ? ({ ...el, ...patches.get(el.id) } as BoardElement) : el,
     );
-  }, [sorted, liveEdit]);
+  }, [sorted, liveEdit, editingId, draft]);
 
   const selecting = tool === 'select' || tool === 'shape';
   const selected = useMemo(
@@ -631,7 +636,14 @@ export function BoardCanvas({
       ) : null}
 
       {editing && (editing.kind === 'text' || editing.kind === 'shape') ? (
-        <TextEditorOverlay element={editing} onClose={() => setEditingId(null)} />
+        <TextEditorOverlay
+          element={editing}
+          onDraft={setDraft}
+          onClose={() => {
+            setEditingId(null);
+            setDraft(null);
+          }}
+        />
       ) : null}
     </View>
   );
