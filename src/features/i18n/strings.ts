@@ -196,6 +196,8 @@ const es = {
   // export
   previewEmpty: 'La pizarra está vacía',
   transparentBg: 'Fondo transparente',
+  exportAll: 'Todo el tablero',
+  exportSelection: 'Selección',
   download: 'Descargar',
   shareImage: 'Compartir imagen',
   exportFile: 'Exportar archivo .json',
@@ -448,6 +450,8 @@ const en: Record<keyof typeof es, string> = {
 
   previewEmpty: 'The board is empty',
   transparentBg: 'Transparent background',
+  exportAll: 'Whole board',
+  exportSelection: 'Selection',
   download: 'Download',
   shareImage: 'Share image',
   exportFile: 'Export .json file',

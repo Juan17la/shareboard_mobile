@@ -21,10 +21,12 @@ import {
   saveImageToPhotos,
   shareImage,
   shareSnapshot,
+  shareSvg,
   type ImageFormat as Ext,
 } from '@/features/board/export';
 import { visibleSorted } from '@/features/board/ops';
 import { toSnapshot } from '@/features/board/serialization';
+import { toSvg } from '@/features/board/svg';
 import { useBoardStore } from '@/features/board/store';
 import { useSessionStore, useColors } from '@/features/session/store';
 import { notify } from '@/utils/haptics';
@@ -61,15 +63,24 @@ function ExportSheetBody({ onClose }: { onClose: () => void }) {
   const tf = useTf();
   const elements = useBoardStore((s) => s.elements);
   const meta = useBoardStore((s) => s.meta);
+  const selectedIds = useBoardStore((s) => s.selectedIds);
   const smooth = useSessionStore((s) => s.settings.smooth);
   const haptics = useSessionStore((s) => s.settings.haptics);
   const canvasRef = useCanvasRef();
 
-  const [format, setFormat] = useState<Ext>('png');
+  const [format, setFormat] = useState<Ext | 'svg'>('png');
   const [transparent, setTransparent] = useState(false);
   const [busy, setBusy] = useState(false);
+  // With something selected (the cursor's pick, groups included), that is
+  // what is exported unless the whole board is asked for.
+  const [scope, setScope] = useState<'all' | 'selection'>(selectedIds.length ? 'selection' : 'all');
 
-  const list = useMemo(() => visibleSorted(elements), [elements]);
+  const list = useMemo(() => {
+    const all = visibleSorted(elements);
+    if (scope === 'all') return all;
+    const ids = new Set(selectedIds);
+    return all.filter((el) => ids.has(el.id));
+  }, [elements, scope, selectedIds]);
   const bounds = useMemo(() => contentBounds(list), [list]);
 
   const width = Math.max(1, Math.ceil((bounds?.width ?? 0) + PADDING * 2));
@@ -77,16 +88,27 @@ function ExportSheetBody({ onClose }: { onClose: () => void }) {
   const previewScale = Math.min(1, PREVIEW_MAX / Math.max(width, height));
 
   // A JPEG has no alpha channel, so "transparent" would silently come out black.
-  const canBeTransparent = format === 'png';
+  const canBeTransparent = format !== 'jpg';
   const paintBackground = !(transparent && canBeTransparent);
 
   async function run(action: 'save' | 'share' | 'json') {
     if (!meta) return;
     setBusy(true);
     try {
-      const snapshot = toSnapshot(meta.name, elements);
+      // What is exported is what the file carries back: only the selection's
+      // elements when only the selection is exported.
+      const snapshot = toSnapshot(meta.name, Object.fromEntries(list.map((el) => [el.id, el])));
       if (action === 'json') {
         await shareSnapshot(snapshot);
+        onClose();
+        return;
+      }
+      if (format === 'svg') {
+        const svg = toSvg(list, { background: paintBackground ? '#FFFFFF' : null });
+        if (!svg) throw new Error(t.previewEmpty);
+        await shareSvg(meta.name, svg);
+        notify(haptics, true);
+        toast(t.toastShared);
         onClose();
         return;
       }
@@ -168,12 +190,24 @@ function ExportSheetBody({ onClose }: { onClose: () => void }) {
         </Txt>
       ) : null}
 
+      {selectedIds.length ? (
+        <Segmented
+          value={scope}
+          onChange={setScope}
+          options={[
+            { value: 'all', label: t.exportAll },
+            { value: 'selection', label: t.exportSelection },
+          ]}
+        />
+      ) : null}
+
       <Segmented
         value={format}
         onChange={setFormat}
         options={[
           { value: 'png', label: 'PNG' },
           { value: 'jpg', label: 'JPG' },
+          { value: 'svg', label: 'SVG' },
         ]}
       />
 
@@ -194,7 +228,8 @@ function ExportSheetBody({ onClose }: { onClose: () => void }) {
         label={t.download}
         onPress={() => run('save')}
         loading={busy}
-        disabled={!bounds}
+        // A photo library takes pictures, not SVG documents: those go through Share.
+        disabled={!bounds || format === 'svg'}
         fullWidth
       />
       <Button
