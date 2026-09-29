@@ -1,5 +1,6 @@
 /**
- * Nunito for the canvas, loaded straight into Skia and shared with every text
+ * The board's typefaces for the canvas — Nunito, Lora, JetBrains Mono and
+ * Caveat (`FontKey`) — loaded straight into Skia and shared with every text
  * node on the board.
  *
  * The typefaces live in a zustand store, not a React context, and the reason
@@ -28,21 +29,48 @@ import { File } from 'expo-file-system';
 import { useMemo } from 'react';
 import { create } from 'zustand';
 
+import { Fonts } from '@/constants/theme';
 import { setTextMeasure } from '@/features/board/geometry';
+import { FONTS, type FontKey } from '@/features/board/model';
 
-interface Typefaces {
+interface Faces {
   medium: SkTypeface;
   extrabold: SkTypeface;
   italic: SkTypeface;
   extraboldItalic: SkTypeface;
 }
+type Typefaces = Record<FontKey, Faces>;
 
-const FILES = {
-  medium: require('@expo-google-fonts/nunito/500Medium/Nunito_500Medium.ttf'),
-  extrabold: require('@expo-google-fonts/nunito/800ExtraBold/Nunito_800ExtraBold.ttf'),
-  italic: require('@expo-google-fonts/nunito/400Regular_Italic/Nunito_400Regular_Italic.ttf'),
-  extraboldItalic: require('@expo-google-fonts/nunito/800ExtraBold_Italic/Nunito_800ExtraBold_Italic.ttf'),
-} as const;
+/**
+ * The cuts of each board typeface, in the order of `Faces`. Caveat has no
+ * italic: its upright cuts stand in.
+ */
+const FILES: Record<FontKey, [number, number, number, number]> = {
+  sans: [
+    require('@expo-google-fonts/nunito/500Medium/Nunito_500Medium.ttf'),
+    require('@expo-google-fonts/nunito/800ExtraBold/Nunito_800ExtraBold.ttf'),
+    require('@expo-google-fonts/nunito/400Regular_Italic/Nunito_400Regular_Italic.ttf'),
+    require('@expo-google-fonts/nunito/800ExtraBold_Italic/Nunito_800ExtraBold_Italic.ttf'),
+  ],
+  serif: [
+    require('@expo-google-fonts/lora/500Medium/Lora_500Medium.ttf'),
+    require('@expo-google-fonts/lora/700Bold/Lora_700Bold.ttf'),
+    require('@expo-google-fonts/lora/500Medium_Italic/Lora_500Medium_Italic.ttf'),
+    require('@expo-google-fonts/lora/700Bold_Italic/Lora_700Bold_Italic.ttf'),
+  ],
+  mono: [
+    require('@expo-google-fonts/jetbrains-mono/500Medium/JetBrainsMono_500Medium.ttf'),
+    require('@expo-google-fonts/jetbrains-mono/700Bold/JetBrainsMono_700Bold.ttf'),
+    require('@expo-google-fonts/jetbrains-mono/500Medium_Italic/JetBrainsMono_500Medium_Italic.ttf'),
+    require('@expo-google-fonts/jetbrains-mono/700Bold_Italic/JetBrainsMono_700Bold_Italic.ttf'),
+  ],
+  hand: [
+    require('@expo-google-fonts/caveat/500Medium/Caveat_500Medium.ttf'),
+    require('@expo-google-fonts/caveat/700Bold/Caveat_700Bold.ttf'),
+    require('@expo-google-fonts/caveat/500Medium/Caveat_500Medium.ttf'),
+    require('@expo-google-fonts/caveat/700Bold/Caveat_700Bold.ttf'),
+  ],
+};
 
 async function loadTypeface(module: number | string): Promise<SkTypeface> {
   const asset = await Asset.fromModule(module).downloadAsync();
@@ -53,31 +81,31 @@ async function loadTypeface(module: number | string): Promise<SkTypeface> {
   return face;
 }
 
-/** One face from the platform's font manager: the baseline every text node starts on. */
+/** The platform's sans-serif, for every typeface: the baseline every text node starts on. */
 function systemTypefaces(): Typefaces {
   const face = Skia.FontMgr.System().matchFamilyStyle('sans-serif', {
     weight: FontWeight.Medium,
     width: FontWidth.Normal,
     slant: FontSlant.Upright,
   });
-  return { medium: face, extrabold: face, italic: face, extraboldItalic: face };
+  const faces = { medium: face, extrabold: face, italic: face, extraboldItalic: face };
+  return { sans: faces, serif: faces, mono: faces, hand: faces };
 }
 
 const useTypefaces = create<Typefaces>(systemTypefaces);
 
-// Once per app, from the moment the board code is loaded.
-Promise.all([
-  loadTypeface(FILES.medium),
-  loadTypeface(FILES.extrabold),
-  loadTypeface(FILES.italic),
-  loadTypeface(FILES.extraboldItalic),
-]).then(
-  ([medium, extrabold, italic, extraboldItalic]) =>
-    useTypefaces.setState({ medium, extrabold, italic, extraboldItalic }),
-  (err: unknown) => console.warn('[BoardFonts] Nunito could not be loaded for the canvas', err),
-);
+// Once per app, from the moment the board code is loaded; each typeface
+// arrives on its own, and one that fails keeps the system face.
+for (const font of FONTS) {
+  Promise.all(FILES[font].map(loadTypeface)).then(
+    ([medium, extrabold, italic, extraboldItalic]) =>
+      useTypefaces.setState({ [font]: { medium, extrabold, italic, extraboldItalic } }),
+    (err: unknown) => console.warn(`[BoardFonts] the ${font} typeface could not be loaded`, err),
+  );
+}
 
-function faceFor(faces: Typefaces, bold: boolean, italic: boolean): SkTypeface {
+function faceFor(typefaces: Typefaces, bold: boolean, italic: boolean, font: FontKey): SkTypeface {
+  const faces = typefaces[font];
   return italic
     ? bold
       ? faces.extraboldItalic
@@ -90,22 +118,50 @@ function faceFor(faces: Typefaces, bold: boolean, italic: boolean): SkTypeface {
 // Board geometry (bounds, wrapping, hit tests) measures text with the faces the
 // canvas paints it in. Fonts are kept per size/style until the faces change.
 const measureFonts = new Map<string, SkFont>();
-useTypefaces.subscribe(() => measureFonts.clear());
-setTextMeasure((text, { fontSize, bold = false, italic = false }) => {
-  const key = `${fontSize}|${bold}|${italic}`;
-  let font = measureFonts.get(key);
-  if (!font) {
-    font = Skia.Font(faceFor(useTypefaces.getState(), bold, italic), fontSize);
-    measureFonts.set(key, font);
-  }
-  return textWidth(font, text);
+useTypefaces.subscribe(() => {
+  measureFonts.clear();
+  setTextMeasure(measure);
 });
-
-/** A Skia font: the system face at first, Nunito once it has decoded. */
-export function useBoardFont(size: number, bold = false, italic = false): SkFont {
-  const faces = useTypefaces();
-  return useMemo(() => Skia.Font(faceFor(faces, bold, italic), size), [faces, size, bold, italic]);
+function measure(
+  text: string,
+  { fontSize, bold = false, italic = false, font = 'sans' }: {
+    fontSize: number;
+    bold?: boolean;
+    italic?: boolean;
+    font?: FontKey;
+  },
+): number {
+  const key = `${font}|${fontSize}|${bold}|${italic}`;
+  let skFont = measureFonts.get(key);
+  if (!skFont) {
+    skFont = Skia.Font(faceFor(useTypefaces.getState(), bold, italic, font), fontSize);
+    measureFonts.set(key, skFont);
+  }
+  return textWidth(skFont, text);
 }
+setTextMeasure(measure);
+
+/** A Skia font: the system face at first, the typeface once it has decoded. */
+export function useBoardFont(size: number, bold = false, italic = false, font: FontKey = 'sans'): SkFont {
+  const faces = useTypefaces();
+  return useMemo(
+    () => Skia.Font(faceFor(faces, bold, italic, font), size),
+    [faces, size, bold, italic, font],
+  );
+}
+
+/** The React Native families of each board typeface: medium, bold, italic, bold italic. */
+export const FAMILIES: Record<FontKey, [string, string, string, string]> = {
+  sans: [Fonts.medium, Fonts.extrabold, Fonts.italic, Fonts.extraboldItalic],
+  serif: ['Lora_500Medium', 'Lora_700Bold', 'Lora_500Medium_Italic', 'Lora_700Bold_Italic'],
+  mono: [
+    'JetBrainsMono_500Medium',
+    'JetBrainsMono_700Bold',
+    'JetBrainsMono_500Medium_Italic',
+    'JetBrainsMono_700Bold_Italic',
+  ],
+  hand: ['Caveat_500Medium', 'Caveat_700Bold', 'Caveat_500Medium', 'Caveat_700Bold'],
+};
 
 /** Advance width of `text`, the distance the next glyph would start at. */
 export function textWidth(font: SkFont, text: string): number {

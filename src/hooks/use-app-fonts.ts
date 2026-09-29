@@ -26,6 +26,16 @@ export function useAppFonts(): boolean {
     Nunito_800ExtraBold_Italic: require('@expo-google-fonts/nunito/800ExtraBold_Italic/Nunito_800ExtraBold_Italic.ttf'),
     JetBrainsMono_500Medium: require('@expo-google-fonts/jetbrains-mono/500Medium/JetBrainsMono_500Medium.ttf'),
     JetBrainsMono_700Bold: require('@expo-google-fonts/jetbrains-mono/700Bold/JetBrainsMono_700Bold.ttf'),
+    // The board's other typefaces, for the text editor typing over the canvas
+    // (its caret has to sit where the canvas paints the glyphs).
+    JetBrainsMono_500Medium_Italic: require('@expo-google-fonts/jetbrains-mono/500Medium_Italic/JetBrainsMono_500Medium_Italic.ttf'),
+    JetBrainsMono_700Bold_Italic: require('@expo-google-fonts/jetbrains-mono/700Bold_Italic/JetBrainsMono_700Bold_Italic.ttf'),
+    Lora_500Medium: require('@expo-google-fonts/lora/500Medium/Lora_500Medium.ttf'),
+    Lora_700Bold: require('@expo-google-fonts/lora/700Bold/Lora_700Bold.ttf'),
+    Lora_500Medium_Italic: require('@expo-google-fonts/lora/500Medium_Italic/Lora_500Medium_Italic.ttf'),
+    Lora_700Bold_Italic: require('@expo-google-fonts/lora/700Bold_Italic/Lora_700Bold_Italic.ttf'),
+    Caveat_500Medium: require('@expo-google-fonts/caveat/500Medium/Caveat_500Medium.ttf'),
+    Caveat_700Bold: require('@expo-google-fonts/caveat/700Bold/Caveat_700Bold.ttf'),
   });
   return loaded;
 }
