@@ -9,6 +9,12 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ### Added
 
+- Export only what is selected: with a selection, the export sheet offers
+  *Whole board* or *Selection* (selection first); the preview, the picture and
+  the embedded board follow the choice.
+- SVG export next to PNG and JPG, shared as a vector file (a photo library
+  cannot hold one, so *Save* is for PNG/JPG).
+
 - Font picker for text and figure labels: rounded (Nunito, the default),
   serif (Lora), monospace (JetBrains Mono) and handwritten (Caveat).
 - Typing into a figure edits its label in place: the text appears exactly as
