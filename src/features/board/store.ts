@@ -23,15 +23,18 @@ import type { Op } from '@/services/realtime/protocol';
 import { shortId } from '@/utils/id';
 
 import {
+  boxOf,
   contentBounds,
   followLinks,
   headsOf,
   isLineLike,
   shapeHit,
+  toLocal,
   translate,
   type Sketch,
 } from './geometry';
 import {
+  DEFAULT_SIDES,
   LIMITS,
   canEdit,
   isFillable,
@@ -76,6 +79,8 @@ export interface ToolConfig {
   /** How opaque a newly drawn enclosed shape's fill is; `none` for outline only. */
   fill: FillLevel;
   shape: ShapeKind;
+  /** Corners of a polygon. */
+  sides: number;
   fontSize: number;
   bold: boolean;
   italic: boolean;
@@ -394,6 +399,7 @@ const DEFAULT_CONFIG: ToolConfig = {
   // The second of each: a new figure comes out lightly filled, medium stroke.
   fill: 'low',
   shape: 'rectangle',
+  sides: DEFAULT_SIDES,
   fontSize: 28,
   bold: false,
   italic: false,
@@ -641,6 +647,9 @@ export const useBoardStore = create<BoardState>((set, get) => {
               : null;
           }
           if (patch.fontSize !== undefined) p.fontSize = patch.fontSize;
+          if (shape === 'polygon' && (patch.sides !== undefined || shape !== el.shape)) {
+            p.sides = patch.sides ?? get().config.sides;
+          }
           for (const k of ['headStart', 'headEnd', 'route', 'dash'] as const) {
             if (patch[k] !== undefined) p[k] = patch[k];
           }
@@ -831,6 +840,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         stroke: config.color,
         strokeWidth: clampWidth(config.width),
         fill: isFillable(shape) ? fillFor(config.color, config.fill) : null,
+        ...(shape === 'polygon' ? { sides: config.sides } : null),
         ...(shape === 'line' || shape === 'arrow'
           ? {
               headStart: config.headStart,
@@ -1192,13 +1202,14 @@ function hitTest(elements: BoardElement[], at: Point, radius: number): ElementId
     } else if (el.kind === 'shape') {
       if (shapeHit(el, at, radius)) hits.push(el.id);
     } else {
-      const w = el.kind === 'image' ? el.width : Math.max(40, el.text.length * el.fontSize * 0.55);
-      const h = el.kind === 'image' ? el.height : el.fontSize * 1.4;
+      // Tested in the element's unturned frame, against its measured box.
+      const b = boxOf(el);
+      const q = toLocal(el, at);
       if (
-        at.x >= el.at.x - radius &&
-        at.x <= el.at.x + w + radius &&
-        at.y >= el.at.y - radius &&
-        at.y <= el.at.y + h + radius
+        q.x >= b.x - radius &&
+        q.x <= b.x + b.width + radius &&
+        q.y >= b.y - radius &&
+        q.y <= b.y + b.height + radius
       ) {
         hits.push(el.id);
       }

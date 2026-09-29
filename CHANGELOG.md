@@ -9,6 +9,16 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ### Added
 
+- Polygons with 3 to 12 sides: a new shape tool with a sides stepper in
+  the options strip.
+- Rotation: a selected figure, text or image has a round knob above it; drag
+  it to turn the element (it snaps to 15° steps). Handles, hit-testing and
+  arrow links follow the turned outline.
+- Images behave like figures: arrows bind to them and follow them, and
+  resizing from a corner keeps their proportions.
+- Text can be resized like an image: its corners scale the font, and the
+  handle on its right edge sets a width the text wraps to.
+
 - Draw with AI shows a preview of each drawing first: *Add to board* puts it
   there as one group (one undo removes it), *Discard* drops it. The AI sheet is
   bigger to fit it.
