@@ -10,6 +10,16 @@ import {
   ROUTES,
 } from '../src/features/board/model.ts';
 import {
+  ROTATE_HANDLE,
+  TEXT_WIDTH_HANDLE,
+  boxOf,
+  contentBounds,
+  handlesOf,
+  polygonPoints,
+  resizeElement,
+  rotationFromDrag,
+  shapeHit,
+  textLines,
   bendFromDrag,
   bendHandleOf,
   control,
@@ -364,5 +374,62 @@ const T = { ...base('T', 9), kind: 'text', at: { x: 0, y: 0 }, text: 'hi', color
 useBoardStore.getState().hydrate({ meta, elements: [A, T], participants: [you], you, seq: 0 });
 s().updateText('T', { text: '   ' });
 assert.equal(s().visibleElements().some((e) => e.id === 'T'), false);
+
+// --- phase 3: polygons, images as targets, text resize, rotation -------------
+const close = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-6, `${msg}: ${a} vs ${b}`);
+const closeP = (a, b, msg) => (close(a.x, b.x, msg), close(a.y, b.y, msg));
+
+// A regular polygon: n corners, the first straight up, all on the box's ellipse.
+const hex = polygonPoints({ x: 0, y: 0, width: 100, height: 100 }, 6);
+assert.equal(hex.length, 6);
+closeP(hex[0], { x: 50, y: 0 }, 'first corner up');
+assert.equal(polygonPoints({ x: 0, y: 0, width: 10, height: 10 }, 40).length, 12, 'sides clamped');
+
+// An image is a link target: an arrow dropped on it binds, and follows it.
+const IMG = { ...base('I', 4), kind: 'image', at: { x: 300, y: 0 }, width: 100, height: 50, uri: 'data:,' };
+r = linkEndpoints([A, IMG], { x: 50, y: 50 }, { x: 350, y: 25 }, 18);
+assert.equal(r.toLink.id, 'I');
+assert.equal(r.toLink.u, 0, 'on its left edge, facing A');
+follow = followLinks(
+  [A, { ...IMG, at: { x: 310, y: 10 } }, { ...arrow, fromLink: r.fromLink, toLink: r.toLink }],
+  ['I'],
+);
+closeP(follow[0].to, { x: r.to.x + 10, y: r.to.y + 10 }, 'the bound end follows the image');
+
+// An image scales from a corner and keeps its proportions; the opposite corner stays.
+let patch = resizeElement(IMG, 2, { x: 500, y: 60 });
+assert.deepEqual(patch, { at: { x: 300, y: 0 }, width: 200, height: 100 });
+
+// Text: corners scale the font (like an image), the edge handle sets a wrap width.
+const TX = { ...base('TX', 5), kind: 'text', at: { x: 0, y: 0 }, text: 'aaaa bbbb cccc', color: '#000000', fontSize: 20 };
+const tb = boxOf(TX);
+patch = resizeElement(TX, 2, { x: tb.width * 2, y: tb.height * 2 });
+assert.equal(patch.fontSize, 40);
+assert.deepEqual(patch.at, { x: 0, y: 0 }, 'top-left corner pinned');
+assert.equal(handlesOf(TX).length, 5, 'four corners and the width handle');
+patch = resizeElement(TX, TEXT_WIDTH_HANDLE, { x: 60, y: 0 });
+assert.equal(patch.width, 60);
+assert.deepEqual(textLines({ ...TX, width: 60 }), ['aaaa', 'bbbb', 'cccc'], 'wrapped at word breaks');
+assert.ok(boxOf({ ...TX, width: 60 }).height > tb.height * 2, 'three lines are taller than one');
+
+// Rotation: a box turned 90° about its centre is hit in its turned outline.
+const W = { ...box('W', 0, 0, 200, 20, 6), rotation: Math.PI / 2 };
+assert.ok(shapeHit(W, { x: 100, y: -80 }, 0), 'inside the turned box');
+assert.ok(!shapeHit(W, { x: 10, y: 10 }, 0), 'outside it, though inside the unturned one');
+const wb = contentBounds([W]);
+close(wb.width, 20 + 2, 'turned bounds width');
+close(wb.height, 200 + 2, 'turned bounds height');
+// Its handles turn with it, and a resize keeps the pinned corner where it was.
+const [tl, , br] = handlesOf(W);
+closeP(tl, { x: 110, y: -90 }, 'TL turned');
+patch = resizeElement(W, 2, { x: br.x - 10, y: br.y + 50 });
+const after = { ...W, ...patch };
+closeP(handlesOf(after)[0], tl, 'the opposite corner stays put');
+// A link on a turned target lands on its turned outline.
+closeP(linkPoint(W, { id: 'W', u: 1, v: 0.5 }), { x: 100, y: 110 }, 'right edge turned down');
+// The knob: dragged due right of the centre it turns a quarter; near 15° steps it snaps.
+close(rotationFromDrag(A, { x: 150, y: 50 }), Math.PI / 2, 'quarter turn');
+close(rotationFromDrag(A, { x: 50 + Math.sin(0.27), y: 50 - Math.cos(0.27) }), Math.PI / 12, 'snapped to 15°');
+assert.equal(ROTATE_HANDLE, 5);
 
 console.log('geometry: ok');
