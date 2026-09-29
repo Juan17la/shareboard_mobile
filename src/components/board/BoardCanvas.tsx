@@ -26,6 +26,9 @@ import { Shadow } from '@/constants/theme';
 import {
   bendFromDrag,
   bendHandleOf,
+  boxOf,
+  canRotate,
+  elementBounds,
   elementsIn,
   handlesOf,
   isLineLike,
@@ -33,13 +36,14 @@ import {
   recognizeSketch,
   resizeElement,
   rotateHandleOf,
+  rotationOf,
   rotationFromDrag,
   ROTATE_HANDLE,
   shapeAt,
   shapeBounds,
   simplify,
 } from '@/features/board/geometry';
-import type { BoardElement, Link, Point, ShapeElement } from '@/features/board/model';
+import type { BoardElement, Link, Participant, Point, ShapeElement } from '@/features/board/model';
 import { visibleSorted } from '@/features/board/ops';
 import {
   MAX_ZOOM,
@@ -47,6 +51,7 @@ import {
   coveringFigure,
   editPatches,
   fillFor,
+  heldByOthers,
   sketchElement,
   useBoardStore,
   type Camera,
@@ -61,10 +66,11 @@ import {
   DashedBox,
   ElementRenderer,
   LIVE_STROKE,
+  HELD_ALPHA,
   LiveDotGrid,
   SelectionFrame,
 } from './ElementRenderer';
-import { PeerCursors } from './PeerCursors';
+import { HeldTags, PeerCursors } from './PeerCursors';
 import { TextEditorOverlay } from './TextEditorOverlay';
 import { GlassPanel } from '../ui/Glass';
 import { Icon } from '../ui/Icon';
@@ -187,6 +193,11 @@ export function BoardCanvas({
       patches.has(el.id) ? ({ ...el, ...patches.get(el.id) } as BoardElement) : el,
     );
   }, [sorted, liveEdit, editingId, draft]);
+
+  // What the others hold: dimmed, framed in their colour, not for picking.
+  const participants = useBoardStore((s) => s.participants);
+  const you = useBoardStore((s) => s.you);
+  const held = useMemo(() => heldByOthers(participants, you), [participants, you]);
 
   const selecting = tool === 'select' || tool === 'shape';
   const selected = useMemo(
@@ -489,14 +500,16 @@ export function BoardCanvas({
           // Selecting something is asking to change it: the options come up.
           store().setRailOpen(!!hit);
         } else if (t === 'select') {
-          const hit = store().elementAt(p, 8 / store().camera.scale);
-          store().select(hit?.id ?? null);
+          const found = store().elementAt(p, 8 / store().camera.scale);
+          store().select(found?.id ?? null);
+          // What someone else holds is not picked up (`select` leaves it out).
+          const hit = found && store().selectedIds.includes(found.id) ? found : null;
           if (hit) tick(haptics);
           store().setRailOpen(!!hit);
           // Twice on the same text or shape: type into it. Twice on nothing: zoom.
           const again = isDoubleTap(hit?.id ?? '');
           if (again && hit && (hit.kind === 'text' || hit.kind === 'shape')) setEditingId(hit.id);
-          else if (again && !hit) zoomTap({ x: e.x, y: e.y });
+          else if (again && !found) zoomTap({ x: e.x, y: e.y });
         }
         onCursorMove?.(p);
       });
@@ -547,9 +560,16 @@ export function BoardCanvas({
           <GridLayer width={size.width} height={size.height} camera={camera} />
 
           <Group transform={transform}>
-            {list.map((el) => (
-              <ElementRenderer key={el.id} el={el} smooth={smooth} dark={dark} />
-            ))}
+            {list.map((el) =>
+              held.has(el.id) ? (
+                // Someone else holds it: dimmed, framed in their colour below.
+                <Group key={el.id} opacity={HELD_ALPHA}>
+                  <ElementRenderer el={el} smooth={smooth} dark={dark} />
+                </Group>
+              ) : (
+                <ElementRenderer key={el.id} el={el} smooth={smooth} dark={dark} />
+              ),
+            )}
 
             {liveSketch ? (
               <ElementRenderer
@@ -601,11 +621,13 @@ export function BoardCanvas({
             ) : null}
           </Group>
 
-          {selected.length || liveMarquee || anchors ? (
+          {selected.length || liveMarquee || anchors || held.size ? (
             <ScreenOverlays
               selected={selected}
               marquee={liveMarquee}
               anchors={anchors ? list : null}
+              held={held}
+              elements={list}
             />
           ) : null}
           </Group>
@@ -613,6 +635,7 @@ export function BoardCanvas({
       </GestureDetector>
 
       <PeerCursors />
+      <HeldTags elements={list} held={held} />
 
       {selectedShape && !editing ? (
         <LabelButton
@@ -741,14 +764,35 @@ function ScreenOverlays({
   selected,
   marquee,
   anchors,
+  held,
+  elements,
 }: {
   selected: BoardElement[];
   marquee: { from: Point; to: Point } | null;
   anchors: BoardElement[] | null;
+  /** What others hold, framed in their colour. */
+  held: ReadonlyMap<string, Participant>;
+  elements: BoardElement[];
 }) {
   const camera = useBoardStore((s) => s.camera);
   return (
     <>
+      {held.size
+        ? elements.map((el) => {
+            const who = held.get(el.id);
+            if (!who) return null;
+            const turns = canRotate(el);
+            return (
+              <DashedBox
+                key={`held-${el.id}`}
+                b={turns ? boxOf(el) : elementBounds(el)}
+                camera={camera}
+                angle={turns ? rotationOf(el) : 0}
+                color={who.color}
+              />
+            );
+          })
+        : null}
       {selected.length ? <SelectionFrame elements={selected} camera={camera} /> : null}
       {marquee ? <DashedBox b={shapeBounds(marquee)} camera={camera} /> : null}
       {anchors ? <Anchors elements={anchors} camera={camera} /> : null}

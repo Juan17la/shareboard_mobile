@@ -248,6 +248,11 @@ interface BoardState {
   /** False until the first layout has put the board origin at screen centre. */
   cameraPlaced: boolean;
   /**
+   * True from a fresh join until the camera has been fitted to what the board
+   * holds; a reconnect's `hydrate` must not move the camera again.
+   */
+  fitPending: boolean;
+  /**
    * The stroke / shape under the finger right now, before it becomes an
    * element. Store state rather than canvas state so the gesture that ends it
    * can read the final value synchronously and commit it in one step.
@@ -303,6 +308,8 @@ interface BoardState {
   setViewport(size: { width: number; height: number }): void;
   /** The "100%" camera: board (0,0) at the centre of the screen, unzoomed. */
   homeCamera(): Camera;
+  /** Frame everything on the board (the empty board goes home). */
+  fitCamera(): void;
   /** Multiplies the zoom about `focal` (screen px), or about the viewport centre. */
   zoomBy(factor: number, focal?: Point): void;
   setLiveStroke(points: number[]): void;
@@ -488,6 +495,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     selectedIds: [],
     viewport: { width: 0, height: 0 },
     cameraPlaced: false,
+    fitPending: true,
     liveStroke: [],
     liveShape: null,
     liveEdit: null,
@@ -522,6 +530,11 @@ export const useBoardStore = create<BoardState>((set, get) => {
         redoStack: [],
         outbox: [],
       });
+      // Before the first layout there is no size to fit into: `setViewport` does it.
+      if (get().fitPending && get().viewport.width > 0) {
+        get().fitCamera();
+        set({ fitPending: false });
+      }
     },
 
     reset() {
@@ -544,6 +557,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         // reconnects), so re-home on the size already known.
         camera: get().homeCamera(),
         cameraPlaced: get().viewport.width > 0,
+        fitPending: true,
         selectedIds: [],
         liveStroke: [],
         liveShape: null,
@@ -558,7 +572,15 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     setParticipants(list) {
-      set({ participants: list, cursors: cursorsOf(list) });
+      // Someone else got there first (both picked the same thing at once): the
+      // server gave it to them, so let go of it here too.
+      const held = heldByOthers(list, get().you);
+      const selectedIds = get().selectedIds.filter((id) => !held.has(id));
+      set({
+        participants: list,
+        cursors: cursorsOf(list),
+        ...(selectedIds.length !== get().selectedIds.length ? { selectedIds } : null),
+      });
     },
 
     setMeta(meta, you) {
@@ -758,6 +780,32 @@ export const useBoardStore = create<BoardState>((set, get) => {
       if (!get().cameraPlaced && viewport.width > 0 && viewport.height > 0) {
         set({ camera: get().homeCamera(), cameraPlaced: true });
       }
+      // The board arrived before the canvas had a size: fit it now.
+      if (get().fitPending && get().boardId && viewport.width > 0 && viewport.height > 0) {
+        get().fitCamera();
+        set({ fitPending: false });
+      }
+    },
+
+    fitCamera() {
+      const b = contentBounds(get().visibleElements());
+      const { width, height } = get().viewport;
+      if (!b || !width || !height) {
+        set({ camera: get().homeCamera() });
+        return;
+      }
+      const pad = 48;
+      const scale = Math.max(
+        MIN_ZOOM,
+        Math.min((width - pad * 2) / b.width, (height - pad * 2) / b.height, 1),
+      );
+      set({
+        camera: {
+          scale,
+          x: (width - b.width * scale) / 2 - b.x * scale,
+          y: (height - b.height * scale) / 2 - b.y * scale,
+        },
+      });
     },
 
     homeCamera() {
@@ -863,13 +911,17 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     select(ids) {
-      const wanted = ids === null ? [] : Array.isArray(ids) ? ids : [ids];
+      // What someone else holds cannot be picked up (first come, first served).
+      const held = heldByOthers(get().participants, get().you);
+      const wanted = (ids === null ? [] : Array.isArray(ids) ? ids : [ids]).filter(
+        (id) => !held.has(id),
+      );
       const { elements } = get();
       const groups = new Set(wanted.map((id) => elements[id]?.group).filter(Boolean));
       const all = new Set(wanted);
       if (groups.size) {
         for (const el of get().visibleElements())
-          if (el.group && groups.has(el.group)) all.add(el.id);
+          if (el.group && groups.has(el.group) && !held.has(el.id)) all.add(el.id);
       }
       const next = [...all];
       // Tapping empty board (or the same thing again) keeps the selection it
@@ -920,9 +972,10 @@ export const useBoardStore = create<BoardState>((set, get) => {
     fillAt(at) {
       if (!get().canEditNow()) return false;
       const visible = get().visibleElements();
+      const held = heldByOthers(get().participants, get().you);
       for (let i = visible.length - 1; i >= 0; i--) {
         const el = visible[i];
-        if (el.kind !== 'shape' || !isFillable(el.shape)) continue;
+        if (el.kind !== 'shape' || !isFillable(el.shape) || held.has(el.id)) continue;
         const minX = Math.min(el.from.x, el.to.x);
         const maxX = Math.max(el.from.x, el.to.x);
         const minY = Math.min(el.from.y, el.to.y);
@@ -1000,7 +1053,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     eraseAt(at, radius = 12) {
       if (!get().canEditNow()) return;
-      const hits = hitTest(get().visibleElements(), at, radius);
+      const held = heldByOthers(get().participants, get().you);
+      const hits = hitTest(get().visibleElements(), at, radius).filter((id) => !held.has(id));
       if (hits.length) commitLocal(hits.map((id) => ({ t: 'delete', id }) as Op));
     },
 
@@ -1142,6 +1196,22 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
   };
 });
+
+/**
+ * The elements other participants hold — have selected — and who holds each.
+ * Theirs until they let go: this client neither selects nor changes them.
+ */
+export function heldByOthers(
+  participants: Participant[],
+  you: Participant | null,
+): Map<ElementId, Participant> {
+  const held = new Map<ElementId, Participant>();
+  for (const p of participants) {
+    if (p.userId === you?.userId) continue;
+    for (const id of p.selection ?? []) held.set(id, p);
+  }
+  return held;
+}
 
 /**
  * The unselected figure a press at `at` lands on when it is drawn above the
