@@ -93,7 +93,14 @@ function MarkerView({
   return (
     <Group>
       {markerPaths(kind, tip, angle, markerSize(width)).map((part, i) => (
-        <MarkerPartView key={i} d={part.d} fill={part.fill} color={color} width={width} ground={ground} />
+        <MarkerPartView
+          key={i}
+          d={part.d}
+          fill={part.fill}
+          color={color}
+          width={width}
+          ground={ground}
+        />
       ))}
     </Group>
   );
@@ -168,16 +175,22 @@ function ShapeLabel({ el }: { el: ShapeElement }) {
  */
 export const HANDLE_SIZE = 12;
 
+/** How opaque an element someone else holds is painted. */
+export const HELD_ALPHA = 0.45;
+
 /** A dashed screen-space box round board-space bounds: the frame, and the marquee. */
 export function DashedBox({
   b,
   camera,
   angle = 0,
+  color,
 }: {
   b: Bounds;
   camera: { x: number; y: number; scale: number };
   /** Turns the box about its centre, for a single turned element. */
   angle?: number;
+  /** The accent unless given: a holder's presence colour. */
+  color?: string;
 }) {
   const c = useColors();
   const origin = {
@@ -187,16 +200,16 @@ export function DashedBox({
   return (
     <Group transform={angle ? [{ rotate: angle }] : undefined} origin={origin}>
       <Rect
-      x={b.x * camera.scale + camera.x - 4}
-      y={b.y * camera.scale + camera.y - 4}
-      width={b.width * camera.scale + 8}
-      height={b.height * camera.scale + 8}
-      color={c.accent}
-      style="stroke"
-      strokeWidth={1.5}
-    >
-      <DashPathEffect intervals={[5, 4]} />
-    </Rect>
+        x={b.x * camera.scale + camera.x - 4}
+        y={b.y * camera.scale + camera.y - 4}
+        width={b.width * camera.scale + 8}
+        height={b.height * camera.scale + 8}
+        color={color ?? c.accent}
+        style="stroke"
+        strokeWidth={1.5}
+      >
+        <DashPathEffect intervals={[5, 4]} />
+      </Rect>
     </Group>
   );
 }
@@ -244,7 +257,9 @@ export function SelectionFrame({
         // A line has no box to frame, so the line itself lights up: a soft
         // accent halo along its route, and round handles at the two ends it
         // can be dragged by — unmistakably not the square corners of a box.
-        <Group transform={[{ translateX: camera.x }, { translateY: camera.y }, { scale: camera.scale }]}>
+        <Group
+          transform={[{ translateX: camera.x }, { translateY: camera.y }, { scale: camera.scale }]}
+        >
           <Halo line={line} color={c.accent} width={line.strokeWidth + 8 / camera.scale} />
         </Group>
       ) : one && canRotate(one) ? (
@@ -256,7 +271,14 @@ export function SelectionFrame({
       {/* A curved or elbow line's fold: a diamond handle, dragged to reshape
           how far it bows or where it turns. */}
       {fold ? (
-        <Group key="fold" transform={[{ translateX: sx(fold.x) }, { translateY: sy(fold.y) }, { rotate: Math.PI / 4 }]}>
+        <Group
+          key="fold"
+          transform={[
+            { translateX: sx(fold.x) },
+            { translateY: sy(fold.y) },
+            { rotate: Math.PI / 4 },
+          ]}
+        >
           <Rect
             x={-HANDLE_SIZE / 2}
             y={-HANDLE_SIZE / 2}
@@ -703,7 +725,10 @@ export const ElementRenderer = memo(function ElementRenderer({
     // Turned about the centre of its box: the element itself paints unturned.
     const b = boxOf(el);
     return (
-      <Group transform={[{ rotate: angle }]} origin={{ x: b.x + b.width / 2, y: b.y + b.height / 2 }}>
+      <Group
+        transform={[{ rotate: angle }]}
+        origin={{ x: b.x + b.width / 2, y: b.y + b.height / 2 }}
+      >
         <ElementRenderer el={{ ...el, rotation: 0 }} smooth={smooth} />
       </Group>
     );
