@@ -32,6 +32,7 @@ import {
 } from '@/features/board/geometry';
 import {
   DASHES,
+  FONTS,
   LIMITS,
   MARKERS,
   ROUTES,
@@ -59,6 +60,8 @@ import { ColorPickerSheet } from '../ui/ColorPickerSheet';
 import { GlassPanel } from '../ui/Glass';
 import { Icon, type IconName } from '../ui/Icon';
 import { Txt } from '../ui/Text';
+
+import { FAMILIES } from './BoardFonts';
 import { tip, toast } from '../ui/Toast';
 
 type LabelKey =
@@ -82,6 +85,13 @@ interface ToolEntry {
   icon: IconName;
   labelKey: LabelKey;
 }
+
+const FONT_LABELS = {
+  sans: 'fontSans',
+  serif: 'fontSerif',
+  mono: 'fontMono',
+  hand: 'fontHand',
+} as const;
 
 /** The shape kinds, offered in the options strip while the shapes tool is in hand. */
 const SHAPES: ToolEntry[] = [
@@ -241,6 +251,10 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     sides:
       first((el) => (el.kind === 'shape' && el.shape === 'polygon' ? el.sides : undefined)) ??
       config.sides,
+    font:
+      first((el) =>
+        el.kind === 'text' || el.kind === 'shape' ? (el.font ?? 'sans') : undefined,
+      ) ?? config.font,
     bold: first((el) => (el.kind === 'text' ? !!el.bold : undefined)) ?? config.bold,
     italic: first((el) => (el.kind === 'text' ? !!el.italic : undefined)) ?? config.italic,
     headStart:
@@ -614,6 +628,25 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                           setFontSize(Math.min(LIMITS.maxFontSize, fontSize + 4));
                         }}
                       />
+                      {FONTS.map((font) => (
+                        <MiniButton
+                          key={font}
+                          label={t[FONT_LABELS[font]]}
+                          active={cur.font === font}
+                          onPress={() => {
+                            nudge();
+                            setConfig({ font });
+                          }}
+                        >
+                          <Txt
+                            size={14}
+                            color={cur.font === font ? '#FFFFFF' : undefined}
+                            style={{ fontFamily: FAMILIES[font][0] }}
+                          >
+                            Aa
+                          </Txt>
+                        </MiniButton>
+                      ))}
                       {showStyle ? (
                         <>
                           <MiniButton

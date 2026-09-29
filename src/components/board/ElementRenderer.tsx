@@ -32,6 +32,7 @@ import {
   handlesOf,
   headsOf,
   isLineLike,
+  labelLines,
   markerPaths,
   n as round,
   polygonPoints,
@@ -131,11 +132,12 @@ function MarkerPartView({
 /** A shape's label: centred in its box, or floating just above a line's midpoint. */
 function ShapeLabel({ el }: { el: ShapeElement }) {
   const fontSize = el.fontSize ?? SHAPE_TEXT_SIZE;
-  const font = useBoardFont(fontSize);
+  const font = useBoardFont(fontSize, false, false, el.font);
   if (!el.text) return null;
   const { x, y, width, height } = shapeBounds(el);
-  const step = fontSize * 1.25;
-  const lines = el.text.split('\n');
+  const step = fontSize * TEXT_LINE_HEIGHT;
+  // Wrapped inside the figure (a line's label only breaks where typed).
+  const lines = labelLines(el, fontSize);
   const cx = x + width / 2;
   const cy = isLineLike(el)
     ? y + height / 2 - (lines.length * step) / 2 - fontSize * 0.4
@@ -503,7 +505,7 @@ function TextPath({
 }
 
 function TextView({ el }: { el: Extract<BoardElement, { kind: 'text' }> }) {
-  const font = useBoardFont(el.fontSize, !!el.bold, !!el.italic);
+  const font = useBoardFont(el.fontSize, !!el.bold, !!el.italic, el.font);
   const step = el.fontSize * TEXT_LINE_HEIGHT;
   // Its own newlines, then wrapped to its width if it has one. Skia draws text
   // from the baseline; nudge each line down by ~the font size.
