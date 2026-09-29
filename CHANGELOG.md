@@ -9,6 +9,18 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ### Added
 
+- The selected "who can edit" option is a hairline ring with a centred dot; the
+  old 5.5 px ring looked like a heavy blob on the light theme.
+
+- A board opens framed on its content, once per join (a reconnect leaves the
+  camera alone). Unverified on a device.
+- Nicknames may be 40 characters (was 24), matching the server.
+
+- Selecting something holds it: the first person to select an element owns
+  it until they deselect it or leave. Everyone else sees it dimmed, framed in
+  that person's colour with their name on a tag, and cannot select, erase,
+  fill or edit it.
+
 - Export only what is selected: with a selection, the export sheet offers
   *Whole board* or *Selection* (selection first); the preview, the picture and
   the embedded board follow the choice.
