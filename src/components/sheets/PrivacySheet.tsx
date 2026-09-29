@@ -143,15 +143,23 @@ export function PrivacySheet({
                   opacity: isCreator ? 1 : 0.75,
                 }}
               >
+                {/* A hairline ring with a centred dot: a 5.5px ring reads as a fat blob on a
+                    light board. */}
                 <View
                   style={{
                     width: 18,
                     height: 18,
                     borderRadius: 9,
-                    borderWidth: active ? 5.5 : 2,
+                    borderWidth: 1.5,
                     borderColor: active ? c.accent : c.borderDashed,
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
-                />
+                >
+                  {active ? (
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.accent }} />
+                  ) : null}
+                </View>
                 <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                   <Txt weight="bold" size={13.5} leading={1.2}>
                     {mode.label}
