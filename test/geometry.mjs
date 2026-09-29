@@ -20,6 +20,7 @@ import {
   rotationFromDrag,
   shapeHit,
   textLines,
+  labelLines,
   bendFromDrag,
   bendHandleOf,
   control,
@@ -431,5 +432,10 @@ closeP(linkPoint(W, { id: 'W', u: 1, v: 0.5 }), { x: 100, y: 110 }, 'right edge 
 close(rotationFromDrag(A, { x: 150, y: 50 }), Math.PI / 2, 'quarter turn');
 close(rotationFromDrag(A, { x: 50 + Math.sin(0.27), y: 50 - Math.cos(0.27) }), Math.PI / 12, 'snapped to 15°');
 assert.equal(ROTATE_HANDLE, 5);
+
+// --- phase 4: a figure's label wraps inside it; a line's only where typed ---
+const LBL = { ...box('lbl', 0, 0, 72, 60), text: 'aaaa bbbb cccc' };
+assert.deepEqual(labelLines(LBL, 10), ['aaaa bbbb', 'cccc'], 'wrapped to the box minus its padding');
+assert.deepEqual(labelLines({ ...LBL, shape: 'line' }, 10), ['aaaa bbbb cccc'], 'a line label is not wrapped');
 
 console.log('geometry: ok');

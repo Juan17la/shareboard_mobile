@@ -9,6 +9,16 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ### Added
 
+- Font picker for text and figure labels: rounded (Nunito, the default),
+  serif (Lora), monospace (JetBrains Mono) and handwritten (Caveat).
+- Typing into a figure edits its label in place: the text appears exactly as
+  it will look — centred, wrapped inside the figure, in its font and turn —
+  instead of in a separate box. Text elements are edited in place too.
+
+### Changed
+
+- A figure's label wraps to fit inside the figure.
+
 - Polygons with 3 to 12 sides: a new shape tool with a sides stepper in
   the options strip.
 - Rotation: a selected figure, text or image has a round knob above it; drag
