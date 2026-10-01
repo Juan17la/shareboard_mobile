@@ -11,13 +11,18 @@ import { AppState } from 'react-native';
 
 import { REALTIME } from '@/constants/config';
 import { currentStrings } from '@/features/i18n/store';
+import { splitOps } from '@/features/board/ops';
 import { useBoardStore } from '@/features/board/store';
 import { useSessionStore } from '@/features/session/store';
+import { toast } from '@/components/ui/Toast';
 import { ApiError } from '@/services/api/client';
 import { getBoard, joinBoard } from '@/services/api/boards';
 import { WebSocketConnection } from '@/services/realtime/socket';
 import type { Point } from '@/features/board/model';
 import { throttle } from '@/utils/throttle';
+
+/** Errors that end the session even once the board is open. */
+const FATAL_AFTER_JOIN = ['BOARD_NOT_FOUND', 'NICKNAME_TAKEN', 'PIN_REQUIRED', 'PIN_INVALID'];
 
 export type SyncPhase = 'loading' | 'need-nickname' | 'need-pin' | 'ready' | 'error';
 
@@ -32,6 +37,8 @@ export interface BoardSync {
   sendCursor(at: Point): void;
   /** Reconnect now, after the socket gave up on its own. */
   retry(): void;
+  /** The board is gone (deleted, or its server forgot it): the caller should let it go. */
+  notFound: boolean;
 }
 
 export interface BoardSyncOptions {
@@ -56,6 +63,7 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
   // the connect attempt itself sends us back to the identity step: a clash.
   const [connectPhase, setPhase] = useState<SyncPhase>('loading');
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const pinRef = useRef<string | undefined>(undefined);
   const connRef = useRef<WebSocketConnection | null>(null);
   const attemptRef = useRef(0);
@@ -75,6 +83,7 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
       if (attempt !== attemptRef.current) return;
       setPhase('loading');
       setError(null);
+      setNotFound(false);
 
       const meta = await getBoard(boardId);
       const join = await joinBoard({
@@ -100,7 +109,12 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
       // it has to live somewhere the modal screens can reach.
       store.setBoardToken(join.boardToken);
 
+      // Until `joined` an error means the board cannot be opened; after it, one
+      // is about a single request (a refused batch, a rate limit) and the board
+      // on screen stays.
+      let ready = false;
       conn.on('joined', (msg) => {
+        ready = true;
         store.hydrate({
           meta: msg.meta,
           elements: msg.elements,
@@ -140,8 +154,14 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
         moves[msg.from] = msg.at;
       });
       conn.on('permissions', (msg) => useBoardStore.getState().setMeta(msg.meta, msg.you));
+      conn.on('resync', (msg) => useBoardStore.getState().resync(msg.elements, msg.seq));
       conn.on('error', (msg) => {
+        if (ready && !FATAL_AFTER_JOIN.includes(msg.code)) {
+          toast(msg.message);
+          return;
+        }
         setError(msg.message);
+        if (msg.code === 'BOARD_NOT_FOUND') setNotFound(true);
         if (msg.code === 'PIN_REQUIRED' || msg.code === 'PIN_INVALID') setPhase('need-pin');
         else setPhase('error');
       });
@@ -163,6 +183,7 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
         setPhase('need-nickname');
         return;
       }
+      if (err instanceof ApiError && err.code === 'BOARD_NOT_FOUND') setNotFound(true);
       setError(err instanceof Error ? err.message : 'Could not open the board');
       setPhase('error');
     }
@@ -198,9 +219,12 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
   useEffect(() => {
     const flush = throttle(() => {
       const conn = connRef.current;
-      if (!conn) return;
+      // Not before the join has completed: the ops stay in the store, and the
+      // hydrate that follows a join sends them (it hands the outbox over anew).
+      if (!conn || conn.getState() !== 'online') return;
       const batch = useBoardStore.getState().drainOutbox();
-      if (batch) conn.send({ type: 'op', boardId, ops: batch.ops, seq: batch.seq });
+      // One frame per chunk: a paste of a few photos would overflow the server's frame cap.
+      if (batch) for (const ops of splitOps(batch.ops)) conn.send({ type: 'op', boardId, ops, seq: batch.seq });
     }, REALTIME.outboxFlushMs);
 
     const unsub = useBoardStore.subscribe((state, prev) => {
@@ -280,5 +304,5 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
 
   const retry = useCallback(() => connRef.current?.retry(), []);
 
-  return { phase, error, submitPin, submitNickname, sendCursor, retry };
+  return { phase, error, submitPin, submitNickname, sendCursor, retry, notFound };
 }
