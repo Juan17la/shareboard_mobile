@@ -24,11 +24,13 @@ export const Colors = {
   textTertiary: '#8E8E93',
 
   /** The single brand accent: active tool, primary CTA, selected state. */
-  accent: '#7A1F2B',
-  accentDeep: '#5A1420',
+  accent: '#0071E3',
+  accentDeep: '#0058B0',
+  /** The accent as *text* (tab labels, links): deeper on light, lighter on dark, for contrast. */
+  accentText: '#0062CC',
   /** Tinted accent background for selected rows and icon chips. */
-  accentSoft: 'rgba(122,31,43,0.11)',
-  accentSofter: 'rgba(122,31,43,0.07)',
+  accentSoft: 'rgba(0,113,227,0.11)',
+  accentSofter: 'rgba(0,113,227,0.07)',
 
   danger: '#D70015',
   dangerBright: '#FF3B30',
@@ -39,6 +41,8 @@ export const Colors = {
   /** Hairlines and control borders. */
   border: 'rgba(60,60,67,0.10)',
   borderStrong: 'rgba(60,60,67,0.14)',
+  /** The edge of a text field: clearly there on a white or a frosted ground. */
+  borderField: 'rgba(60,60,67,0.34)',
   borderDashed: 'rgba(60,60,67,0.22)',
 
   // Frosted-panel recipe. `BlurView` supplies the blur; these are the tint and
@@ -70,13 +74,15 @@ export const Palettes: Record<Theme, Palette> = {
     text: '#FFFFFF',
     textSecondary: '#AEAEB2',
     textTertiary: '#8E8E93',
-    accent: '#A82F3F',
-    accentDeep: '#82202E',
-    accentSoft: 'rgba(168,47,63,0.20)',
-    accentSofter: 'rgba(168,47,63,0.11)',
+    accent: '#0071E3',
+    accentDeep: '#0058B0',
+    accentText: '#4DA2FF',
+    accentSoft: 'rgba(10,132,255,0.20)',
+    accentSofter: 'rgba(10,132,255,0.11)',
     dangerBright: '#FF453A',
     border: 'rgba(235,235,245,0.10)',
     borderStrong: 'rgba(235,235,245,0.16)',
+    borderField: 'rgba(235,235,245,0.36)',
     borderDashed: 'rgba(235,235,245,0.26)',
     glassTint: 'rgba(28,28,30,0.55)',
     glassTintSolid: 'rgba(44,44,46,0.72)',
@@ -131,7 +137,7 @@ export const StrokeSizes = [2, 5, 10, 20] as const;
 
 /** Identity colors offered on the nickname screen (also the presence color). */
 export const NicknameColors = [
-  '#7A1F2B',
+  '#0071E3',
   '#E5484D',
   '#F76808',
   '#30A46C',
@@ -182,7 +188,7 @@ export const Fonts = {
   monoBold: 'JetBrainsMono_700Bold',
 } as const;
 
-/** Soft drop shadows. Elevation is subtle everywhere except the CTA. */
+/** Soft drop shadows. Elevation is subtle everywhere. */
 export const Shadow = {
   panel: {
     shadowColor: '#151A2D',
@@ -198,18 +204,20 @@ export const Shadow = {
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
+  // Filled controls, the iOS way: a tight, low shadow in a deeper shade of
+  // their own colour — no glow. The lit edge and hairline are in `ui/Button`.
   accent: {
-    shadowColor: '#7A1F2B',
+    shadowColor: '#002864',
     shadowOpacity: 0.3,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
   danger: {
-    shadowColor: '#C4353A',
-    shadowOpacity: 0.26,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    shadowColor: '#780000',
+    shadowOpacity: 0.28,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
 } as const;
