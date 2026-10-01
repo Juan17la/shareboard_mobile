@@ -173,6 +173,9 @@ const nowMs = () => {
   return Date.now();
 };
 
+/** A number, not `LIMITS`: a worklet that names `LIMITS` copies the whole object to the UI thread, and it holds a RegExp. */
+const MAX_STROKE_POINTS = LIMITS.maxStrokePoints;
+
 /** How long a finger holds still with the cursor before the menu opens: paste on empty board, the element's actions on a figure. */
 const HOLD_MS = 500;
 /** How long a pen stroke's end is held before it is read as a figure (`recognizeSketch`). */
@@ -954,7 +957,7 @@ export function BoardCanvas({
         if (Math.hypot(e.x - a.x, e.y - a.y) > STILL_PX) {
           penAnchor.set({ x: e.x, y: e.y, at: nowMs() });
         }
-        if (pen.get().length / 2 < LIMITS.maxStrokePoints) {
+        if (pen.get().length / 2 < MAX_STROKE_POINTS) {
           pen.modify((pts) => {
             'worklet';
             pts.push(x, y);
