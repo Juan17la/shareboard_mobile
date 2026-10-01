@@ -1,14 +1,66 @@
 /**
- * The app's icon set, transcribed from the design's SVGs.
+ * The app's icon set: [Phosphor](https://phosphoricons.com), one glyph per
+ * name the UI asks for. Callers keep saying `<Icon name="plus" />`; this file
+ * is the only place that knows which Phosphor glyph and weight that means, so
+ * swapping one is a one-line change. A button tints its icon by passing one
+ * `color`; the theme's text colour is the default.
  *
- * They are hand-written rather than pulled from an icon font because the design
- * draws them at a specific weight (1.9–2.4px strokes on a 24px grid, round caps
- * and joins) that no general-purpose set matches. Everything is stroked from
- * `currentColor` — i.e. the `color` prop — so a button can tint its icon by
- * passing one value, and filled variants are the exception rather than the rule.
+ * Same mapping as `web/src/components/ui/Icon.tsx` (which also has the
+ * web-only `keyboard` and `fit`).
  */
-import { Circle, Ellipse, Path, Polyline, Rect, Svg } from 'react-native-svg';
-import type { ReactElement } from 'react';
+import {
+  ArrowDownIcon,
+  ArrowLineDownIcon,
+  ArrowLineUpIcon,
+  ArrowUUpLeftIcon,
+  ArrowUUpRightIcon,
+  ArrowUpIcon,
+  ArrowUpRightIcon,
+  BoundingBoxIcon,
+  CaretLeftIcon,
+  CaretRightIcon,
+  ChalkboardSimpleIcon,
+  CheckIcon,
+  CircleIcon,
+  ClipboardTextIcon,
+  CopyIcon,
+  CursorIcon,
+  DotsThreeIcon,
+  DownloadSimpleIcon,
+  DropIcon,
+  EraserIcon,
+  ExportIcon,
+  GearSixIcon,
+  HandIcon,
+  HexagonIcon,
+  ImageIcon,
+  LineSegmentIcon,
+  LinkIcon,
+  LockSimpleIcon,
+  LockSimpleOpenIcon,
+  MagnifyingGlassIcon,
+  MinusIcon,
+  MoonIcon,
+  PencilSimpleIcon,
+  PencilSimpleLineIcon,
+  PlusIcon,
+  RectangleIcon,
+  ScissorsIcon,
+  SelectionSlashIcon,
+  ShapesIcon,
+  SparkleIcon,
+  SunIcon,
+  TextTIcon,
+  TrashIcon,
+  TriangleIcon,
+  UploadSimpleIcon,
+  UsersIcon,
+  WarningIcon,
+  XCircleIcon,
+  XIcon,
+  type Icon as PhosphorIcon,
+  type IconWeight,
+} from 'phosphor-react-native';
 
 import { useColors } from '@/features/session/store';
 
@@ -63,401 +115,67 @@ export type IconName =
   | 'sun'
   | 'sparkle';
 
-/**
- * `s` is the stroke width the design uses for that glyph — a few are drawn
- * heavier (chevrons, the close cross) so they stay legible at 15px.
- */
-const PATHS: Record<IconName, { s?: number; fill?: boolean; body: ReactElement }> = {
-  back: { s: 2.2, body: <Polyline points="14.5,5 8,12 14.5,19" /> },
-  chevron: { s: 2.2, body: <Polyline points="9.5,5 16,12 9.5,19" /> },
-  more: {
-    fill: true,
-    body: (
-      <>
-        <Circle cx="5" cy="12" r="1.9" />
-        <Circle cx="12" cy="12" r="1.9" />
-        <Circle cx="19" cy="12" r="1.9" />
-      </>
-    ),
-  },
-  close: {
-    s: 2.4,
-    body: (
-      <>
-        <Path d="M6 6l12 12" />
-        <Path d="M18 6L6 18" />
-      </>
-    ),
-  },
-  copy: {
-    body: (
-      <>
-        <Rect x="9" y="9" width="11" height="11" rx="2.5" />
-        <Path d="M15 5.5A2.5 2.5 0 0 0 12.5 3H6.5A2.5 2.5 0 0 0 4 5.5v6A2.5 2.5 0 0 0 6.5 14" />
-      </>
-    ),
-  },
-  // Scissors: two loops, blades crossing — cut.
-  cut: {
-    body: (
-      <>
-        <Circle cx="6" cy="6" r="3" />
-        <Circle cx="6" cy="18" r="3" />
-        <Path d="M20 4L8.1 15.9" />
-        <Path d="M14.5 14.5L20 20" />
-        <Path d="M8.1 8.1L12 12" />
-      </>
-    ),
-  },
-  // A clipboard with its clip — paste.
-  paste: {
-    body: (
-      <>
-        <Path d="M16 4h1.5A2.5 2.5 0 0 1 20 6.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-13A2.5 2.5 0 0 1 6.5 4H8" />
-        <Rect x="8" y="2" width="8" height="4" rx="1.5" />
-      </>
-    ),
-  },
-  link: {
-    body: (
-      <>
-        <Path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 1 0-5.7-5.7L11.5 7" />
-        <Path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 1 0 5.7 5.7l1.5-1.4" />
-      </>
-    ),
-  },
-  plus: {
-    s: 2.4,
-    body: (
-      <>
-        <Path d="M12 5v14" />
-        <Path d="M5 12h14" />
-      </>
-    ),
-  },
-  minus: { s: 2.4, body: <Path d="M5 12h14" /> },
-  check: { s: 2.6, body: <Polyline points="5,12.5 10,17.5 19,7" /> },
-  search: {
-    body: (
-      <>
-        <Circle cx="11" cy="11" r="6.5" />
-        <Path d="M16 16l4.5 4.5" />
-      </>
-    ),
-  },
-  lock: {
-    body: (
-      <>
-        <Rect x="4.5" y="10.5" width="15" height="10" rx="3" />
-        <Path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
-      </>
-    ),
-  },
-  // The open padlock's shackle is lifted off its right post — the design uses
-  // exactly this to tell a public board from a private one at a glance.
-  'lock-open': {
-    body: (
-      <>
-        <Rect x="4.5" y="10.5" width="15" height="10" rx="3" />
-        <Path d="M8 10.5V8a4 4 0 0 1 7.5-2" />
-      </>
-    ),
-  },
-  share: {
-    s: 2.2,
-    body: (
-      <>
-        <Path d="M12 16V4" />
-        <Polyline points="7.5,8.5 12,4 16.5,8.5" />
-        <Path d="M5 14v4.5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V14" />
-      </>
-    ),
-  },
-  board: {
-    s: 2.2,
-    body: (
-      <>
-        <Rect x="3" y="4.5" width="18" height="13" rx="2.5" />
-        <Path d="M8 21h8" />
-      </>
-    ),
-  },
-  people: {
-    body: (
-      <>
-        <Circle cx="9.5" cy="8.5" r="3.4" />
-        <Path d="M3.8 19.5a5.8 5.8 0 0 1 11.4 0" />
-        <Path d="M16 6.2a3.2 3.2 0 0 1 0 6" />
-        <Path d="M17.6 14.4a5 5 0 0 1 2.7 4" />
-      </>
-    ),
-  },
-  settings: {
-    body: (
-      <>
-        <Circle cx="12" cy="12" r="3.2" />
-        <Path d="M12 3.2v2.4" />
-        <Path d="M12 18.4v2.4" />
-        <Path d="M3.2 12h2.4" />
-        <Path d="M18.4 12h2.4" />
-        <Path d="M6 6l1.7 1.7" />
-        <Path d="M16.3 16.3L18 18" />
-        <Path d="M18 6l-1.7 1.7" />
-        <Path d="M7.7 16.3L6 18" />
-      </>
-    ),
-  },
-  image: {
-    body: (
-      <>
-        <Rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
-        <Circle cx="9" cy="10" r="1.6" />
-        <Path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5" />
-      </>
-    ),
-  },
-  download: {
-    body: (
-      <>
-        <Path d="M12 4v12" />
-        <Polyline points="7.5,11.5 12,16 16.5,11.5" />
-        <Path d="M5 19h14" />
-      </>
-    ),
-  },
-  upload: {
-    body: (
-      <>
-        <Path d="M12 20V8" />
-        <Polyline points="7.5,12.5 12,8 16.5,12.5" />
-        <Path d="M5 4h14" />
-      </>
-    ),
-  },
-  trash: {
-    body: (
-      <>
-        <Path d="M4 7h16" />
-        <Path d="M9.5 7V5h5v2" />
-        <Path d="M6.5 7l1 13h9l1-13" />
-      </>
-    ),
-  },
-  'x-circle': {
-    body: (
-      <>
-        <Circle cx="12" cy="12" r="8.5" />
-        <Path d="M9 15l6-6" />
-        <Path d="M9 9l6 6" />
-      </>
-    ),
-  },
-  warning: {
-    body: (
-      <>
-        <Path d="M12 4.5l8.5 15H3.5z" />
-        <Path d="M12 10v4" />
-        <Path d="M12 16.6v.1" />
-      </>
-    ),
-  },
-  edit: {
-    body: (
-      <>
-        <Path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z" />
-        <Path d="M14.5 6.5l3 3" />
-      </>
-    ),
-  },
-  hand: {
-    s: 1.9,
-    body: (
-      <>
-        <Path d="M8 11V5.5a1.5 1.5 0 0 1 3 0V11" />
-        <Path d="M11 10V4.5a1.5 1.5 0 0 1 3 0V11" />
-        <Path d="M14 10.5V6a1.5 1.5 0 0 1 3 0v7.5" />
-        <Path d="M8 11.5V8.5a1.5 1.5 0 0 0-3 0V14c0 3.6 2.4 6.5 6 6.5h2c3.4 0 5.8-2.4 6-5.9" />
-      </>
-    ),
-  },
-  pencil: {
-    s: 1.9,
-    body: (
-      <>
-        <Path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z" />
-        <Path d="M14.5 6.5l3 3" />
-      </>
-    ),
-  },
-  eraser: {
-    s: 1.9,
-    body: (
-      <>
-        <Rect x="3" y="11" width="13" height="9" rx="2" transform="rotate(-38 9.5 15.5)" />
-        <Path d="M10 20h10" />
-      </>
-    ),
-  },
-  shapes: {
-    s: 1.9,
-    body: (
-      <>
-        <Rect x="3.5" y="4" width="11" height="11" rx="1.8" />
-        <Circle cx="15.5" cy="15" r="5.2" />
-      </>
-    ),
-  },
-  text: {
-    body: (
-      <>
-        <Path d="M5 6h14" />
-        <Path d="M12 6v13" />
-        <Path d="M9 19h6" />
-      </>
-    ),
-  },
-  fill: {
-    s: 1.9,
-    body: (
-      <>
-        <Path d="M12 3.5c3.2 3.6 5.5 6.3 5.5 9a5.5 5.5 0 0 1-11 0c0-2.7 2.3-5.4 5.5-9z" />
-        <Path d="M9.4 13.6a2.7 2.7 0 0 0 2.6 2.6" />
-      </>
-    ),
-  },
-  cursor: { body: <Path d="M5.5 4.5l13 6.5-5.6 1.6L11 18.5z" /> },
-  // Two boxes, the marked one on top: the selection and the rest of the stack.
-  group: {
-    s: 1.8,
-    body: (
-      <>
-        <Rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="3 2" />
-        <Rect x="7.5" y="7.5" width="4" height="4" />
-        <Rect x="12.5" y="12.5" width="4" height="4" />
-      </>
-    ),
-  },
-  ungroup: {
-    s: 1.8,
-    body: (
-      <>
-        <Rect x="4" y="4" width="7" height="7" rx="1" />
-        <Rect x="13" y="13" width="7" height="7" rx="1" />
-        <Path d="M13 6.5l-2 0M6.5 13l0 2" />
-      </>
-    ),
-  },
-  'to-back': {
-    s: 1.8,
-    body: (
-      <>
-        <Rect x="9" y="9" width="11" height="11" rx="1.5" />
-        <Path d="M4 15V5.5A1.5 1.5 0 0 1 5.5 4H15" />
-        <Path d="M4 15l3 -3M4 15l-3 -3" transform="translate(0 -0.5)" />
-      </>
-    ),
-  },
-  backward: {
-    s: 1.8,
-    body: (
-      <>
-        <Rect x="9" y="9" width="11" height="11" rx="1.5" />
-        <Path d="M4 15V5.5A1.5 1.5 0 0 1 5.5 4H15" />
-      </>
-    ),
-  },
-  forward: {
-    s: 1.8,
-    body: (
-      <>
-        <Path d="M20 9v9.5a1.5 1.5 0 0 1-1.5 1.5H9" />
-        <Rect x="4" y="4" width="11" height="11" rx="1.5" />
-      </>
-    ),
-  },
-  'to-front': {
-    s: 1.8,
-    body: (
-      <>
-        <Path d="M20 9v9.5a1.5 1.5 0 0 1-1.5 1.5H9" />
-        <Rect x="4" y="4" width="11" height="11" rx="1.5" />
-        <Path d="M9.5 6.5l-3 -3l-3 3" transform="translate(3 4)" />
-      </>
-    ),
-  },
-  moon: { body: <Path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /> },
-  sparkle: {
-    body: (
-      <>
-        <Path d="M12 3l1.9 5.6L19.5 10.5l-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z" />
-        <Path d="M19 3v4M17 5h4" />
-      </>
-    ),
-  },
-  sun: {
-    body: (
-      <>
-        <Circle cx="12" cy="12" r="4" />
-        <Path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4" />
-      </>
-    ),
-  },
-  rectangle: { body: <Rect x="4" y="5.5" width="16" height="13" rx="2" /> },
-  ellipse: { body: <Ellipse cx="12" cy="12" rx="8" ry="8" /> },
-  triangle: { body: <Path d="M12 5l8 14H4z" /> },
-  polygon: { body: <Path d="M12 4l7 4v8l-7 4-7-4V8z" /> },
-  line: { body: <Path d="M5 19L19 5" /> },
-  arrow: {
-    body: (
-      <>
-        <Path d="M4.5 19.5L19 5" />
-        <Polyline points="11.5,5 19,5 19,12.5" />
-      </>
-    ),
-  },
-  undo: {
-    body: (
-      <>
-        <Polyline points="9,5 4,10 9,15" />
-        <Path d="M4 10h9a6 6 0 0 1 0 12h-3" />
-      </>
-    ),
-  },
-  redo: {
-    body: (
-      <>
-        <Polyline points="15,5 20,10 15,15" />
-        <Path d="M20 10h-9a6 6 0 0 0 0 12h3" />
-      </>
-    ),
-  },
+/** `bold` for the small marks (chevrons, the cross) so they hold up at 15px. */
+const GLYPHS: Record<IconName, [PhosphorIcon, IconWeight?]> = {
+  back: [CaretLeftIcon, 'bold'],
+  chevron: [CaretRightIcon, 'bold'],
+  more: [DotsThreeIcon, 'bold'],
+  close: [XIcon, 'bold'],
+  copy: [CopyIcon],
+  cut: [ScissorsIcon],
+  paste: [ClipboardTextIcon],
+  link: [LinkIcon],
+  plus: [PlusIcon, 'bold'],
+  minus: [MinusIcon, 'bold'],
+  check: [CheckIcon, 'bold'],
+  search: [MagnifyingGlassIcon],
+  lock: [LockSimpleIcon],
+  'lock-open': [LockSimpleOpenIcon],
+  share: [ExportIcon],
+  board: [ChalkboardSimpleIcon],
+  people: [UsersIcon],
+  settings: [GearSixIcon],
+  image: [ImageIcon],
+  download: [DownloadSimpleIcon],
+  upload: [UploadSimpleIcon],
+  trash: [TrashIcon],
+  'x-circle': [XCircleIcon],
+  warning: [WarningIcon],
+  hand: [HandIcon],
+  pencil: [PencilSimpleIcon],
+  eraser: [EraserIcon],
+  shapes: [ShapesIcon],
+  text: [TextTIcon],
+  fill: [DropIcon],
+  rectangle: [RectangleIcon],
+  ellipse: [CircleIcon],
+  triangle: [TriangleIcon],
+  polygon: [HexagonIcon],
+  line: [LineSegmentIcon],
+  arrow: [ArrowUpRightIcon],
+  undo: [ArrowUUpLeftIcon],
+  redo: [ArrowUUpRightIcon],
+  edit: [PencilSimpleLineIcon],
+  cursor: [CursorIcon],
+  group: [BoundingBoxIcon],
+  ungroup: [SelectionSlashIcon],
+  'to-back': [ArrowLineDownIcon],
+  backward: [ArrowDownIcon],
+  forward: [ArrowUpIcon],
+  'to-front': [ArrowLineUpIcon],
+  moon: [MoonIcon],
+  sun: [SunIcon],
+  sparkle: [SparkleIcon],
 };
 
 export interface IconProps {
   name: IconName;
   size?: number;
   color?: string;
-  /** Overrides the glyph's own stroke width. */
-  strokeWidth?: number;
 }
 
-export function Icon({ name, size = 20, color: tint, strokeWidth }: IconProps) {
+export function Icon({ name, size = 20, color: tint }: IconProps) {
   const c = useColors();
-  const color = tint ?? c.text;
-  const glyph = PATHS[name];
-  const stroke = glyph.fill ? undefined : color;
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill={glyph.fill ? color : 'none'}
-      stroke={stroke}
-      strokeWidth={strokeWidth ?? glyph.s ?? 2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {glyph.body}
-    </Svg>
-  );
+  const [Glyph, weight = 'regular'] = GLYPHS[name];
+  return <Glyph size={size} weight={weight} color={tint ?? c.text} />;
 }
