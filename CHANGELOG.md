@@ -16,6 +16,8 @@ All notable changes to the Shareboard mobile app. The format follows
   otherwise), the shape kind and a polygon's sides, a line's two ends, a shape's
   label size and font. Fill still opens its sheet. Text keeps font, style and
   size in the strip; the eraser shows only its width.
+- The width box shows four bars, each thicker than the last, with the bar for the
+  width in use solid — the icon design tools use for stroke weight — instead of a dot.
 - A selected box, picture or text now has round handles on its corners (they
   were small squares), like the ends of a line.
 
