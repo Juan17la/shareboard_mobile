@@ -14,8 +14,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   Animated,
+  Dimensions,
   Easing,
+  Keyboard,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   View,
@@ -40,6 +43,7 @@ export function Sheet({
   children,
   closeLabel = 'Close',
   tall = false,
+  full = false,
 }: {
   open: boolean;
   title: string;
@@ -48,11 +52,40 @@ export function Sheet({
   closeLabel?: string;
   /** Up to 92% of the screen instead of 78%, for sheets with a preview (AI). */
   tall?: boolean;
+  /**
+   * The whole height of the screen, and no scroll view: the children fill the
+   * body and scroll themselves (a chat, with its input pinned at the bottom).
+   */
+  full?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const c = useColors();
   const [anim] = useState(() => new Animated.Value(0));
+  // The keyboard covers the bottom of the window (nothing resizes it: the app
+  // draws edge to edge), so a sheet with an input lifts itself above it. The
+  // window's own height says whether it was resized after all, so the two
+  // never add up.
+  const [keyboard, setKeyboard] = useState(0);
+  const [windowHeight, setWindowHeight] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const ios = Platform.OS === 'ios';
+    const shown = Keyboard.addListener(ios ? 'keyboardWillShow' : 'keyboardDidShow', (e) =>
+      setKeyboard(e.endCoordinates.height),
+    );
+    const hidden = Keyboard.addListener(ios ? 'keyboardWillHide' : 'keyboardDidHide', () =>
+      setKeyboard(0),
+    );
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, [open]);
+  const covered = windowHeight ? Math.max(0, Dimensions.get('screen').height - windowHeight) : 0;
+  const lift = Math.max(0, keyboard - covered);
+  const room = (windowHeight || height) - lift - insets.top - 16;
+  const fit = full ? room : Math.min(height * (tall ? 0.92 : 0.78), room);
 
   useEffect(() => {
     if (!open) {
@@ -76,7 +109,10 @@ export function Sheet({
       statusBarTranslucent
     >
       <NoGlassScene>
-        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <View
+          style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: lift }}
+          onLayout={(e) => setWindowHeight(e.nativeEvent.layout.height)}
+        >
           <Animated.View style={{ ...ABSOLUTE_FILL, opacity: anim }}>
             {/* Tap-outside-to-close, hidden from assistive tech: it does exactly
                 what the close button beside the title does, and announcing both
@@ -95,7 +131,8 @@ export function Sheet({
                 { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) },
               ],
               opacity: anim,
-              maxHeight: height * (tall ? 0.92 : 0.78),
+              maxHeight: fit,
+              ...(full ? { height: fit } : null),
             }}
           >
             <GlassPanel
@@ -103,6 +140,11 @@ export function Sheet({
               radius={Radius.xxl}
               border={null}
               style={{
+                // The panel gives way to the wrapper's maximum height, and its
+                // scroll view with it; unshrunk, the bottom of a tall sheet
+                // (Settings' delete button) ran past the edge, out of reach.
+                flexShrink: 1,
+                ...(full ? { flex: 1 } : null),
                 borderTopLeftRadius: Radius.xxl,
                 borderTopRightRadius: Radius.xxl,
                 borderBottomLeftRadius: 0,
@@ -153,16 +195,28 @@ export function Sheet({
                 />
               </View>
 
-              <ScrollView
-                contentContainerStyle={{
-                  paddingHorizontal: 20,
-                  paddingBottom: Math.max(insets.bottom, 12) + 18,
-                }}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
-                {children}
-              </ScrollView>
+              {full ? (
+                <View
+                  style={{
+                    flex: 1,
+                    paddingHorizontal: 20,
+                    paddingBottom: (lift ? 12 : Math.max(insets.bottom, 12)) + 10,
+                  }}
+                >
+                  {children}
+                </View>
+              ) : (
+                <ScrollView
+                  contentContainerStyle={{
+                    paddingHorizontal: 20,
+                    paddingBottom: (lift ? 12 : Math.max(insets.bottom, 12)) + 18,
+                  }}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
+                  {children}
+                </ScrollView>
+              )}
             </GlassPanel>
           </Animated.View>
 
