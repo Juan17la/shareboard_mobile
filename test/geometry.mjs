@@ -413,26 +413,29 @@ assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow', bend: d
   useBoardStore.getState().hydrate({ meta, elements: [R, G], participants: [you], you, seq: 0 });
   s().setConnection('online');
 
-  // A fill in the line's own colour keeps following it, as it always did; one with a colour of its own stays.
+  // Recolouring the border leaves the fill alone, whether it matched the border or not.
   s().select(['R', 'G']);
   s().restyle({ color: '#0000FF' });
-  assert.equal(s().elements.R.fill, '#0000FF2E');
+  assert.equal(s().elements.R.stroke, '#0000FF');
+  assert.equal(s().elements.R.fill, '#FF00002E');
   assert.equal(s().elements.G.fill, '#00AA0080');
 
   // Colour and opacity are set apart: changing one keeps the other.
   s().select('R');
   s().restyle({ fillOpacity: 60 });
-  assert.equal(s().elements.R.fill, '#0000FF99');
+  assert.equal(s().elements.R.fill, '#FF000099');
   s().restyle({ fillColor: '#abcdef' });
   assert.equal(s().elements.R.fill, '#ABCDEF99');
   s().restyle({ color: '#222222' });
-  assert.equal(s().elements.R.fill, '#ABCDEF99', 'its own colour now: no longer follows the line');
+  assert.equal(s().elements.R.fill, '#ABCDEF99', 'the border changed, the fill did not');
   s().restyle({ fillColor: null });
-  assert.equal(s().elements.R.fill, '#22222299', 'same as the line again');
+  assert.equal(s().elements.R.fill, '#22222299', 'same as the line, as it is now');
+  s().restyle({ color: '#333333' });
+  assert.equal(s().elements.R.fill, '#22222299', 'and no longer tied to it');
   s().restyle({ fillOpacity: 0 });
   assert.ok(!s().elements.R.fill, '0% is no fill');
   s().restyle({ fillOpacity: 30 });
-  assert.equal(s().elements.R.fill, '#2222224D', 'back from none, in the line colour');
+  assert.equal(s().elements.R.fill, '#3333334D', 'back from none, in the line colour');
   s().undo();
   assert.ok(!s().elements.R.fill);
 

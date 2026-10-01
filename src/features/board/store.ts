@@ -765,13 +765,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
             if (shape === 'line') Object.assign(p, { headStart: 'none', headEnd: 'none' });
             if (shape === 'arrow' && headsOf(el).every((h) => h === 'none')) p.headEnd = 'arrow';
           }
-          if (patch.color !== undefined) {
-            p.stroke = patch.color;
-            // A fill drawn in the line's own colour keeps following it; one given a colour of its own stays.
-            if (el.fill && fillColorOf(el.fill) === el.stroke.slice(0, 7).toUpperCase()) {
-              p.fill = fillWith(patch.color, fillOpacityOf(el.fill));
-            }
-          }
+          // The border only: the fill has a colour of its own, whatever the border is recoloured to.
+          if (patch.color !== undefined) p.stroke = patch.color;
           if (patch.width !== undefined) p.strokeWidth = clampWidth(patch.width);
           if (patch.fillColor !== undefined || patch.fillOpacity !== undefined) {
             // The shape's own colour unless one was chosen: a red box gets a red wash.
