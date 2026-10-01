@@ -298,9 +298,10 @@ export function SelectionFrame({
             <Circle cx={h.x} cy={h.y} r={half + k} color={c.background} style="stroke" strokeWidth={hair} />
           </Group>
         ) : (
+          // Round, like a line's ends: a ring says "drag me" where a square corner did not.
           <Group key={i}>
-            <Rect x={h.x - half} y={h.y - half} width={2 * half} height={2 * half} color={c.background} />
-            <Rect x={h.x - half} y={h.y - half} width={2 * half} height={2 * half} color={c.accent} style="stroke" strokeWidth={hair} />
+            <Circle cx={h.x} cy={h.y} r={half + k} color={c.background} />
+            <Circle cx={h.x} cy={h.y} r={half + k} color={c.accent} style="stroke" strokeWidth={2 * k} />
           </Group>
         ),
       )}

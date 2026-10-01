@@ -28,7 +28,8 @@ import {
   labelFromDrag,
   routePointAt,
   anchorsOf,
-  bendFromDrag,
+  elbowDragPatch,
+  setBoxLookup,
   bendHandleOf,
   curveHandlesOf,
   curveFromDrag,
@@ -118,7 +119,7 @@ for (const kind of ALL_MARKERS) {
   for (const p of parts) assert.match(p.d, /^M /, kind);
 }
 for (const route of ROUTES) assert.match(routePath({ from: { x: 0, y: 0 }, to: { x: 10, y: 5 }, route }), /^M 0 0 /, route);
-assert.equal(routePath({ from: { x: 0, y: 0 }, to: { x: 10, y: 0 }, route: 'elbow' }).split('L').length, 4);
+assert.equal(routePath({ from: { x: 0, y: 0 }, to: { x: 10, y: 0 }, route: 'elbow' }), 'M 0 0 L 10 0', 'ends in line: no bends to draw');
 
 // --- fill levels -----------------------------------------------------------
 
@@ -211,7 +212,8 @@ assert.equal('fontSize' in s().elements.A, false, 'the key is gone, not null');
 // change for every board saved before this field existed).
 const line = { from: { x: 0, y: 0 }, to: { x: 100, y: 0 } };
 assert.equal(bendHandleOf({ ...line, shape: 'arrow', route: 'curved' }), null, 'a curve is shaped by its own handles');
-assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow' }), { x: 50, y: 0 });
+assert.equal(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow' }), null, 'a straight run has no middle to drag');
+assert.deepEqual(bendHandleOf({ from: { x: 0, y: 0 }, to: { x: 100, y: 50 }, shape: 'arrow', route: 'elbow' }), { x: 50, y: 25 });
 assert.equal(bendHandleOf({ ...line, shape: 'arrow', route: 'straight' }), null, 'nothing to fold on a straight line');
 assert.equal(bendHandleOf({ ...line, shape: 'rectangle', route: 'curved' }), null, 'only lines fold');
 // Dragging the fold handle to a point, then reading it back, must return to
@@ -237,14 +239,143 @@ assert.equal(routePath(step).split('L').length, 4, 'three segments');
 assert.deepEqual(elbowAxes({ ...step, startAxis: 'v' }), ['v', 'h']);
 assert.equal(routePath({ ...step, startAxis: 'v', endAxis: 'h' }), 'M 0 0 L 0 50 L 100 50', 'up and down, then across: a single corner');
 assert.equal(routePath({ ...step, startAxis: 'h', endAxis: 'v' }), 'M 0 0 L 100 0 L 100 50');
-assert.equal(bendHandleOf({ ...step, shape: 'arrow', startAxis: 'v', endAxis: 'h' }), null, 'a corner has no middle to drag');
+// A single corner between two free ends is its own handle: drag it across to the other corner and the route turns over.
+assert.deepEqual(bendHandleOf({ ...step, shape: 'arrow', startAxis: 'v', endAxis: 'h' }), { x: 0, y: 50 });
+assert.deepEqual(elbowDragPatch({ ...step, startAxis: 'h', endAxis: 'v' }, { x: 5, y: 48 }), { startAxis: 'v', endAxis: 'h' });
+assert.deepEqual(elbowDragPatch({ ...step, startAxis: 'v', endAxis: 'h' }, { x: 95, y: 3 }), { startAxis: 'h', endAxis: 'v' });
 // Bound to the bottom of one shape and the left of another, it leaves and arrives the way the sides face.
 assert.deepEqual(elbowAxes({ ...step, fromLink: { id: 'a', u: 0.5, v: 1 }, toLink: { id: 'b', u: 0, v: 0.5 } }), ['v', 'h']);
-assert.deepEqual(elbowAxes({ ...step, startAxis: 'h', fromLink: { id: 'a', u: 0.5, v: 1 } })[0], 'h', 'a choice beats the side');
-// An elbow's fold only moves along the line's own axis (x, here); the handle
-// always sits back on the chord (y stays 0).
-const draggedElbow = bendFromDrag({ ...line, route: 'elbow' }, { x: 60, y: -20 });
-assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow', bend: draggedElbow }), { x: 60, y: 0 });
+assert.deepEqual(elbowAxes({ ...step, startAxis: 'h', fromLink: { id: 'a', u: 0.5, v: 1 } })[0], 'v', 'the side beats a choice');
+assert.equal(bendHandleOf({ ...step, shape: 'arrow', startAxis: 'v', endAxis: 'h', fromLink: { id: 'a', u: 0.5, v: 1 } }), null, 'a side decides the way: nothing to turn over');
+// The middle segment moves along the shared axis only; the handle sits back on it.
+const draggedElbow = elbowDragPatch({ ...step }, { x: 60, y: 20 });
+assert.deepEqual(draggedElbow, { bend: 0.6 });
+assert.deepEqual(bendHandleOf({ ...step, shape: 'arrow', ...draggedElbow }), { x: 60, y: 25 });
+
+// --- an elbow leaves a bound shape by its side and goes around it -------------------
+{
+  const A = { x: 0, y: 0, width: 100, height: 100 };
+  const boxes = { A };
+  setBoxLookup((id) => boxes[id]);
+  const points = (spec) => [...routePath(spec).matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => ({ x: +m[1], y: +m[2] }));
+  // No path may enter the inside of a box (touching its edge is fine).
+  const enters = (pts, b) =>
+    pts.slice(1).some((q, i) => {
+      const p = pts[i];
+      const mx = (p.x + q.x) / 2;
+      const my = (p.y + q.y) / 2;
+      return mx > b.x && mx < b.x + b.width && my > b.y && my < b.y + b.height;
+    });
+  const spec = (to, toLink, extra) => ({ from: { x: 100, y: 50 }, to, route: 'elbow', fromLink: { id: 'A', u: 1, v: 0.5 }, toLink, ...extra });
+
+  // Out of the right side and to a free end on the left: round the shape, not through it.
+  const back = points(spec({ x: -80, y: 50 }, null));
+  assert.equal(enters(back, A), false, `round the shape: ${JSON.stringify(back)}`);
+  assert.deepEqual(back[0], { x: 100, y: 50 });
+  assert.equal(back[1].x > 100, true, 'it leaves to the right first');
+
+  // Two shapes face to face: out, across at the middle, in.
+  boxes.B = { x: 200, y: 150, width: 100, height: 100 };
+  const faced = points(spec({ x: 200, y: 200 }, { id: 'B', u: 0, v: 0.5 }));
+  assert.deepEqual(faced, [{ x: 100, y: 50 }, { x: 150, y: 50 }, { x: 150, y: 200 }, { x: 200, y: 200 }]);
+  assert.deepEqual(bendHandleOf({ ...spec({ x: 200, y: 200 }, { id: 'B', u: 0, v: 0.5 }), shape: 'arrow' }), { x: 150, y: 125 });
+
+  // Both leave to the right, the second shape behind and below: a "C" round the right edge, nothing to drag.
+  boxes.C = { x: -300, y: 200, width: 100, height: 100 };
+  const c = spec({ x: -200, y: 250 }, { id: 'C', u: 1, v: 0.5 });
+  const wrapped = points(c);
+  assert.equal(enters(wrapped, A) || enters(wrapped, boxes.C), false, `no shape crossed: ${JSON.stringify(wrapped)}`);
+  // The wrap has a middle run too, and its handle: drag it further out and the line follows, never into a shape.
+  assert.deepEqual(bendHandleOf({ ...c, shape: 'arrow' }), { x: 118, y: 150 });
+  const out = { ...c, ...elbowDragPatch(c, { x: 160, y: 150 }) };
+  assert.equal(bendHandleOf({ ...out, shape: 'arrow' }).x > 150, true, 'dragged further out');
+  assert.equal(enters(points(out), A) || enters(points(out), boxes.C), false, 'still round the shapes');
+  // Dragged in, towards the shapes, it stops short of them instead of crossing.
+  const inward = { ...c, ...elbowDragPatch(c, { x: 50, y: 150 }) };
+  assert.equal(enters(points(inward), A) || enters(points(inward), boxes.C), false, `stopped at the shape: ${JSON.stringify(points(inward))}`);
+  // A free two-segment Z keeps its handle and its old way of being dragged.
+
+  // Turning the arrow's end to another side of the same shape turns the way it leaves.
+  const top = points(spec({ x: 300, y: -100 }, null, { fromLink: { id: 'A', u: 0.5, v: 0 }, from: { x: 50, y: 0 } }));
+  assert.equal(top[1].y < 0, true, 'out of the top side, upward');
+
+  // Any link, not only a side's middle: points all round an ellipse's outline, two shapes anywhere
+  // (close, far, beside, behind). The route never enters either shape, and an end leaves outward.
+  {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
+    const overlaps = (p, q) => p.x < q.x + q.width && q.x < p.x + p.width && p.y < q.y + q.height && q.y < p.y + p.height;
+    const outside = (b, q, eps = 3e-3) => ((q.x - (b.x + b.width / 2)) / (b.width / 2)) ** 2 + ((q.y - (b.y + b.height / 2)) / (b.height / 2)) ** 2 >= 1 - eps;
+    let checked = 0;
+    for (let n = 0; n < 4000; n++) {
+      const pick = () => ({ x: Math.round(rnd() * 600 - 300), y: Math.round(rnd() * 600 - 300), width: 40 + Math.round(rnd() * 160), height: 40 + Math.round(rnd() * 160) });
+      const A = pick();
+      let B = pick();
+      // A third of the layouts put B right beside A, the gap a few units to a few dozen.
+      if (n % 3 === 0) {
+        const gap = [0.5, 3, 10, 25][n % 4];
+        const side = Math.floor(rnd() * 4);
+        B = { ...B, x: side === 0 ? A.x + A.width + gap : side === 1 ? A.x - B.width - gap : A.x + Math.round((rnd() - 0.5) * A.width), y: side === 2 ? A.y + A.height + gap : side === 3 ? A.y - B.height - gap : A.y + Math.round((rnd() - 0.5) * A.height) };
+      }
+      if (overlaps(A, B)) continue;
+      boxes.A = A;
+      boxes.B = B;
+      const onOutline = (b) => {
+        const th = rnd() * 2 * Math.PI;
+        const p = { x: b.x + b.width / 2 + (b.width / 2) * Math.cos(th), y: b.y + b.height / 2 + (b.height / 2) * Math.sin(th) };
+        return { p, link: (id) => ({ id, u: (p.x - b.x) / b.width, v: (p.y - b.y) / b.height }) };
+      };
+      const a = onOutline(A);
+      const b = onOutline(B);
+      const bend = n % 2 ? undefined : rnd() * 6 - 2;
+      const pts = points({ from: a.p, to: b.p, route: 'elbow', fromLink: a.link('A'), toLink: b.link('B'), bend });
+      const last = pts.length - 2;
+      pts.slice(1).forEach((q, i) => {
+        const p = pts[i];
+        // Eleven samples along the segment, the stub's ends excepted from the box test of their own shape.
+        for (let k = 0; k <= 10; k++) {
+          const x = p.x + ((q.x - p.x) * k) / 10;
+          const y = p.y + ((q.y - p.y) * k) / 10;
+          const inside = (box) => x > box.x + 1e-6 && x < box.x + box.width - 1e-6 && y > box.y + 1e-6 && y < box.y + box.height - 1e-6;
+          const msg = `layout ${n}: ${JSON.stringify({ A, B, pts, bend, a: a.p, b: b.p })}`;
+          if (i === 0) assert.ok(outside(A, { x, y }) && !inside(B), `leaves A outward — ${msg}`);
+          else if (i === last) assert.ok(outside(B, { x, y }) && !inside(A), `arrives at B from outside — ${msg}`);
+          else assert.ok(!inside(A) && !inside(B), `goes round — ${msg}`);
+        }
+      });
+      checked++;
+    }
+    assert.ok(checked > 1000, `enough layouts checked: ${checked}`);
+    // One end bound, the other free anywhere outside the shape — and the same with the free end first.
+    for (let n = 0; n < 2000; n++) {
+      const A = { x: Math.round(rnd() * 300 - 150), y: Math.round(rnd() * 300 - 150), width: 40 + Math.round(rnd() * 160), height: 40 + Math.round(rnd() * 160) };
+      boxes.A = A;
+      const th = rnd() * 2 * Math.PI;
+      const p = { x: A.x + A.width / 2 + (A.width / 2) * Math.cos(th), y: A.y + A.height / 2 + (A.height / 2) * Math.sin(th) };
+      const free = { x: Math.round(rnd() * 700 - 350), y: Math.round(rnd() * 700 - 350) };
+      if (free.x > A.x - 1 && free.x < A.x + A.width + 1 && free.y > A.y - 1 && free.y < A.y + A.height + 1) continue;
+      const link = { id: 'A', u: (p.x - A.x) / A.width, v: (p.y - A.y) / A.height };
+      const forward = n % 2 === 0;
+      const pts = points(forward ? { from: p, to: free, route: 'elbow', fromLink: link } : { from: free, to: p, route: 'elbow', toLink: link });
+      pts.slice(1).forEach((q, i) => {
+        const a = pts[i];
+        for (let k = 0; k <= 10; k++) {
+          const x = a.x + ((q.x - a.x) * k) / 10;
+          const y = a.y + ((q.y - a.y) * k) / 10;
+          const bound = forward ? i === 0 : i === pts.length - 2;
+          const inside = x > A.x + 1e-6 && x < A.x + A.width - 1e-6 && y > A.y + 1e-6 && y < A.y + A.height - 1e-6;
+          const msg = `free layout ${n}: ${JSON.stringify({ A, pts })}`;
+          if (bound) assert.ok(((x - (A.x + A.width / 2)) / (A.width / 2)) ** 2 + ((y - (A.y + A.height / 2)) / (A.height / 2)) ** 2 >= 1 - 3e-3, `leaves outward — ${msg}`);
+          else assert.ok(!inside, `goes round — ${msg}`);
+        }
+      });
+    }
+  }
+
+  // Without a shape to go round it is what it always was.
+  setBoxLookup(() => undefined);
+  assert.deepEqual(points({ from: { x: 0, y: 0 }, to: { x: 100, y: 50 }, route: 'elbow' }), [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 50 }, { x: 100, y: 50 }]);
+}
 
 // --- after "send to back", what is on top owns the press ----------------------
 // A lot selected (two boxes and a line), sent to the back under an unselected

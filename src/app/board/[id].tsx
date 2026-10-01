@@ -42,7 +42,7 @@ import { Backdrop } from '@/components/ui/Backdrop';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { GlassScene } from '@/components/ui/Glass';
-import { LoadingBar } from '@/components/ui/LoadingBar';
+import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { Txt } from '@/components/ui/Text';
 import { ToastHost, toast } from '@/components/ui/Toast';
 import { API_BASE_URL } from '@/constants/config';
@@ -209,11 +209,7 @@ export default function BoardScreen() {
   }
 
   if (sync.phase === 'loading' || !nickname) {
-    return (
-      <View style={{ flex: 1, backgroundColor: c.background }}>
-        <LoadingBar />
-      </View>
-    );
+    return <LoadingScreen />;
   }
 
   // --- the board ----------------------------------------------------------

@@ -7,6 +7,57 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.3.0-beta] - 2026-10-01
+
+### Added
+
+- A loading screen instead of an empty page while a board opens or the server
+  is slow: three dots breathing in turn and "Opening the board…", faded in. After
+  seven seconds it adds that the connection or a sleeping server may be the
+  reason. The "reconnecting" pill eases in and out. Reduced-motion settings
+  keep the dots still.
+
+### Fixed
+
+- An elbow's handle is back on every route that has a middle segment, not only
+  the plain three-segment ones: wrapped round a shape, or with an end leaving
+  sideways, the diamond on the middle run still slides it where you want it. It
+  stops where the line would reach a shape or fold back on itself. The paths and
+  directions the elbow takes are as they were.
+
+- An elbow arrow no longer runs through the shape it is bound to. Every link
+  leaves its shape straight out, away from the shape's centre — not only one on a
+  rectangle's side, but any point of an ellipse, a triangle or a polygon's outline —
+  and tries its second-best way out when something stands in the first, even
+  with two shapes a hair apart.
+
+### Changed
+
+- An elbow arrow bound to a shape leaves it straight out of the side it sits on and
+  goes around that shape instead of through it; dragging the end to another side
+  turns the way it leaves. The elbow's own handle replaces the toolbar's
+  "leaves / arrives" box: the diamond in the middle segment slides it, and on a
+  single corner between two free ends the corner itself can be dragged across to
+  the other corner to turn the route over. Ends in a line draw one straight
+  segment.
+
+- The options strip is one row of single boxes, each holding every value of one
+  option: tap steps through them (width, dash, route, font,
+  plain / bold / italic / both). The ones with many values open a small panel
+  above the strip instead: colour (a ring for a shape's border, a dot
+  otherwise), the shape kind and a polygon's sides, a line's two ends, a shape's
+  label size and font. Fill still opens its sheet. Text keeps font, style and
+  size in the strip; the eraser shows only its width.
+- The width box shows four bars, each thicker than the last, with the bar for the
+  width in use solid — the icon design tools use for stroke weight — instead of a dot.
+- A selected box, picture or text now has round handles on its corners (they
+  were small squares), like the ends of a line.
+
+### Fixed
+
+- The pen's worklet takes the stroke-point limit as a number rather than the
+  whole `LIMITS` object, which carries a RegExp.
+
 ## [1.2.0-beta] - 2026-09-30
 
 ### Added

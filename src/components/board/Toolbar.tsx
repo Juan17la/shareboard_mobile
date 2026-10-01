@@ -18,7 +18,7 @@
 import { useState } from 'react';
 import { Pressable, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Path as SvgPath, Svg } from 'react-native-svg';
+import { Path as SvgPath, Rect, Svg } from 'react-native-svg';
 import { useShallow } from 'zustand/shallow';
 
 import { DrawingPalette, StrokeSizes, inkFor } from '@/constants/theme';
@@ -38,7 +38,6 @@ import {
   ROUTES,
   SHAPE_TEXT_SIZE,
   isFillable,
-  type Axis,
   type BoardElement,
   type Dash,
   type Marker,
@@ -86,6 +85,9 @@ interface ToolEntry {
   icon: IconName;
   labelKey: LabelKey;
 }
+
+/** The popovers the strip's boxes open. */
+type Box = 'kind' | 'color' | 'text' | 'ends';
 
 const FONT_LABELS = {
   sans: 'fontSans',
@@ -149,8 +151,12 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const setOpen = useBoardStore((s) => s.setRailOpen);
   const [picking, setPicking] = useState(false);
   const [filling, setFilling] = useState(false);
-  /** Which end's marker grid is open, replacing the strip while it is. */
-  const [pickingHead, setPickingHead] = useState<'headStart' | 'headEnd' | null>(null);
+  /** The box whose options are open in the popover above the strip. */
+  const [box, setBox] = useState<Box | null>(null);
+  /** Which end of a line the marker grid is choosing for. */
+  const [endSide, setEndSide] = useState<'headStart' | 'headEnd'>('headEnd');
+  // The strip closing (a finger on the canvas) takes its popover with it.
+  if (!open && box) setBox(null);
 
   const nudge = () => tick(haptics);
 
@@ -170,7 +176,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const pick = (entry: ToolEntry) => {
     nudge();
     pickTool(entry.tool, entry.shape);
-    setPickingHead(null);
+    setBox(null);
   };
 
   // A viewer has no tools at all: the design hides them rather than greying
@@ -197,15 +203,17 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const showSides =
     (shapeTool && config.shape === 'polygon') ||
     has((el) => el.kind === 'shape' && el.shape === 'polygon');
-  // A selected shape borrows the text tool's size stepper for its label.
-  const showTextOptions = tool === 'text' || selText || selShape;
+  // Text and its style sit in the strip itself; a shape's label (size, font)
+  // folds into one "Aa" box, since most shapes never carry one.
   const showStyle = tool === 'text' || selText;
+  const showLabelBox = selShape && !showStyle;
   const showColor =
-    tool !== 'hand' && tool !== 'eraser' && (tool !== 'select' || selected.length > 0);
+    tool !== 'hand' &&
+    tool !== 'eraser' &&
+    (tool !== 'select' || (selected.length > 0 && !selected.every((el) => el.kind === 'image')));
   // The cursor with nothing selected, and the hand, have nothing to offer: an
   // empty strip is noise, whatever asked for it.
-  const hasOptions =
-    showSizes || showFill || showLine || showTextOptions || showColor;
+  const hasOptions = showSizes || showFill || showLine || showStyle || showLabelBox || showColor;
   // A selected shape can change kind within its family: box to box, line to
   // arrow. With the shapes tool in hand, the strip is where the kind is chosen.
   const kinds: ShapeKind[] = selLine
@@ -221,13 +229,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     else pickTool('shape', kind);
   };
 
-  // A selected line's axis: its own (null when it is automatic), or the tool's when no line is selected.
-  const axisOf = (key: 'startAxis' | 'endAxis'): Axis | null | undefined => {
-    const v = first((el) =>
-      el.kind === 'shape' && isLineLike(el) ? (el[key] ?? 'auto') : undefined,
-    );
-    return v === undefined ? undefined : v === 'auto' ? null : v;
-  };
   const cur = {
     width:
       first((el) =>
@@ -277,26 +278,12 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     dash:
       first((el) => (el.kind === 'shape' && isLineLike(el) ? (el.dash ?? 'solid') : undefined)) ??
       config.dash,
-    startAxis: axisOf('startAxis') === undefined ? config.startAxis : axisOf('startAxis')!,
-    endAxis: axisOf('endAxis') === undefined ? config.endAxis : axisOf('endAxis')!,
   };
   const fontSize = cur.fontSize;
   // The board ink flips on the dark theme (`inkFor`); the swatches follow it.
   const ink = inkFor(cur.color, dark);
   const fillInk = inkFor(cur.fillColor ?? cur.color, dark);
   const setFontSize = (next: number) => setConfig({ fontSize: next });
-  // An elbow's ends: automatic, or which way it leaves and arrives.
-  const axisChoices: {
-    start: Axis | null;
-    end: Axis | null;
-    labelKey: 'axisAuto' | 'axisHH' | 'axisVV' | 'axisHV' | 'axisVH';
-  }[] = [
-    { start: null, end: null, labelKey: 'axisAuto' },
-    { start: 'h', end: 'h', labelKey: 'axisHH' },
-    { start: 'v', end: 'v', labelKey: 'axisVV' },
-    { start: 'h', end: 'v', labelKey: 'axisHV' },
-    { start: 'v', end: 'h', labelKey: 'axisVH' },
-  ];
   const routeLabel: Record<Route, 'routeStraight' | 'routeCurved' | 'routeElbow'> = {
     straight: 'routeStraight',
     curved: 'routeCurved',
@@ -316,6 +303,70 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const buttonSize = Math.min(landscape ? 34 : 44, Math.floor((width - chrome) / 8));
   const buttonRadius = buttonSize < 40 ? 12 : 14;
   const rows = [TOOLS];
+
+  const toggle = (next: Box) => {
+    nudge();
+    setBox(box === next ? null : next);
+  };
+  /** A shape's colour is its border; everything else is painted in it. */
+  const borderOnly = shapeTool || selShape;
+  /** Size, typeface and (for text itself) bold and italic — in the strip for text, in a popover for a shape's label. */
+  const textControls = (
+    <>
+      <StepperButton
+        icon="minus"
+        label={t.smaller}
+        onPress={() => {
+          nudge();
+          setFontSize(Math.max(LIMITS.minFontSize, fontSize - 4));
+        }}
+      />
+      <Txt weight="extrabold" size={11} mono style={{ width: 38, textAlign: 'center' }}>
+        {fontSize}px
+      </Txt>
+      <StepperButton
+        icon="plus"
+        label={t.bigger}
+        onPress={() => {
+          nudge();
+          setFontSize(Math.min(LIMITS.maxFontSize, fontSize + 4));
+        }}
+      />
+      <MiniButton
+        label={t[FONT_LABELS[cur.font]]}
+        active={false}
+        onPress={() => {
+          nudge();
+          setConfig({ font: cycle(FONTS, cur.font) });
+        }}
+      >
+        <Txt size={15} style={{ fontFamily: FAMILIES[cur.font][0] }}>
+          Aa
+        </Txt>
+      </MiniButton>
+      {showStyle ? (
+        <MiniButton
+          label={`${t.bold} / ${t.italic}`}
+          active={cur.bold || cur.italic}
+          onPress={() => {
+            nudge();
+            // Plain, bold, italic, bold italic: one box, four steps.
+            const next = ((cur.bold ? 1 : 0) + (cur.italic ? 2 : 0) + 1) % 4;
+            setConfig({ bold: !!(next & 1), italic: !!(next & 2) });
+          }}
+        >
+          <Txt
+            size={15}
+            weight={cur.bold ? 'extrabold' : 'bold'}
+            italic={cur.italic}
+            color={cur.bold || cur.italic ? '#FFFFFF' : undefined}
+          >
+            {cur.bold && !cur.italic ? 'B' : cur.italic && !cur.bold ? 'I' : cur.bold ? 'BI' : 'B/I'}
+          </Txt>
+        </MiniButton>
+      ) : null}
+    </>
+  );
 
   /* The swatch doubles as the options toggle: it is both the current colour
      and a handle for the strip that changes it. Sits on the first row. */
@@ -377,256 +428,70 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
           paddingHorizontal: 8,
         }}
       >
-        {open && hasOptions ? (
+        {open && hasOptions && box ? (
           <GlassPanel level="panel" radius={16} style={[panelShadow, { maxWidth: '100%' }]}>
-            <View>
-              {pickingHead ? (
-                <View style={{ gap: 6, paddingHorizontal: 10, paddingVertical: 8 }}>
-                  {(
-                    [
-                      ['markersDefault', MARKERS.default],
-                      ['markersOther', MARKERS.other],
-                      ['markersCardinality', MARKERS.cardinality],
-                    ] as const
-                  ).map(([labelKey, kinds]) => (
-                    <View
-                      key={labelKey}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
+            <View style={popoverStyle}>
+              {box === 'color' ? (
+                <>
+                  {DrawingPalette.map((swatch) => {
+                    const active = cur.color.toUpperCase() === swatch.toUpperCase();
+                    return (
+                      <Pressable
+                        key={swatch}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${t.color} ${swatch}`}
+                        accessibilityState={{ selected: active }}
+                        onPress={() => {
+                          nudge();
+                          setConfig({ color: swatch });
+                          setBox(null);
+                        }}
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 14,
+                          backgroundColor: inkFor(swatch, dark),
+                          borderWidth: 2,
+                          borderColor: active ? c.accent : c.background,
+                        }}
+                      />
+                    );
+                  })}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t.custom}
+                    onPress={() => setPicking(true)}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderStyle: 'dashed',
+                      borderColor: c.borderDashed,
+                    }}
+                  >
+                    <Icon name="plus" size={14} color={c.textSecondary} />
+                  </Pressable>
+                </>
+              ) : null}
+
+              {box === 'kind' && kinds.length ? (
+                <>
+                  {kinds.map((kind) => (
+                    <MiniButton
+                      key={kind}
+                      label={t[SHAPES.find((e) => e.shape === kind)!.labelKey]}
+                      active={cur.shape === kind}
+                      onPress={() => pickKind(kind)}
                     >
-                      <Txt weight="bold" size={10} color={c.textSecondary} style={{ width: 74 }}>
-                        {t[labelKey]}
-                      </Txt>
-                      {kinds.map((kind) => (
-                        <MiniButton
-                          key={kind}
-                          label={kind}
-                          active={cur[pickingHead] === kind}
-                          onPress={() => {
-                            nudge();
-                            setConfig({ [pickingHead]: kind });
-                            setPickingHead(null);
-                          }}
-                        >
-                          <MarkerIcon
-                            kind={kind}
-                            end={pickingHead === 'headEnd'}
-                            color={cur[pickingHead] === kind ? '#FFFFFF' : c.text}
-                          />
-                        </MiniButton>
-                      ))}
-                    </View>
+                      <Icon name={kind} size={18} color={cur.shape === kind ? '#FFFFFF' : c.text} />
+                    </MiniButton>
                   ))}
-                </View>
-              ) : (
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                  }}
-                >
-                  {showSizes || showFill ? (
-                    <Cluster>
-                      {/* One button each, not a row of four: a tap steps to the
-                          next width / fill level and wraps around. The button
-                          shows the current value, so the row stays short. */}
-                      {showSizes ? (
-                        <MiniButton
-                          label={`${t.size} ${cur.width}`}
-                          active={false}
-                          onPress={() => {
-                            nudge();
-                            setConfig({ width: cycle(StrokeSizes, cur.width) });
-                          }}
-                        >
-                          <View
-                            style={{
-                              width: Math.min(20, cur.width + 3),
-                              height: Math.min(20, cur.width + 3),
-                              borderRadius: 10,
-                              backgroundColor: c.text,
-                            }}
-                          />
-                        </MiniButton>
-                      ) : null}
-                      {showFill ? (
-                        <MiniButton
-                          label={`${t.fill} ${cur.fillOpacity}%`}
-                          active={filling}
-                          wide
-                          onPress={() => {
-                            nudge();
-                            setFilling(true);
-                          }}
-                        >
-                          {/* The swatch is the fill itself: its colour at its opacity, outlined, and the number. */}
-                          <View
-                            style={{
-                              width: 16,
-                              height: 16,
-                              borderRadius: 4,
-                              borderWidth: 1.5,
-                              borderColor: ink,
-                              backgroundColor:
-                                fillWith(fillInk, cur.fillOpacity) ?? 'transparent',
-                            }}
-                          />
-                          <Txt weight="bold" size={11} style={{ marginLeft: 4 }}>
-                            {`${cur.fillOpacity}%`}
-                          </Txt>
-                        </MiniButton>
-                      ) : null}
-                    </Cluster>
-                  ) : null}
-
-                  {kinds.length ? (
-                    <Cluster>
-                      {kinds.map((kind) => (
-                        <MiniButton
-                          key={kind}
-                          label={t[SHAPES.find((e) => e.shape === kind)!.labelKey]}
-                          active={cur.shape === kind}
-                          onPress={() => pickKind(kind)}
-                        >
-                          <Icon name={kind} size={18} color={cur.shape === kind ? '#FFFFFF' : c.text} />
-                        </MiniButton>
-                      ))}
-                    </Cluster>
-                  ) : null}
-
-                  {showLine ? (
-                    <>
-                      <Cluster>
-                        {(['headStart', 'headEnd'] as const).map((end) => (
-                          <MiniButton
-                            key={end}
-                            label={t[end]}
-                            active={false}
-                            onPress={() => {
-                              nudge();
-                              setPickingHead(end);
-                            }}
-                          >
-                            <MarkerIcon
-                              kind={cur[end]}
-                              end={end === 'headEnd'}
-                              color={c.text}
-                            />
-                          </MiniButton>
-                        ))}
-                      </Cluster>
-                      <Cluster>
-                        {ROUTES.map((route) => (
-                          <MiniButton
-                            key={route}
-                            label={t[routeLabel[route]]}
-                            active={cur.route === route}
-                            onPress={() => {
-                              nudge();
-                              setConfig({ route });
-                            }}
-                          >
-                            <Svg
-                              width={20}
-                              height={20}
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke={cur.route === route ? '#FFFFFF' : c.text}
-                              strokeWidth={2}
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <SvgPath d={routePath({ from: { x: 4, y: 19 }, to: { x: 20, y: 5 }, route })} />
-                            </Svg>
-                          </MiniButton>
-                        ))}
-                      </Cluster>
-                      {cur.route === 'elbow' ? (
-                        <Cluster>
-                          {axisChoices.map(({ start, end, labelKey }) => {
-                            const on = cur.startAxis === start && cur.endAxis === end;
-                            return (
-                              <MiniButton
-                                key={labelKey}
-                                label={t[labelKey]}
-                                active={on}
-                                onPress={() => {
-                                  nudge();
-                                  setConfig({ startAxis: start, endAxis: end });
-                                }}
-                              >
-                                {start ? (
-                                  <Svg
-                                    width={20}
-                                    height={20}
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke={on ? '#FFFFFF' : c.text}
-                                    strokeWidth={2}
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    <SvgPath
-                                      d={routePath({
-                                        from: { x: 4, y: 19 },
-                                        to: { x: 20, y: 5 },
-                                        route: 'elbow',
-                                        startAxis: start,
-                                        endAxis: end,
-                                      })}
-                                    />
-                                  </Svg>
-                                ) : (
-                                  <Txt weight="extrabold" size={11} color={on ? '#FFFFFF' : c.text}>
-                                    A
-                                  </Txt>
-                                )}
-                              </MiniButton>
-                            );
-                          })}
-                        </Cluster>
-                      ) : null}
-                      <Cluster>
-                        {DASHES.map((dash) => (
-                          <MiniButton
-                            key={dash}
-                            label={t[dashLabel[dash]]}
-                            active={cur.dash === dash}
-                            onPress={() => {
-                              nudge();
-                              setConfig({ dash });
-                            }}
-                          >
-                            <Svg
-                              width={20}
-                              height={20}
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke={cur.dash === dash ? '#FFFFFF' : c.text}
-                              strokeWidth={2.2}
-                              strokeLinecap="round"
-                            >
-                              <SvgPath
-                                d="M3 12H21"
-                                strokeDasharray={dashIntervals(dash, 2.2)?.join(' ')}
-                              />
-                            </Svg>
-                          </MiniButton>
-                        ))}
-                      </Cluster>
-                    </>
-                  ) : null}
-
                   {showSides ? (
-                    <Cluster>
+                    <>
+                      <Divider />
                       <StepperButton
                         icon="minus"
                         label={t.fewerSides}
@@ -635,12 +500,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                           setConfig({ sides: Math.max(LIMITS.minSides, cur.sides - 1) });
                         }}
                       />
-                      <Txt
-                        weight="extrabold"
-                        size={11}
-                        mono
-                        style={{ width: 52, textAlign: 'center' }}
-                      >
+                      <Txt weight="extrabold" size={11} mono style={{ width: 52, textAlign: 'center' }}>
                         {cur.sides} {t.sides}
                       </Txt>
                       <StepperButton
@@ -651,140 +511,169 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                           setConfig({ sides: Math.min(LIMITS.maxSides, cur.sides + 1) });
                         }}
                       />
-                    </Cluster>
+                    </>
                   ) : null}
+                </>
+              ) : null}
 
-                  {showTextOptions ? (
-                    <Cluster>
-                      <StepperButton
-                        icon="minus"
-                        label={t.smaller}
-                        onPress={() => {
-                          nudge();
-                          setFontSize(Math.max(LIMITS.minFontSize, fontSize - 4));
-                        }}
-                      />
-                      <Txt
-                        weight="extrabold"
-                        size={11}
-                        mono
-                        style={{ width: 40, textAlign: 'center' }}
+              {box === 'text' ? textControls : null}
+
+              {box === 'ends' && showLine ? (
+                <View style={{ gap: 6 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
+                    {(['headStart', 'headEnd'] as const).map((end) => (
+                      <MiniButton
+                        key={end}
+                        wide
+                        label={t[end]}
+                        active={endSide === end}
+                        onPress={() => setEndSide(end)}
                       >
-                        {fontSize}px
+                        <MarkerIcon
+                          kind={cur[end]}
+                          end={end === 'headEnd'}
+                          color={endSide === end ? '#FFFFFF' : c.text}
+                        />
+                        <Txt weight="bold" size={10} color={endSide === end ? '#FFFFFF' : c.textSecondary} style={{ marginLeft: 4 }}>
+                          {t[end]}
+                        </Txt>
+                      </MiniButton>
+                    ))}
+                  </View>
+                  {(
+                    [
+                      ['markersDefault', MARKERS.default],
+                      ['markersOther', MARKERS.other],
+                      ['markersCardinality', MARKERS.cardinality],
+                    ] as const
+                  ).map(([labelKey, markers]) => (
+                    <View key={labelKey} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Txt weight="bold" size={10} color={c.textSecondary} style={{ width: 62 }}>
+                        {t[labelKey]}
                       </Txt>
-                      <StepperButton
-                        icon="plus"
-                        label={t.bigger}
-                        onPress={() => {
-                          nudge();
-                          setFontSize(Math.min(LIMITS.maxFontSize, fontSize + 4));
-                        }}
-                      />
-                      {FONTS.map((font) => (
+                      {markers.map((kind) => (
                         <MiniButton
-                          key={font}
-                          label={t[FONT_LABELS[font]]}
-                          active={cur.font === font}
+                          key={kind}
+                          compact
+                          label={kind}
+                          active={cur[endSide] === kind}
                           onPress={() => {
                             nudge();
-                            setConfig({ font });
+                            setConfig({ [endSide]: kind });
                           }}
                         >
-                          <Txt
-                            size={14}
-                            color={cur.font === font ? '#FFFFFF' : undefined}
-                            style={{ fontFamily: FAMILIES[font][0] }}
-                          >
-                            Aa
-                          </Txt>
+                          <MarkerIcon
+                            kind={kind}
+                            end={endSide === 'headEnd'}
+                            color={cur[endSide] === kind ? '#FFFFFF' : c.text}
+                          />
                         </MiniButton>
                       ))}
-                      {showStyle ? (
-                        <>
-                          <MiniButton
-                            glyph="B"
-                            glyphWeight="extrabold"
-                            label={t.bold}
-                            active={cur.bold}
-                            onPress={() => {
-                              nudge();
-                              setConfig({ bold: !cur.bold });
-                            }}
-                          />
-                          <MiniButton
-                            glyph="I"
-                            glyphItalic
-                            label={t.italic}
-                            active={cur.italic}
-                            onPress={() => {
-                              nudge();
-                              setConfig({ italic: !cur.italic });
-                            }}
-                          />
-                        </>
-                      ) : null}
-                    </Cluster>
-                  ) : null}
-
-                  {showColor ? (
-                    <Cluster last>
-                      {DrawingPalette.map((swatch) => {
-                        const active = cur.color.toUpperCase() === swatch.toUpperCase();
-                        return (
-                          <Pressable
-                            key={swatch}
-                            accessibilityRole="button"
-                            accessibilityLabel={`${t.color} ${swatch}`}
-                            accessibilityState={{ selected: active }}
-                            onPress={() => {
-                              nudge();
-                              setConfig({ color: swatch });
-                            }}
-                            style={{
-                              width: 26,
-                              height: 26,
-                              borderRadius: 8,
-                              backgroundColor: inkFor(swatch, dark),
-                              borderWidth: 2,
-                              borderColor: active ? c.accent : c.background,
-                            }}
-                          />
-                        );
-                      })}
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={t.custom}
-                        onPress={() => setPicking(true)}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 5,
-                          height: 26,
-                          paddingHorizontal: 8,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderStyle: 'dashed',
-                          borderColor: c.borderDashed,
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 14,
-                            height: 14,
-                            borderRadius: 4,
-                            backgroundColor: ink,
-                            borderWidth: 1,
-                            borderColor: c.border,
-                          }}
-                        />
-                        <Txt weight="bold" size={10} color={c.textSecondary}>
-                          {t.custom}
-                        </Txt>
-                      </Pressable>
-                    </Cluster>
-                  ) : null}
+                    </View>
+                  ))}
                 </View>
-              )}
+              ) : null}
+            </View>
+          </GlassPanel>
+        ) : null}
+
+        {open && hasOptions ? (
+          <GlassPanel level="panel" radius={16} style={[panelShadow, { maxWidth: '100%' }]}>
+            <View style={stripStyle}>
+              {kinds.length ? (
+                <MiniButton
+                  label={t[SHAPES.find((e) => e.shape === cur.shape)?.labelKey ?? 'shapes']}
+                  active={box === 'kind'}
+                  onPress={() => toggle('kind')}
+                >
+                  <Icon name={cur.shape} size={18} color={box === 'kind' ? '#FFFFFF' : c.text} />
+                </MiniButton>
+              ) : null}
+
+              {showColor ? (
+                <MiniButton label={t.color} active={box === 'color'} onPress={() => toggle('color')}>
+                  {/* A shape's colour is its border: drawn as a ring, so it
+                      reads differently from the fill's solid swatch. */}
+                  <View
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      backgroundColor: borderOnly ? 'transparent' : ink,
+                      borderWidth: borderOnly ? 4 : 2,
+                      borderColor: borderOnly ? ink : '#FFFFFF',
+                    }}
+                  />
+                </MiniButton>
+              ) : null}
+
+              {showFill ? (
+                <MiniButton label={`${t.fill} ${cur.fillOpacity}%`} active={filling} onPress={() => { nudge(); setFilling(true); }}>
+                  {/* The fill itself: its colour at its opacity, outlined. */}
+                  <View
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 5,
+                      borderWidth: 1.5,
+                      borderColor: c.borderStrong,
+                      backgroundColor: fillWith(fillInk, cur.fillOpacity) ?? 'transparent',
+                    }}
+                  />
+                </MiniButton>
+              ) : null}
+
+              {showSizes ? (
+                <MiniButton
+                  label={`${t.size} ${cur.width}`}
+                  active={false}
+                  onPress={() => {
+                    nudge();
+                    setConfig({ width: cycle(StrokeSizes, cur.width) });
+                  }}
+                >
+                  <WidthGlyph width={cur.width} />
+                </MiniButton>
+              ) : null}
+
+              {showLine ? (
+                <>
+                  <MiniButton
+                    wide
+                    label={`${t.headStart} / ${t.headEnd}`}
+                    active={box === 'ends'}
+                    onPress={() => toggle('ends')}
+                  >
+                    <MarkerIcon kind={cur.headStart} end={false} color={box === 'ends' ? '#FFFFFF' : c.text} small />
+                    <MarkerIcon kind={cur.headEnd} end color={box === 'ends' ? '#FFFFFF' : c.text} small />
+                  </MiniButton>
+                  <MiniButton label={t[dashLabel[cur.dash]]} active={false} onPress={() => { nudge(); setConfig({ dash: cycle(DASHES, cur.dash) }); }}>
+                    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={c.text} strokeWidth={2.2} strokeLinecap="round">
+                      <SvgPath d="M3 12H21" strokeDasharray={dashIntervals(cur.dash, 2.2)?.join(' ')} />
+                    </Svg>
+                  </MiniButton>
+                  <MiniButton
+                    label={t[routeLabel[cur.route]]}
+                    active={false}
+                    onPress={() => {
+                      nudge();
+                      setConfig({ route: cycle(ROUTES, cur.route) });
+                    }}
+                  >
+                    <LineGlyph d={routePath({ from: { x: 4, y: 19 }, to: { x: 20, y: 5 }, route: cur.route })} on={false} />
+                  </MiniButton>
+                </>
+              ) : null}
+
+              {showLabelBox ? (
+                <MiniButton label={t.text} active={box === 'text'} onPress={() => toggle('text')}>
+                  <Txt size={14} weight="bold" color={box === 'text' ? '#FFFFFF' : c.text} style={{ fontFamily: FAMILIES[cur.font][0] }}>
+                    Aa
+                  </Txt>
+                </MiniButton>
+              ) : null}
+
+              {showStyle ? textControls : null}
             </View>
           </GlassPanel>
         ) : null}
@@ -844,6 +733,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
           nudge();
           setConfig({ color });
           setPicking(false);
+          setBox(null);
         }}
       />
     </>
@@ -865,14 +755,56 @@ function cycle<T>(list: readonly T[], current: T): T {
   return list[(list.indexOf(current) + 1) % list.length];
 }
 
-/** One cluster of options, separated from the next by a hairline. */
-function Cluster({ children, last }: { children: React.ReactNode; last?: boolean }) {
+/** The strip: boxes in a row that wraps, so a line's options take two rows rather than scroll. */
+const stripStyle = {
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  paddingHorizontal: 8,
+  paddingVertical: 6,
+} as const;
+
+/** What a box opens: the same wrap, a little tighter to the strip it hangs from. */
+const popoverStyle = { ...stripStyle, paddingVertical: 8 } as const;
+
+/**
+ * Stroke width, as design tools draw it: four bars, each thicker than the last,
+ * one per size. The bar for the width in use is solid, the rest are faded — so
+ * the icon says "thickness" and shows which one is set.
+ */
+function WidthGlyph({ width }: { width: number }) {
+  const c = useColors();
+  const bars = [
+    { y: 1, h: 1.2 },
+    { y: 5, h: 2.4 },
+    { y: 10, h: 3.8 },
+    { y: 15.5, h: 5.5 },
+  ];
+  // The nearest size, for a selected figure drawn at a width the buttons never set.
+  const now = StrokeSizes.reduce((best, size, i) => (Math.abs(size - width) < Math.abs(StrokeSizes[best] - width) ? i : best), 0);
+  return (
+    <Svg width={20} height={22} viewBox="0 0 20 22">
+      {bars.map((bar, i) => (
+        <Rect key={i} x={1} y={bar.y} width={18} height={bar.h} rx={bar.h / 2} fill={c.text} opacity={i === now ? 1 : 0.3} />
+      ))}
+    </Svg>
+  );
+}
+
+function Divider() {
+  const c = useColors();
+  return <View style={{ width: 1, height: 22, backgroundColor: c.border }} />;
+}
+
+/** A route or an elbow's axes drawn as a short stroke, 20px. */
+function LineGlyph({ d, on }: { d: string; on: boolean }) {
   const c = useColors();
   return (
-    <>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>{children}</View>
-      {last ? null : <View style={{ width: 1, height: 24, backgroundColor: c.border }} />}
-    </>
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={on ? '#FFFFFF' : c.text} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <SvgPath d={d} />
+    </Svg>
   );
 }
 
@@ -923,7 +855,7 @@ function ToolButton({
 }
 
 /** A marker as the strip shows it: on the end of a short line, pointing out of it. */
-function MarkerIcon({ kind, end, color }: { kind: Marker; end: boolean; color: string }) {
+function MarkerIcon({ kind, end, color, small }: { kind: Marker; end: boolean; color: string; small?: boolean }) {
   const c = useColors();
   const tip = end ? { x: 21, y: 12 } : { x: 3, y: 12 };
   const parts = markerPaths(kind, tip, end ? 0 : Math.PI, 7);
@@ -931,8 +863,8 @@ function MarkerIcon({ kind, end, color }: { kind: Marker; end: boolean; color: s
   const ink = kind !== 'none' ? color : color === '#FFFFFF' ? 'rgba(255,255,255,0.55)' : c.borderStrong;
   return (
     <Svg
-      width={22}
-      height={22}
+      width={small ? 17 : 22}
+      height={small ? 17 : 22}
       viewBox="0 0 24 24"
       fill="none"
       stroke={ink}
@@ -960,6 +892,7 @@ function MiniButton({
   active,
   onPress,
   wide = false,
+  compact = false,
   children,
 }: {
   glyph?: string;
@@ -968,8 +901,10 @@ function MiniButton({
   label: string;
   active: boolean;
   onPress: () => void;
-  /** Room for a swatch and a number, not one glyph. */
+  /** Room for two glyphs, not one. */
   wide?: boolean;
+  /** Narrower, for a row of four. */
+  compact?: boolean;
   /** Drawn instead of the glyph. */
   children?: React.ReactNode;
 }) {
@@ -982,8 +917,8 @@ function MiniButton({
       onPress={onPress}
       onLongPress={() => tip(label)}
       style={{
-        ...(wide ? { minWidth: 36, paddingHorizontal: 8 } : { width: 36 }),
-        height: 36,
+        ...(wide ? { minWidth: 34, paddingHorizontal: 6 } : { width: compact ? 30 : 34 }),
+        height: 34,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',

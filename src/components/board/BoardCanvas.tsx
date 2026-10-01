@@ -39,7 +39,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { REALTIME } from '@/constants/config';
 import { Shadow, inkFor } from '@/constants/theme';
 import {
-  bendFromDrag,
+  elbowDragPatch,
   bendHandleOf,
   curveFromDrag,
   curveHandlesOf,
@@ -139,7 +139,7 @@ function dragPatch(edit: LiveEdit, el: BoardElement, p: Point): Partial<BoardEle
   if (edit.handle === CURVE_END_HANDLE && el.kind === 'shape') return curveFromDrag(el, 'end', p);
   if (edit.handle === BEND_HANDLE && el.kind === 'shape' && isLineLike(el)) {
     // A curve's middle slides its whole bow; an elbow's, its middle segment.
-    return el.route === 'curved' ? curveFromDrag(el, 'mid', p) : { bend: bendFromDrag(el, p) };
+    return el.route === 'curved' ? curveFromDrag(el, 'mid', p) : elbowDragPatch(el, p);
   }
   if (edit.handle === LABEL_HANDLE && el.kind === 'shape') return { labelAt: labelFromDrag(el, p) };
   if (edit.handle === ROTATE_HANDLE) return { rotation: rotationFromDrag(el, p) };
@@ -172,6 +172,9 @@ const nowMs = () => {
   'worklet';
   return Date.now();
 };
+
+/** A number, not `LIMITS`: a worklet that names `LIMITS` copies the whole object to the UI thread, and it holds a RegExp. */
+const MAX_STROKE_POINTS = LIMITS.maxStrokePoints;
 
 /** How long a finger holds still with the cursor before the menu opens: paste on empty board, the element's actions on a figure. */
 const HOLD_MS = 500;
@@ -954,7 +957,7 @@ export function BoardCanvas({
         if (Math.hypot(e.x - a.x, e.y - a.y) > STILL_PX) {
           penAnchor.set({ x: e.x, y: e.y, at: nowMs() });
         }
-        if (pen.get().length / 2 < LIMITS.maxStrokePoints) {
+        if (pen.get().length / 2 < MAX_STROKE_POINTS) {
           pen.modify((pts) => {
             'worklet';
             pts.push(x, y);
