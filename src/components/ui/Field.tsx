@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { TextInput, View, type TextInputProps } from 'react-native';
 
 import { Fonts, Radius } from '@/constants/theme';
@@ -13,9 +14,10 @@ export interface FieldProps extends TextInputProps {
   mono?: boolean;
 }
 
-export function Field({ label, hint, error, mono = false, style, ...rest }: FieldProps) {
+export function Field({ label, hint, error, mono = false, style, onFocus, onBlur, ...rest }: FieldProps) {
   const c = useColors();
   const dark = useDark();
+  const [focused, setFocused] = useState(false);
   return (
     <View style={{ gap: 7 }}>
       {label ? (
@@ -29,13 +31,22 @@ export function Field({ label, hint, error, mono = false, style, ...rest }: Fiel
         // clipped the text (the nickname field in Settings).
         key={dark ? 'dark' : 'light'}
         placeholderTextColor={c.borderDashed}
+        underlineColorAndroid="transparent"
+        onFocus={(e) => {
+          setFocused(true);
+          onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setFocused(false);
+          onBlur?.(e);
+        }}
         style={[
           {
             paddingHorizontal: 13,
             paddingVertical: 12,
             borderRadius: Radius.lg,
-            borderWidth: 1,
-            borderColor: error ? c.dangerBright : c.borderStrong,
+            borderWidth: 1.5,
+            borderColor: error ? c.dangerBright : focused ? c.accent : c.borderField,
             backgroundColor: c.surface,
             color: c.text,
             fontFamily: mono ? Fonts.monoBold : Fonts.semibold,
