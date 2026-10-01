@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
-import { LoadingBar } from '@/components/ui/LoadingBar';
+import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { Txt } from '@/components/ui/Text';
 import { useT } from '@/features/i18n/store';
 import { useColors, useSessionStore } from '@/features/session/store';
@@ -79,9 +79,5 @@ export default function Start() {
     );
   }
 
-  return (
-    <View style={{ flex: 1, backgroundColor: c.background }}>
-      <LoadingBar />
-    </View>
-  );
+  return <LoadingScreen />;
 }
