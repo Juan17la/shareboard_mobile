@@ -26,7 +26,7 @@ All notable changes to the Shareboard mobile app. The format follows
   segment.
 
 - The options strip is one row of single boxes, each holding every value of one
-  option: tap steps through them (width, dash, route, an elbow's axes, font,
+  option: tap steps through them (width, dash, route, font,
   plain / bold / italic / both). The ones with many values open a small panel
   above the strip instead: colour (a ring for a shape's border, a dot
   otherwise), the shape kind and a polygon's sides, a line's two ends, a shape's
