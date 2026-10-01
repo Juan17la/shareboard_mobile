@@ -7,10 +7,10 @@
  * the tool rail, the bottom controls — and every sheet is a component rendered
  * right here rather than a route, so the board stays visible underneath.
  *
- * `pickName` is a one-shot route param: set when a board was just created or
- * imported, it forces the identity step even for someone whose nickname is
- * already remembered. Creating a board is the moment to choose how you appear
- * on it.
+ * There is no screen behind it: the app opens on the last whiteboard, and the
+ * menu is where a new one, an old one, a code or a file is reached from. The
+ * identity step only appears when a name clashes with someone's on the board
+ * (everyone starts with a guest name, changed in the settings).
  */
 import { useCanvasRef } from '@shopify/react-native-skia';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -23,13 +23,16 @@ import { BoardCanvas } from '@/components/board/BoardCanvas';
 import { ConnectionBanner } from '@/components/board/ConnectionBanner';
 import { useBoardMirror } from '@/components/board/BoardMirror';
 import { BottomControls } from '@/components/board/BottomControls';
+import { PERF_HUD, PerfHud } from '@/components/board/PerfHud';
 import { Toolbar } from '@/components/board/Toolbar';
 import { BoardHeader, HeaderScrim } from '@/components/header/BoardHeader';
 import { NicknameScreen } from '@/components/screens/NicknameScreen';
 import { PinScreen } from '@/components/screens/PinScreen';
 import { AiSheet } from '@/components/sheets/AiSheet';
+import { BoardsSheet } from '@/components/sheets/BoardsSheet';
 import { ExportSheet } from '@/components/sheets/ExportSheet';
 import { ImportSheet } from '@/components/sheets/ImportSheet';
+import { JoinSheet } from '@/components/sheets/JoinSheet';
 import { MenuSheet } from '@/components/sheets/MenuSheet';
 import { PeopleSheet } from '@/components/sheets/PeopleSheet';
 import { PrivacySheet } from '@/components/sheets/PrivacySheet';
@@ -49,7 +52,7 @@ import type { BoardSnapshot } from '@/features/board/model';
 import { useBoardStore } from '@/features/board/store';
 import { useSessionStore, useColors } from '@/features/session/store';
 import { useBoardSync } from '@/hooks/use-board-sync';
-import { deleteBoard, importSnapshot } from '@/services/api/boards';
+import { createBoard, deleteBoard, importSnapshot } from '@/services/api/boards';
 import { boardShareLink } from '@/utils/deep-link';
 import { notify, thud } from '@/utils/haptics';
 
@@ -57,11 +60,21 @@ import { notify, thud } from '@/utils/haptics';
 // `expo.extra` if they diverge.
 const WEB_BASE_URL = API_BASE_URL;
 
-type SheetName = 'share' | 'people' | 'privacy' | 'export' | 'import' | 'menu' | 'settings' | 'ai';
+type SheetName =
+  | 'share'
+  | 'people'
+  | 'privacy'
+  | 'export'
+  | 'import'
+  | 'menu'
+  | 'settings'
+  | 'ai'
+  | 'join'
+  | 'boards';
 type ConfirmName = 'clear' | 'delete';
 
 export default function BoardScreen() {
-  const { id, pickName } = useLocalSearchParams<{ id: string; pickName?: string }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const landscape = width > height;
@@ -76,16 +89,13 @@ export default function BoardScreen() {
   const meta = useBoardStore((s) => s.meta);
   const clearBoard = useBoardStore((s) => s.clearBoard);
 
-  // Satisfied once the identity step has been passed for this board, either by
-  // confirming a name or because there was never a reason to ask.
-  const [identityDone, setIdentityDone] = useState(pickName !== '1');
   const [sheet, setSheet] = useState<SheetName | null>(null);
   const [confirm, setConfirm] = useState<ConfirmName | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const sync = useBoardSync(id, { paused: !identityDone });
+  const sync = useBoardSync(id);
 
   // What the glass panels blur: the canvas itself, via throttled snapshots.
   const canvasRef = useCanvasRef();
@@ -112,10 +122,39 @@ export default function BoardScreen() {
         { ...snapshot, meta: { name: snapshot.meta.name || t.importedBoardName } },
         userId,
       );
-      router.replace({ pathname: '/board/[id]', params: { id: created.id, pickName: '1' } });
+      router.replace({ pathname: '/board/[id]', params: { id: created.id } });
     },
     [t, userId],
   );
+
+  const [creating, setCreating] = useState(false);
+  /** A fresh, empty whiteboard — public, anyone with the code can draw; the access button changes that. */
+  async function createNew() {
+    setCreating(true);
+    const request = {
+      name: t.newBoardName,
+      access: 'public',
+      editPolicy: 'everyone',
+      creatorId: userId,
+    } as const;
+    try {
+      const created = await createBoard(request);
+      thud(haptics);
+      setSheet(null);
+      router.replace({ pathname: '/board/[id]', params: { id: created.id } });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : t.errCreate);
+    }
+    setCreating(false);
+  }
+
+  // A board that is gone (deleted, or its server forgot it) is let go of; the
+  // root then opens the next one, or a new one.
+  useEffect(() => {
+    if (!sync.notFound) return;
+    forgetBoard(id);
+    router.replace('/');
+  }, [sync.notFound, id, forgetBoard]);
 
   async function runConfirm() {
     if (confirm === 'clear') {
@@ -156,10 +195,7 @@ export default function BoardScreen() {
     return (
       <NicknameScreen
         landscape={landscape}
-        onContinue={(name) => {
-          sync.submitNickname(name);
-          setIdentityDone(true);
-        }}
+        onContinue={(name) => sync.submitNickname(name)}
       />
     );
   }
@@ -169,7 +205,7 @@ export default function BoardScreen() {
   }
 
   if (sync.phase === 'error') {
-    return <BoardError t={t} message={sync.error} />;
+    return <BoardError t={t} message={sync.error} creating={creating} onNew={() => void createNew()} />;
   }
 
   if (sync.phase === 'loading' || !nickname) {
@@ -201,11 +237,13 @@ export default function BoardScreen() {
         onOpenMenu={() => setSheet('menu')}
         onOpenPrivacy={() => setSheet('privacy')}
         onOpenShare={() => setSheet('share')}
+        onOpenSettings={() => setSheet('settings')}
       />
 
       <Toolbar landscape={landscape} />
       <BottomControls top={headerHeight + 6} onOpenAi={() => setSheet('ai')} />
       <ConnectionBanner top={headerHeight + 50} onRetry={sync.retry} />
+      {PERF_HUD ? <PerfHud /> : null}
 
       <ToastHost
         bottom={Math.max(insets.bottom, 16) + 128}
@@ -236,13 +274,17 @@ export default function BoardScreen() {
       <MenuSheet
         open={sheet === 'menu'}
         onClose={() => setSheet(null)}
+        onNew={() => void createNew()}
+        onOpenBoards={() => setSheet('boards')}
+        onOpenJoin={() => setSheet('join')}
         onOpenExport={() => setSheet('export')}
         onOpenImport={() => setSheet('import')}
         onOpenPrivacy={() => setSheet('privacy')}
         onOpenPeople={() => setSheet('people')}
-        onOpenSettings={() => setSheet('settings')}
         onOpenAi={() => setSheet('ai')}
       />
+      <BoardsSheet open={sheet === 'boards'} onClose={() => setSheet(null)} currentId={id} />
+      <JoinSheet open={sheet === 'join'} onClose={() => setSheet(null)} />
       <SettingsSheet
         open={sheet === 'settings'}
         onClose={() => setSheet(null)}
@@ -269,7 +311,17 @@ export default function BoardScreen() {
   );
 }
 
-function BoardError({ t, message }: { t: Strings; message: string | null }) {
+function BoardError({
+  t,
+  message,
+  creating,
+  onNew,
+}: {
+  t: Strings;
+  message: string | null;
+  creating: boolean;
+  onNew: () => void;
+}) {
   return (
     <View style={{ flex: 1 }}>
       <Backdrop variant="home" />
@@ -282,7 +334,7 @@ function BoardError({ t, message }: { t: Strings; message: string | null }) {
             {message}
           </Txt>
         ) : null}
-        <Button label={t.back} icon="back" variant="secondary" onPress={() => router.replace('/')} />
+        <Button label={t.newWhiteboard} icon="plus" variant="secondary" loading={creating} onPress={onNew} />
       </View>
     </View>
   );
