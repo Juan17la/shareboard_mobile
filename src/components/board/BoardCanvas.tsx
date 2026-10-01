@@ -39,7 +39,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { REALTIME } from '@/constants/config';
 import { Shadow, inkFor } from '@/constants/theme';
 import {
-  bendFromDrag,
+  elbowDragPatch,
   bendHandleOf,
   curveFromDrag,
   curveHandlesOf,
@@ -139,7 +139,7 @@ function dragPatch(edit: LiveEdit, el: BoardElement, p: Point): Partial<BoardEle
   if (edit.handle === CURVE_END_HANDLE && el.kind === 'shape') return curveFromDrag(el, 'end', p);
   if (edit.handle === BEND_HANDLE && el.kind === 'shape' && isLineLike(el)) {
     // A curve's middle slides its whole bow; an elbow's, its middle segment.
-    return el.route === 'curved' ? curveFromDrag(el, 'mid', p) : { bend: bendFromDrag(el, p) };
+    return el.route === 'curved' ? curveFromDrag(el, 'mid', p) : elbowDragPatch(el, p);
   }
   if (edit.handle === LABEL_HANDLE && el.kind === 'shape') return { labelAt: labelFromDrag(el, p) };
   if (edit.handle === ROTATE_HANDLE) return { rotation: rotationFromDrag(el, p) };
