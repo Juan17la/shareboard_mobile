@@ -291,6 +291,78 @@ assert.deepEqual(bendHandleOf({ ...step, shape: 'arrow', ...draggedElbow }), { x
   const top = points(spec({ x: 300, y: -100 }, null, { fromLink: { id: 'A', u: 0.5, v: 0 }, from: { x: 50, y: 0 } }));
   assert.equal(top[1].y < 0, true, 'out of the top side, upward');
 
+  // Any link, not only a side's middle: points all round an ellipse's outline, two shapes anywhere
+  // (close, far, beside, behind). The route never enters either shape, and an end leaves outward.
+  {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
+    const overlaps = (p, q) => p.x < q.x + q.width && q.x < p.x + p.width && p.y < q.y + q.height && q.y < p.y + p.height;
+    const outside = (b, q, eps = 3e-3) => ((q.x - (b.x + b.width / 2)) / (b.width / 2)) ** 2 + ((q.y - (b.y + b.height / 2)) / (b.height / 2)) ** 2 >= 1 - eps;
+    let checked = 0;
+    for (let n = 0; n < 4000; n++) {
+      const pick = () => ({ x: Math.round(rnd() * 600 - 300), y: Math.round(rnd() * 600 - 300), width: 40 + Math.round(rnd() * 160), height: 40 + Math.round(rnd() * 160) });
+      const A = pick();
+      let B = pick();
+      // A third of the layouts put B right beside A, the gap a few units to a few dozen.
+      if (n % 3 === 0) {
+        const gap = [0.5, 3, 10, 25][n % 4];
+        const side = Math.floor(rnd() * 4);
+        B = { ...B, x: side === 0 ? A.x + A.width + gap : side === 1 ? A.x - B.width - gap : A.x + Math.round((rnd() - 0.5) * A.width), y: side === 2 ? A.y + A.height + gap : side === 3 ? A.y - B.height - gap : A.y + Math.round((rnd() - 0.5) * A.height) };
+      }
+      if (overlaps(A, B)) continue;
+      boxes.A = A;
+      boxes.B = B;
+      const onOutline = (b) => {
+        const th = rnd() * 2 * Math.PI;
+        const p = { x: b.x + b.width / 2 + (b.width / 2) * Math.cos(th), y: b.y + b.height / 2 + (b.height / 2) * Math.sin(th) };
+        return { p, link: (id) => ({ id, u: (p.x - b.x) / b.width, v: (p.y - b.y) / b.height }) };
+      };
+      const a = onOutline(A);
+      const b = onOutline(B);
+      const pts = points({ from: a.p, to: b.p, route: 'elbow', fromLink: a.link('A'), toLink: b.link('B') });
+      const last = pts.length - 2;
+      pts.slice(1).forEach((q, i) => {
+        const p = pts[i];
+        // Eleven samples along the segment, the stub's ends excepted from the box test of their own shape.
+        for (let k = 0; k <= 10; k++) {
+          const x = p.x + ((q.x - p.x) * k) / 10;
+          const y = p.y + ((q.y - p.y) * k) / 10;
+          const inside = (box) => x > box.x + 1e-6 && x < box.x + box.width - 1e-6 && y > box.y + 1e-6 && y < box.y + box.height - 1e-6;
+          const msg = `layout ${n}: ${JSON.stringify({ A, B, pts })}`;
+          if (i === 0) assert.ok(outside(A, { x, y }) && !inside(B), `leaves A outward — ${msg}`);
+          else if (i === last) assert.ok(outside(B, { x, y }) && !inside(A), `arrives at B from outside — ${msg}`);
+          else assert.ok(!inside(A) && !inside(B), `goes round — ${msg}`);
+        }
+      });
+      checked++;
+    }
+    assert.ok(checked > 1000, `enough layouts checked: ${checked}`);
+    // One end bound, the other free anywhere outside the shape — and the same with the free end first.
+    for (let n = 0; n < 2000; n++) {
+      const A = { x: Math.round(rnd() * 300 - 150), y: Math.round(rnd() * 300 - 150), width: 40 + Math.round(rnd() * 160), height: 40 + Math.round(rnd() * 160) };
+      boxes.A = A;
+      const th = rnd() * 2 * Math.PI;
+      const p = { x: A.x + A.width / 2 + (A.width / 2) * Math.cos(th), y: A.y + A.height / 2 + (A.height / 2) * Math.sin(th) };
+      const free = { x: Math.round(rnd() * 700 - 350), y: Math.round(rnd() * 700 - 350) };
+      if (free.x > A.x - 1 && free.x < A.x + A.width + 1 && free.y > A.y - 1 && free.y < A.y + A.height + 1) continue;
+      const link = { id: 'A', u: (p.x - A.x) / A.width, v: (p.y - A.y) / A.height };
+      const forward = n % 2 === 0;
+      const pts = points(forward ? { from: p, to: free, route: 'elbow', fromLink: link } : { from: free, to: p, route: 'elbow', toLink: link });
+      pts.slice(1).forEach((q, i) => {
+        const a = pts[i];
+        for (let k = 0; k <= 10; k++) {
+          const x = a.x + ((q.x - a.x) * k) / 10;
+          const y = a.y + ((q.y - a.y) * k) / 10;
+          const bound = forward ? i === 0 : i === pts.length - 2;
+          const inside = x > A.x + 1e-6 && x < A.x + A.width - 1e-6 && y > A.y + 1e-6 && y < A.y + A.height - 1e-6;
+          const msg = `free layout ${n}: ${JSON.stringify({ A, pts })}`;
+          if (bound) assert.ok(((x - (A.x + A.width / 2)) / (A.width / 2)) ** 2 + ((y - (A.y + A.height / 2)) / (A.height / 2)) ** 2 >= 1 - 3e-3, `leaves outward — ${msg}`);
+          else assert.ok(!inside, `goes round — ${msg}`);
+        }
+      });
+    }
+  }
+
   // Without a shape to go round it is what it always was.
   setBoxLookup(() => undefined);
   assert.deepEqual(points({ from: { x: 0, y: 0 }, to: { x: 100, y: 50 }, route: 'elbow' }), [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 50 }, { x: 100, y: 50 }]);
