@@ -21,10 +21,13 @@ import { useBoardStore } from '@/features/board/store';
 import { useSessionStore, type AppSettings, useColors } from '@/features/session/store';
 import { renameBoard } from '@/services/api/boards';
 
+import { AvatarPicker } from '../screens/NicknameScreen';
+import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
+import { Field } from '../ui/Field';
 import { GlassPanel } from '../ui/Glass';
 import { Icon } from '../ui/Icon';
-import { Sheet, SheetRow } from '../ui/Sheet';
+import { Sheet, SheetRow, SectionLabel } from '../ui/Sheet';
 import { Toggle } from '../ui/Toggle';
 import { Txt } from '../ui/Text';
 import { toast } from '../ui/Toast';
@@ -48,6 +51,11 @@ export function SettingsSheet({
   const theme = useSessionStore((s) => s.theme);
   const setTheme = useSessionStore((s) => s.setTheme);
   const userId = useSessionStore((s) => s.userId);
+  const nickname = useSessionStore((s) => s.nickname);
+  const nickColor = useSessionStore((s) => s.nickColor);
+  const avatar = useSessionStore((s) => s.avatar);
+  const setNickname = useSessionStore((s) => s.setNickname);
+  const [nick, setNick] = useState(nickname);
 
   const meta = useBoardStore((s) => s.meta);
   const setMeta = useBoardStore((s) => s.setMeta);
@@ -97,8 +105,40 @@ export function SettingsSheet({
   }
 
   return (
-    <Sheet open={open} title={t.sheetSettings} onClose={onClose} closeLabel={t.close}>
+    <Sheet open={open} title={t.sheetSettings} onClose={onClose} closeLabel={t.close} tall>
       <View style={{ gap: 9 }}>
+        {/* Who you are on a board: the name beside your cursor and its icon. */}
+        <SectionLabel>{t.nickPlaceholder}</SectionLabel>
+        <GlassPanel level="row" radius={18} border={c.borderField}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 }}>
+            <Avatar name={nick || '?'} color={nickColor} avatar={avatar} size={42} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Field
+                value={nick}
+                // Written through as typed, but never empty: a blank name would
+                // send you back to the identity screen.
+                onChangeText={(v) => {
+                  setNick(v);
+                  if (v.trim()) setNickname(v);
+                }}
+                placeholder={t.nickPlaceholder}
+                maxLength={LIMITS.maxNicknameLength}
+                autoComplete="nickname"
+                accessibilityLabel={t.nickPlaceholder}
+                style={{
+                  borderWidth: 0,
+                  backgroundColor: 'transparent',
+                  paddingHorizontal: 0,
+                  paddingVertical: 4,
+                  fontSize: 16,
+                }}
+              />
+            </View>
+          </View>
+        </GlassPanel>
+        <SectionLabel>{t.yourIcon}</SectionLabel>
+        <AvatarPicker name={nick} />
+
         {meta ? (
           <GlassPanel level="row" radius={15} border={c.border}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13 }}>
