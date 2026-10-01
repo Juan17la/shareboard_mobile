@@ -7,6 +7,8 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.2.0-beta] - 2026-09-30
+
 ### Added
 
 - Holding a finger on a figure (with the cursor) selects it and opens a menu:
