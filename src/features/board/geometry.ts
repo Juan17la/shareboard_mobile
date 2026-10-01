@@ -928,30 +928,198 @@ export function control(from: Point, to: Point, bend?: number): Point {
   };
 }
 
-// An elbow is a run of right angles, and what it leaves and arrives along is a
-// choice, as it is in a diagramming tool: the long axis by default; straight
-// out of the side of a shape it is bound to; or whichever way was asked for.
-// Two ends on the same axis make three segments (and a middle to drag); two
-// different axes, a single corner.
+// An elbow is a run of right angles. A bound end decides its own direction: it
+// leaves its shape straight out of the side it sits on, `ELBOW_GAP` units, and
+// the route goes around that shape rather than through it — the way a
+// diagramming tool draws it. A free end runs along the long axis, or along the
+// one its corner handle was dragged to. Two ends on the same axis make three
+// segments (and a middle to drag); two different axes, a single corner.
 
-/** Out of which side of its shape a bound end leaves: a left or right side runs across, a top or bottom up and down. */
-function sideAxis(link: Link | null | undefined): Axis | null {
+/** How far an elbow leaves a bound shape before it may turn, and keeps clear of it after. */
+const ELBOW_GAP = 18;
+/** What a corner costs, in units of length: of two routes, the one with fewer corners wins. */
+const ELBOW_TURN = 40;
+
+type Dir = 0 | 1 | 2 | 3; // +x, -x, +y, -y
+const DIRS: Point[] = [
+  { x: 1, y: 0 },
+  { x: -1, y: 0 },
+  { x: 0, y: 1 },
+  { x: 0, y: -1 },
+];
+const opposite = (d: Dir): Dir => (d ^ 1) as Dir;
+
+/** The boxes of the shapes lines are bound to, set once by the store so a route can go around them. */
+let boxLookup: ((id: string) => Bounds | undefined) | null = null;
+export function setBoxLookup(lookup: (id: string) => Bounds | undefined) {
+  boxLookup = lookup;
+}
+
+/**
+ * Out of which side of its shape a bound end leaves. Null when the end is not
+ * on a side (free, or bound inside a shape). ponytail: the side is read in the
+ * shape's own frame, so a turned shape's directions are off by its rotation.
+ */
+function sideDir(link: Link | null | undefined): Dir | null {
   if (!link) return null;
-  if (link.u <= 0.02 || link.u >= 0.98) return 'h';
-  if (link.v <= 0.02 || link.v >= 0.98) return 'v';
+  if (link.u <= 0.02) return 1;
+  if (link.u >= 0.98) return 0;
+  if (link.v <= 0.02) return 3;
+  if (link.v >= 0.98) return 2;
   return null;
 }
+
+const axisOfDir = (d: Dir): Axis => (d < 2 ? 'h' : 'v');
 
 /** The axis an elbow leaves its start along, and arrives at its end along. */
 export function elbowAxes(r: RouteSpec): [Axis, Axis] {
   const long: Axis = Math.abs(r.to.x - r.from.x) >= Math.abs(r.to.y - r.from.y) ? 'h' : 'v';
-  return [r.startAxis ?? sideAxis(r.fromLink) ?? long, r.endAxis ?? sideAxis(r.toLink) ?? long];
+  const side = (link: Link | null | undefined) => {
+    const d = sideDir(link);
+    return d === null ? null : axisOfDir(d);
+  };
+  return [side(r.fromLink) ?? r.startAxis ?? long, side(r.toLink) ?? r.endAxis ?? long];
+}
+
+/** Whether a corner handle can turn this elbow: only when no end is held by a side. */
+function turnable(r: RouteSpec): boolean {
+  return sideDir(r.fromLink) === null && sideDir(r.toLink) === null;
+}
+
+/** Drops repeated points and the middle of any three in a straight line. */
+function tidy(pts: Point[]): Point[] {
+  const out: Point[] = [];
+  for (const p of pts) {
+    const last = out[out.length - 1];
+    if (last && last.x === p.x && last.y === p.y) continue;
+    const before = out[out.length - 2];
+    if (before && last && ((before.x === last.x && last.x === p.x) || (before.y === last.y && last.y === p.y))) {
+      out[out.length - 1] = p;
+    } else out.push(p);
+  }
+  return out;
+}
+
+/**
+ * Where the route really starts and ends turning: the stub's tip for a bound
+ * end, the end itself for a free one.
+ */
+function elbowSpan(r: RouteSpec): [Point, Point] {
+  const da = sideDir(r.fromLink);
+  const db = sideDir(r.toLink);
+  return [
+    da === null ? r.from : { x: r.from.x + DIRS[da].x * ELBOW_GAP, y: r.from.y + DIRS[da].y * ELBOW_GAP },
+    db === null ? r.to : { x: r.to.x + DIRS[db].x * ELBOW_GAP, y: r.to.y + DIRS[db].y * ELBOW_GAP },
+  ];
 }
 
 /** An elbow's corners. `bend`: where along the shared axis the middle segment stands, 0..1 (midpoint absent). */
 function elbowPoints(r: RouteSpec): Point[] {
   const { from, to } = r;
-  const [start, end] = elbowAxes(r);
+  const [a, b] = elbowAxes(r);
+  const da = sideDir(r.fromLink);
+  const db = sideDir(r.toLink);
+  const [s, e] = elbowSpan(r);
+  const t = r.bend ?? 0.5;
+
+  // The linked shapes, grown by the gap: a route runs along their edges, never across.
+  const walls: Bounds[] = [];
+  for (const link of [r.fromLink, r.toLink]) {
+    const box = link && boxLookup?.(link.id);
+    if (box) {
+      walls.push({
+        x: box.x - ELBOW_GAP,
+        y: box.y - ELBOW_GAP,
+        width: box.width + 2 * ELBOW_GAP,
+        height: box.height + 2 * ELBOW_GAP,
+      });
+    }
+  }
+
+  // The lines a route may run along: where the ends are, the bend, the walls' edges.
+  const uniq = (v: number[]) => [...new Set(v.map((x) => Math.round(x * 100) / 100))].sort((p, q) => p - q);
+  const xs = uniq([s.x, e.x, s.x + (e.x - s.x) * t, ...walls.flatMap((w) => [w.x, w.x + w.width])]);
+  const ys = uniq([s.y, e.y, s.y + (e.y - s.y) * t, ...walls.flatMap((w) => [w.y, w.y + w.height])]);
+  const at = (arr: number[], v: number) => arr.indexOf(Math.round(v * 100) / 100);
+  const blocked = (p: Point, q: Point) => {
+    const mx = (p.x + q.x) / 2;
+    const my = (p.y + q.y) / 2;
+    return walls.some((w) => mx > w.x && mx < w.x + w.width && my > w.y && my < w.y + w.height);
+  };
+
+  // The cheapest run of right angles from the start to the end: length plus a
+  // price per corner, leaving by `da` and arriving by `db` where they are known.
+  const W = xs.length;
+  const idx = (i: number, j: number, d: number) => (j * W + i) * 4 + d;
+  const dist = new Array<number>(W * ys.length * 4).fill(Infinity);
+  const from_ = new Array<number>(dist.length).fill(-1);
+  const open: number[] = [];
+  const si = at(xs, s.x);
+  const sj = at(ys, s.y);
+  // A free start may leave along its axis only; a bound one has already left, and may turn at the stub's tip.
+  for (const d of ([0, 1, 2, 3] as Dir[])) {
+    if (da === null ? axisOfDir(d) === a : d === da) {
+      dist[idx(si, sj, d)] = 0;
+      open.push(idx(si, sj, d));
+    }
+  }
+  while (open.length) {
+    let best = 0;
+    for (let k = 1; k < open.length; k++) if (dist[open[k]] < dist[open[best]]) best = k;
+    const cur = open.splice(best, 1)[0];
+    const d = (cur % 4) as Dir;
+    const cell = (cur - d) / 4;
+    const i = cell % W;
+    const j = (cell - i) / W;
+    const isStart = i === si && j === sj && dist[cur] === 0;
+    for (const nd of [0, 1, 2, 3] as Dir[]) {
+      if (nd === opposite(d)) continue;
+      // From a free start the first move runs along its axis, whichever way it points.
+      if (isStart && da === null && axisOfDir(nd) !== a) continue;
+      const ni = i + DIRS[nd].x;
+      const nj = j + DIRS[nd].y;
+      if (ni < 0 || nj < 0 || ni >= W || nj >= ys.length) continue;
+      if (blocked({ x: xs[i], y: ys[j] }, { x: xs[ni], y: ys[nj] })) continue;
+      const cost =
+        dist[cur] +
+        Math.abs(xs[ni] - xs[i]) +
+        Math.abs(ys[nj] - ys[j]) +
+        (nd === d ? 0 : ELBOW_TURN);
+      const next = idx(ni, nj, nd);
+      if (cost < dist[next]) {
+        dist[next] = cost;
+        from_[next] = cur;
+        if (!open.includes(next)) open.push(next);
+      }
+    }
+  }
+  let end = -1;
+  let endCost = Infinity;
+  for (const d of [0, 1, 2, 3] as Dir[]) {
+    const node = idx(at(xs, e.x), at(ys, e.y), d);
+    // Arriving: a bound end is entered by the way in (a turn at the stub's tip costs a corner);
+    // a free one along its axis.
+    const arrive =
+      db === null ? (axisOfDir(d) === b ? 0 : Infinity) : d === opposite(db) ? 0 : d === db ? Infinity : ELBOW_TURN;
+    if (dist[node] + arrive < endCost) {
+      endCost = dist[node] + arrive;
+      end = node;
+    }
+  }
+  if (end < 0) return legacyElbow(r, a, b);
+
+  const path: Point[] = [];
+  for (let n = end; n >= 0; n = from_[n]) {
+    const cell = (n - (n % 4)) / 4;
+    path.push({ x: xs[cell % W], y: ys[(cell - (cell % W)) / W] });
+  }
+  path.reverse();
+  return tidy([from, ...path, to]);
+}
+
+/** The route when none can be found around the walls (a turned shape's box can swallow the stub): corners only. */
+function legacyElbow(r: RouteSpec, start: Axis, end: Axis): Point[] {
+  const { from, to } = r;
   if (start !== end) {
     return start === 'h' ? [from, { x: to.x, y: from.y }, to] : [from, { x: from.x, y: to.y }, to];
   }
@@ -1027,26 +1195,46 @@ export function endAngles(r: RouteSpec): { start: number; end: number } {
   return { start: angle(s, from), end: angle(e, to) };
 }
 
+/** Three segments with the middle one between the two ends' stubs: the shape `bend` positions (a "C" has no such middle). */
+function isZ(r: RouteSpec, pts: Point[]): boolean {
+  if (pts.length !== 4) return false;
+  const [s, e] = elbowSpan(r);
+  const vertical = pts[1].x === pts[2].x;
+  if (vertical !== (pts[0].x === pts[1].x ? false : true)) return false;
+  return vertical
+    ? (pts[1].x - s.x) * (pts[1].x - e.x) < 0
+    : (pts[1].y - s.y) * (pts[1].y - e.y) < 0;
+}
+
 /**
- * Where an elbow's fold handle sits: the middle of its middle segment — there
- * is one only when both ends run along the same axis. `null` for anything else.
+ * Where an elbow's handle sits. A route of three segments has a middle one,
+ * and the handle is its centre: drag it to move the middle. A single corner
+ * between two free ends has the corner itself: drag it across to the other
+ * corner of the box to turn the route over. Null for anything else.
  */
 export function bendHandleOf(el: RouteSpec & Pick<ShapeElement, 'shape'>): Point | null {
   if (!isLineLike(el) || el.route !== 'elbow') return null;
-  const [start, end] = elbowAxes(el);
-  if (start !== end) return null;
   const pts = elbowPoints(el);
-  return { x: (pts[1].x + pts[2].x) / 2, y: (pts[1].y + pts[2].y) / 2 };
+  if (isZ(el, pts)) return { x: (pts[1].x + pts[2].x) / 2, y: (pts[1].y + pts[2].y) / 2 };
+  return pts.length === 3 && turnable(el) ? pts[1] : null;
 }
 
-/** The `bend` a drag of an elbow's fold handle to `p` implies, inverting `bendHandleOf`. */
-export function bendFromDrag(el: RouteSpec, p: Point): number {
-  const dx = el.to.x - el.from.x;
-  const dy = el.to.y - el.from.y;
-  // How far along the shared axis, clamped off the very ends so the route
-  // never collapses onto an endpoint.
-  const t = elbowAxes(el)[0] === 'h' ? (dx ? (p.x - el.from.x) / dx : 0.5) : dy ? (p.y - el.from.y) / dy : 0.5;
-  return clamp(t, 0.08, 0.92);
+/**
+ * The patch a drag of an elbow's handle to `p` makes: the middle segment's
+ * place (`bend`, between the two ends' stubs, kept off the very ends so the
+ * route never collapses), or which way the single corner turns.
+ */
+export function elbowDragPatch(el: RouteSpec, p: Point): { bend: number } | { startAxis: Axis; endAxis: Axis } {
+  const pts = elbowPoints(el);
+  if (pts.length === 3) {
+    const along = Math.abs(p.x - el.to.x) + Math.abs(p.y - el.from.y) <= Math.abs(p.x - el.from.x) + Math.abs(p.y - el.to.y);
+    return along ? { startAxis: 'h', endAxis: 'v' } : { startAxis: 'v', endAxis: 'h' };
+  }
+  const [s, e] = elbowSpan(el);
+  // The middle segment is vertical when its two ends share an x.
+  const vertical = pts.length > 2 && pts[1].x === pts[2].x;
+  const t = vertical ? (e.x !== s.x ? (p.x - s.x) / (e.x - s.x) : 0.5) : e.y !== s.y ? (p.y - s.y) / (e.y - s.y) : 0.5;
+  return { bend: clamp(t, 0.08, 0.92) };
 }
 
 /** The three handles of a curved line: its pull at the start, at the end, and its middle. `null` for any other line. */
