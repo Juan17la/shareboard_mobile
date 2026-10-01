@@ -20,7 +20,7 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "https://shareboard-server.onrender.com",
         "EXPO_PUBLIC_WS_URL": "wss://shareboard-server.onrender.com/ws",
-        "EXPO_PUBLIC_RELEASE": "1.2.0-beta"
+        "EXPO_PUBLIC_RELEASE": "1.3.0-beta"
       }
     },
     "perf": {

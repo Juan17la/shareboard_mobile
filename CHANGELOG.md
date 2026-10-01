@@ -7,6 +7,8 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.3.0-beta] - 2026-10-01
+
 ### Added
 
 - A loading screen instead of an empty page while a board opens or the server
