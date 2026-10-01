@@ -15,6 +15,14 @@ All notable changes to the Shareboard mobile app. The format follows
   reason. The "reconnecting" pill eases in and out. Reduced-motion settings
   keep the dots still.
 
+### Fixed
+
+- An elbow arrow no longer runs through the shape it is bound to. Every link
+  leaves its shape straight out, away from the shape's centre — not only one on a
+  rectangle's side, but any point of an ellipse, a triangle or a polygon's outline —
+  and tries its second-best way out when something stands in the first, even
+  with two shapes a hair apart.
+
 ### Changed
 
 - An elbow arrow bound to a shape leaves it straight out of the side it sits on and
