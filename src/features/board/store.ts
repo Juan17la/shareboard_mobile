@@ -25,9 +25,11 @@ import { shortId } from '@/utils/id';
 import {
   boxOf,
   contentBounds,
+  elementBounds,
   followLinks,
   headsOf,
   isLineLike,
+  setBoxLookup,
   shapeHit,
   toLocal,
   translate,
@@ -480,6 +482,17 @@ function cursorsOf(participants: Participant[]): Record<UserId, Point> {
 }
 
 export const useBoardStore = create<BoardState>((set, get) => {
+  // An elbow goes around the shapes it is bound to: geometry asks where they are.
+  setBoxLookup((id) => {
+    const el = get().elements[id];
+    if (!el || el.deleted) return undefined;
+    const box = elementBounds(el);
+    // A shape being carried is where the finger has it, not where it was.
+    const live = get().liveEdit;
+    return live?.mode === 'move' && live.ids.includes(id)
+      ? { ...box, x: box.x + live.dx, y: box.y + live.dy }
+      : box;
+  });
   /**
    * `how` is what the change does to history: `push` is a step of its own;
    * `merge` folds into the last step (the typing that finishes a text just

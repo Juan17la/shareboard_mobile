@@ -17,6 +17,14 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ### Changed
 
+- An elbow arrow bound to a shape leaves it straight out of the side it sits on and
+  goes around that shape instead of through it; dragging the end to another side
+  turns the way it leaves. The elbow's own handle replaces the toolbar's
+  "leaves / arrives" box: the diamond in the middle segment slides it, and on a
+  single corner between two free ends the corner itself can be dragged across to
+  the other corner to turn the route over. Ends in a line draw one straight
+  segment.
+
 - The options strip is one row of single boxes, each holding every value of one
   option: tap steps through them (width, dash, route, an elbow's axes, font,
   plain / bold / italic / both). The ones with many values open a small panel
