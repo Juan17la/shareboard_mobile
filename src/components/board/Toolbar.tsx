@@ -88,7 +88,7 @@ interface ToolEntry {
 }
 
 /** The popovers the strip's boxes open. */
-type Box = 'kind' | 'color' | 'text' | 'ends' | 'route';
+type Box = 'kind' | 'color' | 'text' | 'ends';
 
 const FONT_LABELS = {
   sans: 'fontSans',
@@ -306,6 +306,8 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     { start: 'h', end: 'v', labelKey: 'axisHV' },
     { start: 'v', end: 'h', labelKey: 'axisVH' },
   ];
+  const axisNow =
+    axisChoices.find((a) => a.start === cur.startAxis && a.end === cur.endAxis) ?? axisChoices[0];
   const routeLabel: Record<Route, 'routeStraight' | 'routeCurved' | 'routeElbow'> = {
     straight: 'routeStraight',
     curved: 'routeCurved',
@@ -354,27 +356,38 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
           setFontSize(Math.min(LIMITS.maxFontSize, fontSize + 4));
         }}
       />
-      {FONTS.map((font) => (
+      <MiniButton
+        label={t[FONT_LABELS[cur.font]]}
+        active={false}
+        onPress={() => {
+          nudge();
+          setConfig({ font: cycle(FONTS, cur.font) });
+        }}
+      >
+        <Txt size={15} style={{ fontFamily: FAMILIES[cur.font][0] }}>
+          Aa
+        </Txt>
+      </MiniButton>
+      {showStyle ? (
         <MiniButton
-          key={font}
-          compact
-          label={t[FONT_LABELS[font]]}
-          active={cur.font === font}
+          label={`${t.bold} / ${t.italic}`}
+          active={cur.bold || cur.italic}
           onPress={() => {
             nudge();
-            setConfig({ font });
+            // Plain, bold, italic, bold italic: one box, four steps.
+            const next = ((cur.bold ? 1 : 0) + (cur.italic ? 2 : 0) + 1) % 4;
+            setConfig({ bold: !!(next & 1), italic: !!(next & 2) });
           }}
         >
-          <Txt size={14} color={cur.font === font ? '#FFFFFF' : undefined} style={{ fontFamily: FAMILIES[font][0] }}>
-            Aa
+          <Txt
+            size={15}
+            weight={cur.bold ? 'extrabold' : 'bold'}
+            italic={cur.italic}
+            color={cur.bold || cur.italic ? '#FFFFFF' : undefined}
+          >
+            {cur.bold && !cur.italic ? 'B' : cur.italic && !cur.bold ? 'I' : cur.bold ? 'BI' : 'B/I'}
           </Txt>
         </MiniButton>
-      ))}
-      {showStyle ? (
-        <>
-          <MiniButton compact glyph="B" glyphWeight="extrabold" label={t.bold} active={cur.bold} onPress={() => { nudge(); setConfig({ bold: !cur.bold }); }} />
-          <MiniButton compact glyph="I" glyphItalic label={t.italic} active={cur.italic} onPress={() => { nudge(); setConfig({ italic: !cur.italic }); }} />
-        </>
       ) : null}
     </>
   );
@@ -529,60 +542,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
 
               {box === 'text' ? textControls : null}
 
-              {box === 'route' && showLine ? (
-                <>
-                  {ROUTES.map((route) => (
-                    <MiniButton
-                      key={route}
-                      label={t[routeLabel[route]]}
-                      active={cur.route === route}
-                      onPress={() => {
-                        nudge();
-                        setConfig({ route });
-                      }}
-                    >
-                      <LineGlyph d={routePath({ from: { x: 4, y: 19 }, to: { x: 20, y: 5 }, route })} on={cur.route === route} />
-                    </MiniButton>
-                  ))}
-                  {cur.route === 'elbow' ? (
-                    <>
-                      <Divider />
-                      {axisChoices.map(({ start, end, labelKey }) => {
-                        const on = cur.startAxis === start && cur.endAxis === end;
-                        return (
-                          <MiniButton
-                            key={labelKey}
-                            label={t[labelKey]}
-                            active={on}
-                            onPress={() => {
-                              nudge();
-                              setConfig({ startAxis: start, endAxis: end });
-                            }}
-                          >
-                            {start ? (
-                              <LineGlyph
-                                d={routePath({
-                                  from: { x: 4, y: 19 },
-                                  to: { x: 20, y: 5 },
-                                  route: 'elbow',
-                                  startAxis: start,
-                                  endAxis: end,
-                                })}
-                                on={on}
-                              />
-                            ) : (
-                              <Txt weight="extrabold" size={11} color={on ? '#FFFFFF' : c.text}>
-                                A
-                              </Txt>
-                            )}
-                          </MiniButton>
-                        );
-                      })}
-                    </>
-                  ) : null}
-                </>
-              ) : null}
-
               {box === 'ends' && showLine ? (
                 <View style={{ gap: 6 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
@@ -689,29 +648,23 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
               ) : null}
 
               {showSizes ? (
-                <View style={{ flexDirection: 'row', gap: 3 }}>
-                  {StrokeSizes.map((size) => (
-                    <MiniButton
-                      key={size}
-                      compact
-                      label={`${t.size} ${size}`}
-                      active={cur.width === size}
-                      onPress={() => {
-                        nudge();
-                        setConfig({ width: size });
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: Math.min(18, size + 3),
-                          height: Math.min(18, size + 3),
-                          borderRadius: 9,
-                          backgroundColor: cur.width === size ? '#FFFFFF' : c.text,
-                        }}
-                      />
-                    </MiniButton>
-                  ))}
-                </View>
+                <MiniButton
+                  label={`${t.size} ${cur.width}`}
+                  active={false}
+                  onPress={() => {
+                    nudge();
+                    setConfig({ width: cycle(StrokeSizes, cur.width) });
+                  }}
+                >
+                  <View
+                    style={{
+                      width: Math.min(20, cur.width + 3),
+                      height: Math.min(20, cur.width + 3),
+                      borderRadius: 10,
+                      backgroundColor: c.text,
+                    }}
+                  />
+                </MiniButton>
               ) : null}
 
               {showLine ? (
@@ -730,9 +683,44 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                       <SvgPath d="M3 12H21" strokeDasharray={dashIntervals(cur.dash, 2.2)?.join(' ')} />
                     </Svg>
                   </MiniButton>
-                  <MiniButton label={t[routeLabel[cur.route]]} active={box === 'route'} onPress={() => toggle('route')}>
-                    <LineGlyph d={routePath({ from: { x: 4, y: 19 }, to: { x: 20, y: 5 }, route: cur.route })} on={box === 'route'} />
+                  <MiniButton
+                    label={t[routeLabel[cur.route]]}
+                    active={false}
+                    onPress={() => {
+                      nudge();
+                      setConfig({ route: cycle(ROUTES, cur.route) });
+                    }}
+                  >
+                    <LineGlyph d={routePath({ from: { x: 4, y: 19 }, to: { x: 20, y: 5 }, route: cur.route })} on={false} />
                   </MiniButton>
+                  {cur.route === 'elbow' ? (
+                    <MiniButton
+                      label={t[axisNow.labelKey]}
+                      active={false}
+                      onPress={() => {
+                        nudge();
+                        const next = axisChoices[(axisChoices.indexOf(axisNow) + 1) % axisChoices.length];
+                        setConfig({ startAxis: next.start, endAxis: next.end });
+                      }}
+                    >
+                      {axisNow.start ? (
+                        <LineGlyph
+                          d={routePath({
+                            from: { x: 4, y: 19 },
+                            to: { x: 20, y: 5 },
+                            route: 'elbow',
+                            startAxis: axisNow.start,
+                            endAxis: axisNow.end,
+                          })}
+                          on={false}
+                        />
+                      ) : (
+                        <Txt weight="extrabold" size={11}>
+                          A
+                        </Txt>
+                      )}
+                    </MiniButton>
+                  ) : null}
                 </>
               ) : null}
 
