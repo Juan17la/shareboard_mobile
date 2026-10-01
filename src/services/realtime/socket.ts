@@ -209,9 +209,12 @@ export class WebSocketConnection {
   send(msg: ClientMessage) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
-    } else if (msg.type === 'op' || msg.type === 'leave') {
-      // Durable messages are queued; cursors/pings are dropped while offline.
-      // `join` is never queued — `onopen` always sends a fresh one.
+    } else if (msg.type === 'leave') {
+      // `leave` is queued; cursors/pings are dropped while offline. `join` is
+      // never queued — `onopen` always sends a fresh one. Ops are not either:
+      // they wait in the store until the join completes (`use-board-sync`), as
+      // queued here they were sent right behind `join`, before the server had
+      // put this client on the board, and refused.
       this.outbox.push(msg);
     }
   }
