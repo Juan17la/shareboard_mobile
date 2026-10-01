@@ -23,6 +23,7 @@ const es = {
   close: 'Cerrar',
   back: 'Atrás',
   loading: 'Abriendo la pizarra…',
+  loadingSlow: 'Está tardando más de lo normal. Revisa tu conexión: el servidor puede estar despertando.',
   retry: 'Reintentar',
   deleteDigit: 'Borrar un dígito',
 
@@ -301,6 +302,7 @@ const en: Record<keyof typeof es, string> = {
   close: 'Close',
   back: 'Back',
   loading: 'Opening the board…',
+  loadingSlow: 'Taking longer than usual. Check your connection: the server may be waking up.',
   retry: 'Try again',
   deleteDigit: 'Delete a digit',
 
