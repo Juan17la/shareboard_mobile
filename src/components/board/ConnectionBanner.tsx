@@ -6,6 +6,7 @@
  * `connecting` only needs to be seen, not acted on.
  */
 import { Pressable, View } from 'react-native';
+import Animated, { FadeInDown, FadeOut } from 'react-native-reanimated';
 
 import { Shadow } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
@@ -24,7 +25,9 @@ export function ConnectionBanner({ top, onRetry }: { top: number; onRetry: () =>
   const color = offline ? c.danger : c.textSecondary;
 
   return (
-    <View
+    <Animated.View
+      entering={FadeInDown.duration(250)}
+      exiting={FadeOut.duration(200)}
       accessibilityRole="alert"
       pointerEvents="box-none"
       style={{ position: 'absolute', top, left: 0, right: 0, alignItems: 'center' }}
@@ -64,6 +67,6 @@ export function ConnectionBanner({ top, onRetry }: { top: number; onRetry: () =>
           </Pressable>
         ) : null}
       </View>
-    </View>
+    </Animated.View>
   );
 }

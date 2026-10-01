@@ -7,6 +7,14 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A loading screen instead of an empty page while a board opens or the server
+  is slow: three dots breathing in turn and "Opening the board…", faded in. After
+  seven seconds it adds that the connection or a sleeping server may be the
+  reason. The "reconnecting" pill eases in and out. Reduced-motion settings
+  keep the dots still.
+
 ### Changed
 
 - The options strip is one row of single boxes, each holding every value of one
