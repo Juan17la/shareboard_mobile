@@ -28,7 +28,8 @@ import {
   labelFromDrag,
   routePointAt,
   anchorsOf,
-  bendFromDrag,
+  elbowDragPatch,
+  setBoxLookup,
   bendHandleOf,
   curveHandlesOf,
   curveFromDrag,
@@ -118,7 +119,7 @@ for (const kind of ALL_MARKERS) {
   for (const p of parts) assert.match(p.d, /^M /, kind);
 }
 for (const route of ROUTES) assert.match(routePath({ from: { x: 0, y: 0 }, to: { x: 10, y: 5 }, route }), /^M 0 0 /, route);
-assert.equal(routePath({ from: { x: 0, y: 0 }, to: { x: 10, y: 0 }, route: 'elbow' }).split('L').length, 4);
+assert.equal(routePath({ from: { x: 0, y: 0 }, to: { x: 10, y: 0 }, route: 'elbow' }), 'M 0 0 L 10 0', 'ends in line: no bends to draw');
 
 // --- fill levels -----------------------------------------------------------
 
@@ -211,7 +212,8 @@ assert.equal('fontSize' in s().elements.A, false, 'the key is gone, not null');
 // change for every board saved before this field existed).
 const line = { from: { x: 0, y: 0 }, to: { x: 100, y: 0 } };
 assert.equal(bendHandleOf({ ...line, shape: 'arrow', route: 'curved' }), null, 'a curve is shaped by its own handles');
-assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow' }), { x: 50, y: 0 });
+assert.equal(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow' }), null, 'a straight run has no middle to drag');
+assert.deepEqual(bendHandleOf({ from: { x: 0, y: 0 }, to: { x: 100, y: 50 }, shape: 'arrow', route: 'elbow' }), { x: 50, y: 25 });
 assert.equal(bendHandleOf({ ...line, shape: 'arrow', route: 'straight' }), null, 'nothing to fold on a straight line');
 assert.equal(bendHandleOf({ ...line, shape: 'rectangle', route: 'curved' }), null, 'only lines fold');
 // Dragging the fold handle to a point, then reading it back, must return to
@@ -237,14 +239,62 @@ assert.equal(routePath(step).split('L').length, 4, 'three segments');
 assert.deepEqual(elbowAxes({ ...step, startAxis: 'v' }), ['v', 'h']);
 assert.equal(routePath({ ...step, startAxis: 'v', endAxis: 'h' }), 'M 0 0 L 0 50 L 100 50', 'up and down, then across: a single corner');
 assert.equal(routePath({ ...step, startAxis: 'h', endAxis: 'v' }), 'M 0 0 L 100 0 L 100 50');
-assert.equal(bendHandleOf({ ...step, shape: 'arrow', startAxis: 'v', endAxis: 'h' }), null, 'a corner has no middle to drag');
+// A single corner between two free ends is its own handle: drag it across to the other corner and the route turns over.
+assert.deepEqual(bendHandleOf({ ...step, shape: 'arrow', startAxis: 'v', endAxis: 'h' }), { x: 0, y: 50 });
+assert.deepEqual(elbowDragPatch({ ...step, startAxis: 'h', endAxis: 'v' }, { x: 5, y: 48 }), { startAxis: 'v', endAxis: 'h' });
+assert.deepEqual(elbowDragPatch({ ...step, startAxis: 'v', endAxis: 'h' }, { x: 95, y: 3 }), { startAxis: 'h', endAxis: 'v' });
 // Bound to the bottom of one shape and the left of another, it leaves and arrives the way the sides face.
 assert.deepEqual(elbowAxes({ ...step, fromLink: { id: 'a', u: 0.5, v: 1 }, toLink: { id: 'b', u: 0, v: 0.5 } }), ['v', 'h']);
-assert.deepEqual(elbowAxes({ ...step, startAxis: 'h', fromLink: { id: 'a', u: 0.5, v: 1 } })[0], 'h', 'a choice beats the side');
-// An elbow's fold only moves along the line's own axis (x, here); the handle
-// always sits back on the chord (y stays 0).
-const draggedElbow = bendFromDrag({ ...line, route: 'elbow' }, { x: 60, y: -20 });
-assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow', bend: draggedElbow }), { x: 60, y: 0 });
+assert.deepEqual(elbowAxes({ ...step, startAxis: 'h', fromLink: { id: 'a', u: 0.5, v: 1 } })[0], 'v', 'the side beats a choice');
+assert.equal(bendHandleOf({ ...step, shape: 'arrow', startAxis: 'v', endAxis: 'h', fromLink: { id: 'a', u: 0.5, v: 1 } }), null, 'a side decides the way: nothing to turn over');
+// The middle segment moves along the shared axis only; the handle sits back on it.
+const draggedElbow = elbowDragPatch({ ...step }, { x: 60, y: 20 });
+assert.deepEqual(draggedElbow, { bend: 0.6 });
+assert.deepEqual(bendHandleOf({ ...step, shape: 'arrow', ...draggedElbow }), { x: 60, y: 25 });
+
+// --- an elbow leaves a bound shape by its side and goes around it -------------------
+{
+  const A = { x: 0, y: 0, width: 100, height: 100 };
+  const boxes = { A };
+  setBoxLookup((id) => boxes[id]);
+  const points = (spec) => [...routePath(spec).matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => ({ x: +m[1], y: +m[2] }));
+  // No path may enter the inside of a box (touching its edge is fine).
+  const enters = (pts, b) =>
+    pts.slice(1).some((q, i) => {
+      const p = pts[i];
+      const mx = (p.x + q.x) / 2;
+      const my = (p.y + q.y) / 2;
+      return mx > b.x && mx < b.x + b.width && my > b.y && my < b.y + b.height;
+    });
+  const spec = (to, toLink, extra) => ({ from: { x: 100, y: 50 }, to, route: 'elbow', fromLink: { id: 'A', u: 1, v: 0.5 }, toLink, ...extra });
+
+  // Out of the right side and to a free end on the left: round the shape, not through it.
+  const back = points(spec({ x: -80, y: 50 }, null));
+  assert.equal(enters(back, A), false, `round the shape: ${JSON.stringify(back)}`);
+  assert.deepEqual(back[0], { x: 100, y: 50 });
+  assert.equal(back[1].x > 100, true, 'it leaves to the right first');
+
+  // Two shapes face to face: out, across at the middle, in.
+  boxes.B = { x: 200, y: 150, width: 100, height: 100 };
+  const faced = points(spec({ x: 200, y: 200 }, { id: 'B', u: 0, v: 0.5 }));
+  assert.deepEqual(faced, [{ x: 100, y: 50 }, { x: 150, y: 50 }, { x: 150, y: 200 }, { x: 200, y: 200 }]);
+  assert.deepEqual(bendHandleOf({ ...spec({ x: 200, y: 200 }, { id: 'B', u: 0, v: 0.5 }), shape: 'arrow' }), { x: 150, y: 125 });
+
+  // Both leave to the right, the second shape behind and below: a "C" round the right edge, nothing to drag.
+  boxes.C = { x: -300, y: 200, width: 100, height: 100 };
+  const c = spec({ x: -200, y: 250 }, { id: 'C', u: 1, v: 0.5 });
+  const wrapped = points(c);
+  assert.equal(enters(wrapped, A) || enters(wrapped, boxes.C), false, `no shape crossed: ${JSON.stringify(wrapped)}`);
+  assert.equal(bendHandleOf({ ...c, shape: 'arrow' }), null);
+
+  // Turning the arrow's end to another side of the same shape turns the way it leaves.
+  const top = points(spec({ x: 300, y: -100 }, null, { fromLink: { id: 'A', u: 0.5, v: 0 }, from: { x: 50, y: 0 } }));
+  assert.equal(top[1].y < 0, true, 'out of the top side, upward');
+
+  // Without a shape to go round it is what it always was.
+  setBoxLookup(() => undefined);
+  assert.deepEqual(points({ from: { x: 0, y: 0 }, to: { x: 100, y: 50 }, route: 'elbow' }), [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 50 }, { x: 100, y: 50 }]);
+}
 
 // --- after "send to back", what is on top owns the press ----------------------
 // A lot selected (two boxes and a line), sent to the back under an unselected

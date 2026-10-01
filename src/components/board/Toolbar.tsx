@@ -38,7 +38,6 @@ import {
   ROUTES,
   SHAPE_TEXT_SIZE,
   isFillable,
-  type Axis,
   type BoardElement,
   type Dash,
   type Marker,
@@ -230,13 +229,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     else pickTool('shape', kind);
   };
 
-  // A selected line's axis: its own (null when it is automatic), or the tool's when no line is selected.
-  const axisOf = (key: 'startAxis' | 'endAxis'): Axis | null | undefined => {
-    const v = first((el) =>
-      el.kind === 'shape' && isLineLike(el) ? (el[key] ?? 'auto') : undefined,
-    );
-    return v === undefined ? undefined : v === 'auto' ? null : v;
-  };
   const cur = {
     width:
       first((el) =>
@@ -286,28 +278,12 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     dash:
       first((el) => (el.kind === 'shape' && isLineLike(el) ? (el.dash ?? 'solid') : undefined)) ??
       config.dash,
-    startAxis: axisOf('startAxis') === undefined ? config.startAxis : axisOf('startAxis')!,
-    endAxis: axisOf('endAxis') === undefined ? config.endAxis : axisOf('endAxis')!,
   };
   const fontSize = cur.fontSize;
   // The board ink flips on the dark theme (`inkFor`); the swatches follow it.
   const ink = inkFor(cur.color, dark);
   const fillInk = inkFor(cur.fillColor ?? cur.color, dark);
   const setFontSize = (next: number) => setConfig({ fontSize: next });
-  // An elbow's ends: automatic, or which way it leaves and arrives.
-  const axisChoices: {
-    start: Axis | null;
-    end: Axis | null;
-    labelKey: 'axisAuto' | 'axisHH' | 'axisVV' | 'axisHV' | 'axisVH';
-  }[] = [
-    { start: null, end: null, labelKey: 'axisAuto' },
-    { start: 'h', end: 'h', labelKey: 'axisHH' },
-    { start: 'v', end: 'v', labelKey: 'axisVV' },
-    { start: 'h', end: 'v', labelKey: 'axisHV' },
-    { start: 'v', end: 'h', labelKey: 'axisVH' },
-  ];
-  const axisNow =
-    axisChoices.find((a) => a.start === cur.startAxis && a.end === cur.endAxis) ?? axisChoices[0];
   const routeLabel: Record<Route, 'routeStraight' | 'routeCurved' | 'routeElbow'> = {
     straight: 'routeStraight',
     curved: 'routeCurved',
@@ -686,34 +662,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   >
                     <LineGlyph d={routePath({ from: { x: 4, y: 19 }, to: { x: 20, y: 5 }, route: cur.route })} on={false} />
                   </MiniButton>
-                  {cur.route === 'elbow' ? (
-                    <MiniButton
-                      label={t[axisNow.labelKey]}
-                      active={false}
-                      onPress={() => {
-                        nudge();
-                        const next = axisChoices[(axisChoices.indexOf(axisNow) + 1) % axisChoices.length];
-                        setConfig({ startAxis: next.start, endAxis: next.end });
-                      }}
-                    >
-                      {axisNow.start ? (
-                        <LineGlyph
-                          d={routePath({
-                            from: { x: 4, y: 19 },
-                            to: { x: 20, y: 5 },
-                            route: 'elbow',
-                            startAxis: axisNow.start,
-                            endAxis: axisNow.end,
-                          })}
-                          on={false}
-                        />
-                      ) : (
-                        <Txt weight="extrabold" size={11}>
-                          A
-                        </Txt>
-                      )}
-                    </MiniButton>
-                  ) : null}
                 </>
               ) : null}
 
