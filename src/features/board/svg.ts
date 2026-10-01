@@ -12,7 +12,9 @@ import {
   endAngles,
   headsOf,
   isLineLike,
+  labelBox,
   labelLines,
+  lineLabelCentre,
   markerPaths,
   polygonPoints,
   rotationOf,
@@ -123,9 +125,15 @@ function shapeSvg(el: ShapeElement, ground: string): string {
   }
   // line / arrow: the route, dashed if asked, then a marker at each end.
   const dash = dashIntervals(el.dash, el.strokeWidth);
-  const route = `<path d="${routePath(el.from, el.to, el.route, el.bend)}" fill="none" stroke="${el.stroke}" stroke-width="${el.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"${dash ? ` stroke-dasharray="${dash.join(' ')}"` : ''}/>`;
+  // The line is cut away behind its label: a clip that is everything but the label's box.
+  const size0 = el.fontSize ?? SHAPE_TEXT_SIZE;
+  const gap = el.text ? labelBox(el, labelLines(el, size0), size0) : null;
+  const cut = gap
+    ? `<clipPath id="gap-${el.id}"><path clip-rule="evenodd" d="M-10000000 -10000000H10000000V10000000H-10000000Z M${r(gap.x)} ${r(gap.y)}h${r(gap.width)}v${r(gap.height)}h${r(-gap.width)}Z"/></clipPath>`
+    : '';
+  const route = `${cut}<path d="${routePath(el)}" fill="none" stroke="${el.stroke}" stroke-width="${el.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"${dash ? ` stroke-dasharray="${dash.join(' ')}"` : ''}${gap ? ` clip-path="url(#gap-${el.id})"` : ''}/>`;
   const [headStart, headEnd] = headsOf(el);
-  const angles = endAngles(el.from, el.to, el.route, el.bend);
+  const angles = endAngles(el);
   const size = markerSize(el.strokeWidth);
   const markers = (
     [
@@ -149,10 +157,7 @@ function labelSvg(el: ShapeElement): string {
   const fontSize = el.fontSize ?? SHAPE_TEXT_SIZE;
   const step = fontSize * TEXT_LINE_HEIGHT;
   const lines = labelLines(el, fontSize);
-  const cx = x + width / 2;
-  const cy = isLineLike(el)
-    ? y + height / 2 - (lines.length * step) / 2 - fontSize * 0.4
-    : y + height / 2;
+  const { x: cx, y: cy } = isLineLike(el) ? lineLabelCentre(el) : { x: x + width / 2, y: y + height / 2 };
   const top = cy - ((lines.length - 1) * step) / 2;
   return lines
     .map(
