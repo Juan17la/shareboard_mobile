@@ -6,7 +6,7 @@
  * soft, re-applying an op is idempotent — so a client and the server that
  * process the same ops end up with the same board (docs/05-model-date).
  */
-import type { BoardElement, ElementId, Op } from './model';
+import { MAX_MESSAGE_BYTES, type BoardElement, type ElementId, type Op } from './model';
 
 export type ElementMap = Record<ElementId, BoardElement>;
 
@@ -101,6 +101,21 @@ export function invertOps(before: ElementMap, ops: Op[]): Op[] {
   return inverses.reverse();
 }
 
+/**
+ * `ops` as history replays them. An `add` over an element that is still on the
+ * board as a soft-deleted tombstone (undoing an erase, redoing a draw that was
+ * undone) becomes an un-delete instead: a re-`add` gets a new `z` from the
+ * server and lands on top of everything, while clearing `deleted` (`null` is
+ * "unset", here and on the server) keeps the element exactly where it was.
+ */
+export function restoreDeleted(elements: ElementMap, ops: Op[]): Op[] {
+  return ops.map((op) =>
+    op.t === 'add' && elements[op.el.id]?.deleted
+      ? { t: 'update', id: op.el.id, patch: { deleted: null } as unknown as Partial<BoardElement>, updatedAt: Date.now() }
+      : op,
+  );
+}
+
 let sortedFor: ElementMap | null = null;
 let sorted: BoardElement[] = [];
 
@@ -119,4 +134,28 @@ export function visibleSorted(elements: ElementMap): BoardElement[] {
       .sort((a, b) => a.z - b.z);
   }
   return sorted;
+}
+
+/**
+ * `ops` in order, cut into groups that each fit one socket frame. The server
+ * closes the connection on a frame over `maxMessageBytes`, and a paste of a few
+ * photos (up to 160 KB each) is one batch. A single op over the limit still
+ * goes alone: the server rejects it with an error rather than this guessing.
+ */
+export function splitOps(ops: Op[], maxBytes = MAX_MESSAGE_BYTES - 4096): Op[][] {
+  const groups: Op[][] = [];
+  let group: Op[] = [];
+  let size = 0;
+  for (const op of ops) {
+    const bytes = JSON.stringify(op).length + 1;
+    if (group.length && size + bytes > maxBytes) {
+      groups.push(group);
+      group = [];
+      size = 0;
+    }
+    group.push(op);
+    size += bytes;
+  }
+  if (group.length) groups.push(group);
+  return groups;
 }

@@ -41,6 +41,7 @@ import {
   type BoardElement,
   type BoardMeta,
   type ElementBase,
+  type Axis,
   type Dash,
   type ElementId,
   type FontKey,
@@ -56,7 +57,7 @@ import {
   type ToolType,
   type UserId,
 } from './model';
-import { applyOps, invertOps, visibleSorted, type ElementMap } from './ops';
+import { applyOps, invertOps, restoreDeleted, visibleSorted, type ElementMap } from './ops';
 
 /** Zoom bounds. Matches the design's 25%–600% range. */
 export const MIN_ZOOM = 0.25;
@@ -72,13 +73,13 @@ export interface Camera {
   scale: number;
 }
 
-export type FillLevel = 'none' | 'low' | 'medium' | 'full';
-
 export interface ToolConfig {
   color: string;
   width: number;
-  /** How opaque a newly drawn enclosed shape's fill is; `none` for outline only. */
-  fill: FillLevel;
+  /** How opaque a newly drawn enclosed shape's fill is, 0 to 100; 0 is outline only. */
+  fillOpacity: number;
+  /** The fill's colour; null is the line's own. */
+  fillColor: string | null;
   shape: ShapeKind;
   /** Corners of a polygon. */
   sides: number;
@@ -92,29 +93,43 @@ export interface ToolConfig {
   headEnd: Marker;
   route: Route;
   dash: Dash;
+  /** An elbow's direction leaving its start and arriving at its end; null is automatic. */
+  startAxis: Axis | null;
+  endAxis: Axis | null;
 }
 
 /**
- * A fill is the stroke colour at one of three alphas: a wash the dot grid still
- * reads through (~18%), a half, or solid.
+ * A fill is any `#RRGGBB` at any opacity, stored as `#RRGGBBAA` (the format
+ * every fill was already in: the old Light/Medium/Solid levels are 18%, 50% and
+ * 100%, so boards drawn with them read back as plain numbers).
  */
-export const FILL_ALPHA: Record<Exclude<FillLevel, 'none'>, string> = {
-  low: '2E',
-  medium: '80',
-  full: 'FF',
-};
+const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;
 
-/** `#RRGGBB` -> the `#RRGGBBAA` a fill is painted with, or null for no fill. */
-export function fillFor(color: string, level: FillLevel): string | null {
-  return level === 'none' ? null : color.slice(0, 7) + FILL_ALPHA[level];
+/** What someone typed -> `#RRGGBB`, or null when it is not a colour (`f80`, `#FF8800` and `ff8800` all work). */
+export function parseHex(text: string): string | null {
+  const m = HEX.exec(text.trim());
+  if (!m) return null;
+  const h = m[1].length === 3 ? [...m[1]].map((c) => c + c).join('') : m[1];
+  return '#' + h.toUpperCase();
 }
 
-/** The level a painted fill was made with — what the toolbar highlights. */
-export function fillLevelOf(fill: string | null | undefined): FillLevel {
-  if (!fill) return 'none';
-  const a = fill.slice(7).toUpperCase();
-  return a === FILL_ALPHA.low ? 'low' : a === FILL_ALPHA.medium ? 'medium' : 'full';
+/** The `#RRGGBBAA` a fill is painted with, or null at 0% (no fill at all). */
+export function fillWith(color: string, opacity: number): string | null {
+  const pct = Math.min(100, Math.max(0, Math.round(opacity)));
+  if (pct === 0) return null;
+  return color.slice(0, 7).toUpperCase() + Math.round((pct * 255) / 100).toString(16).padStart(2, '0').toUpperCase();
 }
+
+/** The colour of a painted fill, or null when there is none. */
+export const fillColorOf = (fill: string | null | undefined): string | null =>
+  fill ? fill.slice(0, 7).toUpperCase() : null;
+
+/** The opacity of a painted fill, 0 to 100: what the toolbar shows. */
+export const fillOpacityOf = (fill: string | null | undefined): number =>
+  !fill ? 0 : fill.length > 7 ? Math.round((parseInt(fill.slice(7, 9), 16) * 100) / 255) : 100;
+
+/** What the bucket paints with when no opacity was chosen yet: the old "Light" wash. */
+export const FILL_WASH = 18;
 
 /**
  * The selection while a finger drags it. `move` shifts every selected element
@@ -177,6 +192,7 @@ export function sketchElement(sketch: Sketch, config: ToolConfig, base: ElementB
     ...base,
     kind: 'shape',
     shape: sketch.shape,
+    ...(sketch.shape === 'polygon' ? { sides: sketch.sides } : null),
     from: sketch.from,
     to: sketch.to,
     stroke: config.color,
@@ -267,6 +283,12 @@ interface BoardState {
    * after a hold (`recognizeSketch`). Lifting draws that figure instead.
    */
   liveSketch: Sketch | null;
+  /**
+   * What the eraser has passed over in this stroke: hidden at once, deleted
+   * together when the finger lifts (`commitErase`) — one undo step and one
+   * message for a whole scrub rather than one per element.
+   */
+  liveErased: ElementId[];
 
   // sync / history
   outbox: Op[];
@@ -322,7 +344,13 @@ interface BoardState {
 
   addStroke(points: number[]): void;
   /** Draws a recognised sketch as its figure, in the pen's ink (`sketchElement`). */
-  addSketch(sketch: Sketch): void;
+  addSketch(sketch: Sketch): ElementId | null;
+  /**
+   * Settles a figure made by `addSketch` after the pen kept moving (it was
+   * resized meanwhile): the new corners join the step that made it, so the
+   * figure is one undo.
+   */
+  finishFigure(id: ElementId, patch: { from: Point; to: Point }): void;
   /** Returns the new id so the caller can select it for resizing. */
   addShape(
     shape: ShapeKind,
@@ -376,7 +404,12 @@ interface BoardState {
     patch: Partial<Pick<TextElement, 'text' | 'fontSize' | 'bold' | 'italic' | 'color'>>,
   ): void;
   addImage(at: Point, width: number, height: number, uri: string): void;
+  /** The eraser over `at`: marks what is under it (`liveErased`), deleting nothing yet. */
   eraseAt(at: Point, radius?: number): void;
+  /** The finger lifted: deletes everything the eraser passed over, as one undo step. */
+  commitErase(): void;
+  /** The scrub was cancelled (a second finger): nothing is deleted. */
+  discardErase(): void;
   clearBoard(): void;
   /** Puts the selection on the clipboard. */
   copySelection(): void;
@@ -385,8 +418,13 @@ interface BoardState {
   /**
    * Adds a copy of the clipboard centred on `at` — fresh ids, on top of
    * everything — and selects it. Without `at`, a step off where it was copied from.
+   * `elements` replaces the clipboard: a copy made in another app or on another device.
    */
-  paste(at?: Point): void;
+  paste(at?: Point, elements?: BoardElement[]): void;
+  /** Soft-deletes the selection, as one undo step. */
+  deleteSelection(): void;
+  /** Copies of the selection a little to the right and down. */
+  duplicateSelection(): void;
   /** Adds ready-made elements (an accepted AI drawing) as one undo step and selects them. */
   addElements(elements: BoardElement[]): void;
 
@@ -397,6 +435,12 @@ interface BoardState {
    * `commitLocal` already, so only the server-assigned paint order is taken.
    */
   applyRemote(ops: Op[], seq: number, own?: boolean): void;
+  /**
+   * The board as the server has it, after it refused a batch this client had
+   * already applied. Pending ops are laid over it; history is dropped, since
+   * its steps may describe changes that never happened.
+   */
+  resync(elements: BoardElement[], seq: number): void;
   drainOutbox(): { ops: Op[]; seq: number } | null;
 
   canEditNow(): boolean;
@@ -407,7 +451,8 @@ const DEFAULT_CONFIG: ToolConfig = {
   color: DrawingPalette[0],
   width: StrokeSizes[1],
   // The second of each: a new figure comes out lightly filled, medium stroke.
-  fill: 'low',
+  fillOpacity: FILL_WASH,
+  fillColor: null,
   shape: 'rectangle',
   sides: DEFAULT_SIDES,
   fontSize: 28,
@@ -418,6 +463,8 @@ const DEFAULT_CONFIG: ToolConfig = {
   headEnd: 'arrow',
   route: 'straight',
   dash: 'solid',
+  startAxis: null,
+  endAxis: null,
 };
 
 const DEFAULT_CAMERA: Camera = { x: 0, y: 0, scale: 1 };
@@ -433,24 +480,47 @@ function cursorsOf(participants: Participant[]): Record<UserId, Point> {
 }
 
 export const useBoardStore = create<BoardState>((set, get) => {
-  function commitLocal(ops: Op[]) {
+  /**
+   * `how` is what the change does to history: `push` is a step of its own;
+   * `merge` folds into the last step (the typing that finishes a text just
+   * added is part of adding it); `replace` takes the last step back off
+   * (a text added and left empty never happened).
+   */
+  function commitLocal(ops: Op[], how: 'push' | 'merge' | 'replace' = 'push') {
     // Offline, an edit would only ever exist on this screen — and vanish on
     // the reconnect's hydrate. Refusing it is what makes the banner honest.
     if (ops.length === 0 || get().connection !== 'online') return;
     const { elements, undoStack, outbox, clientSeq } = get();
-    // The inverse has to be computed against the state the ops are about to
-    // change, so this runs before they are applied.
-    const undo = invertOps(elements, ops);
+    const last = undoStack[undoStack.length - 1];
+    let stack: HistoryEntry[];
+    if (how === 'merge' && last) {
+      // The inverse has to be computed against the state the ops are about to
+      // change, so this runs before they are applied.
+      const undo = invertOps(elements, ops);
+      stack = [
+        ...undoStack.slice(0, -1),
+        { undo: [...undo, ...last.undo], redo: [...last.redo, ...ops] },
+      ];
+    } else if (how === 'replace' && last) {
+      stack = undoStack.slice(0, -1);
+    } else {
+      // 100 steps is deep enough to feel unlimited without holding a whole
+      // session's elements alive in memory.
+      stack = [...undoStack.slice(-99), { undo: invertOps(elements, ops), redo: ops }];
+    }
     set({
       elements: applyOps(elements, ops),
       outbox: [...outbox, ...ops],
       clientSeq: clientSeq + 1,
-      // 100 steps is deep enough to feel unlimited without holding a whole
-      // session's elements alive in memory.
-      undoStack: [...undoStack.slice(-99), { undo, redo: ops }],
+      undoStack: stack,
       redoStack: [],
     });
   }
+
+  /** The text just added by `addText`, until its first commit: that commit is part of the same step. */
+  let freshText: ElementId | null = null;
+  /** The figure just made by `addSketch`, until the pen lets go: resizing it is part of the same step. */
+  let freshFigure: ElementId | null = null;
 
   /**
    * Local paint order. The server overwrites `z` when it broadcasts, so this
@@ -471,6 +541,32 @@ export const useBoardStore = create<BoardState>((set, get) => {
       updatedAt: now,
       z: nextZ(),
     };
+  }
+
+  /**
+   * Copies of `els`, moved by (dx, dy): new ids, authored by us, on top, and a
+   * group of their own so a copied group selects apart from the original. A
+   * line keeps its link only to a shape that was copied with it — the rest of
+   * the element (text, fill, bend, image bytes) is carried over untouched.
+   */
+  function cloneElements(els: BoardElement[], dx: number, dy: number): BoardElement[] {
+    const ids = new Map(els.map((el) => [el.id, shortId()]));
+    const groups = new Map<string, string>();
+    const relink = (link: Link | null | undefined) =>
+      link && ids.has(link.id) ? { ...link, id: ids.get(link.id)! } : null;
+    return els.map((el) => {
+      const copy = { ...el, ...translate(el, dx, dy), ...baseFields(), id: ids.get(el.id)! } as BoardElement;
+      delete copy.deleted;
+      if (el.group) {
+        if (!groups.has(el.group)) groups.set(el.group, shortId());
+        copy.group = groups.get(el.group);
+      }
+      if (copy.kind === 'shape' && el.kind === 'shape') {
+        if (el.fromLink !== undefined) copy.fromLink = relink(el.fromLink);
+        if (el.toLink !== undefined) copy.toLink = relink(el.toLink);
+      }
+      return copy;
+    });
   }
 
   return {
@@ -501,6 +597,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     liveEdit: null,
     liveMarquee: null,
     liveSketch: null,
+    liveErased: [],
 
     outbox: [],
     clientSeq: 0,
@@ -510,12 +607,16 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     /** Replaces local state wholesale with the server's `joined` payload. */
     hydrate({ meta, elements, participants, you, seq }) {
-      const map: ElementMap = {};
+      let map: ElementMap = {};
+      for (const el of elements) map[el.id] = el;
+      // Ops still waiting to be sent when the socket dropped were made in this
+      // session's name and never reached the server: lay them over the board
+      // it sent (they go out now that the connection is up) instead of
+      // throwing them away. Empty on a first join.
+      const { outbox } = get();
+      if (outbox.length) map = applyOps(map, outbox);
       let maxZ = 0;
-      for (const el of elements) {
-        map[el.id] = el;
-        if (el.z > maxZ) maxZ = el.z;
-      }
+      for (const id in map) if (map[id].z > maxZ) maxZ = map[id].z;
       set({
         boardId: meta.id,
         meta,
@@ -525,10 +626,11 @@ export const useBoardStore = create<BoardState>((set, get) => {
         elements: map,
         zCounter: maxZ,
         serverSeq: seq,
-        // History and pending ops belong to the old session, not this one.
+        // History belongs to the old session, not this one.
         undoStack: [],
         redoStack: [],
-        outbox: [],
+        // A new array: the sync hook flushes on a changed outbox.
+        outbox: outbox.length ? [...outbox] : outbox,
       });
       // Before the first layout there is no size to fit into: `setViewport` does it.
       if (get().fitPending && get().viewport.width > 0) {
@@ -564,6 +666,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         liveEdit: null,
         liveMarquee: null,
         liveSketch: null,
+        liveErased: [],
       });
     },
 
@@ -664,27 +767,40 @@ export const useBoardStore = create<BoardState>((set, get) => {
           }
           if (patch.color !== undefined) {
             p.stroke = patch.color;
-            if (el.fill) p.fill = fillFor(patch.color, fillLevelOf(el.fill));
+            // A fill drawn in the line's own colour keeps following it; one given a colour of its own stays.
+            if (el.fill && fillColorOf(el.fill) === el.stroke.slice(0, 7).toUpperCase()) {
+              p.fill = fillWith(patch.color, fillOpacityOf(el.fill));
+            }
           }
           if (patch.width !== undefined) p.strokeWidth = clampWidth(patch.width);
-          if (patch.fill !== undefined) {
-            // The shape's own colour, not the config's: a red box gets a red wash.
-            p.fill = isFillable(shape)
-              ? fillFor(patch.color ?? el.stroke, patch.fill ?? fillLevelOf(el.fill))
-              : null;
+          if (patch.fillColor !== undefined || patch.fillOpacity !== undefined) {
+            // The shape's own colour unless one was chosen: a red box gets a red wash.
+            const color =
+              patch.fillColor === undefined
+                ? (fillColorOf(el.fill) ?? get().config.fillColor ?? patch.color ?? el.stroke)
+                : (patch.fillColor ?? patch.color ?? el.stroke);
+            const opacity = patch.fillOpacity ?? (el.fill ? fillOpacityOf(el.fill) : get().config.fillOpacity);
+            p.fill = isFillable(shape) ? fillWith(color, opacity) : null;
           }
           if (patch.fontSize !== undefined) p.fontSize = patch.fontSize;
           if (patch.font !== undefined) p.font = patch.font;
           if (shape === 'polygon' && (patch.sides !== undefined || shape !== el.shape)) {
             p.sides = patch.sides ?? get().config.sides;
           }
-          for (const k of ['headStart', 'headEnd', 'route', 'dash'] as const) {
+          for (const k of ['headStart', 'headEnd', 'route', 'dash', 'startAxis', 'endAxis'] as const) {
             if (patch[k] !== undefined) p[k] = patch[k];
           }
           // A custom fold is only meaningful for the route it was dragged on
           // (board-unit offset for a curve, an axis fraction for an elbow):
           // switching route drops it back to that route's default look.
-          if (patch.route !== undefined && patch.route !== el.route) p.bend = null;
+          if (patch.route !== undefined && patch.route !== el.route) {
+            p.bend = null;
+            // The same goes for what shapes each route: a curve's handles, an elbow's axes.
+            if (patch.startAxis === undefined) p.startAxis = null;
+            if (patch.endAxis === undefined) p.endAxis = null;
+            p.curveFrom = null;
+            p.curveTo = null;
+          }
         }
         if (Object.keys(p).length)
           ops.push({
@@ -878,8 +994,22 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     addSketch(sketch) {
-      if (!get().canEditNow()) return;
-      commitLocal([{ t: 'add', el: sketchElement(sketch, get().config, baseFields()) }]);
+      if (!get().canEditNow()) return null;
+      const el = sketchElement(sketch, get().config, baseFields());
+      commitLocal([{ t: 'add', el }]);
+      freshFigure = el.id;
+      return el.id;
+    },
+
+    finishFigure(id, patch) {
+      if (!get().canEditNow() || !get().elements[id]) return;
+      const top = get().undoStack[get().undoStack.length - 1]?.redo;
+      const fresh = freshFigure === id && top?.length === 1 && top[0].t === 'add' && top[0].el.id === id;
+      freshFigure = null;
+      commitLocal(
+        [{ t: 'update', id, patch: patch as Partial<BoardElement>, updatedAt: Date.now() }],
+        fresh ? 'merge' : 'push',
+      );
     },
 
     addShape(shape, ends) {
@@ -893,7 +1023,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         to: ends.to,
         stroke: config.color,
         strokeWidth: clampWidth(config.width),
-        fill: isFillable(shape) ? fillFor(config.color, config.fill) : null,
+        fill: isFillable(shape) ? fillWith(config.fillColor ?? config.color, config.fillOpacity) : null,
         ...(shape === 'polygon' ? { sides: config.sides } : null),
         ...(shape === 'line' || shape === 'arrow'
           ? {
@@ -901,6 +1031,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
               headEnd: config.headEnd,
               route: config.route,
               dash: config.dash,
+              ...(config.startAxis ? { startAxis: config.startAxis } : null),
+              ...(config.endAxis ? { endAxis: config.endAxis } : null),
               fromLink: ends.fromLink ?? null,
               toLink: ends.toLink ?? null,
             }
@@ -981,8 +1113,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
         const minY = Math.min(el.from.y, el.to.y);
         const maxY = Math.max(el.from.y, el.to.y);
         if (at.x < minX || at.x > maxX || at.y < minY || at.y > maxY) continue;
-        const { color, fill: level } = get().config;
-        const fill = fillFor(color, level === 'none' ? 'low' : level)!;
+        const { color, fillColor, fillOpacity } = get().config;
+        const fill = fillWith(fillColor ?? color, fillOpacity || FILL_WASH)!;
         if (el.fill === fill) return false;
         commitLocal([
           {
@@ -1013,6 +1145,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         ...(config.font !== 'sans' ? { font: config.font } : null),
       };
       commitLocal([{ t: 'add', el }]);
+      freshText = el.id;
       return el.id;
     },
 
@@ -1025,20 +1158,30 @@ export const useBoardStore = create<BoardState>((set, get) => {
           ? { ...patch, text: patch.text.slice(0, LIMITS.maxTextLength) }
           : patch;
 
+      // The first commit after `addText` finishes that step: typing a text is
+      // one undo, not an empty element and then its words.
+      const top = get().undoStack[get().undoStack.length - 1]?.redo;
+      const fresh =
+        freshText === id && top?.length === 1 && top[0].t === 'add' && top[0].el.id === id;
+      freshText = null;
+
       // Clearing the text (or leaving only spaces) removes the element — an
       // empty label is just litter.
       if (clean.text !== undefined && !clean.text.trim()) {
-        commitLocal([{ t: 'delete', id }]);
+        commitLocal([{ t: 'delete', id }], fresh ? 'replace' : 'push');
         return;
       }
-      commitLocal([
-        {
-          t: 'update',
-          id,
-          patch: clean as Partial<BoardElement>,
-          updatedAt: Date.now(),
-        },
-      ]);
+      commitLocal(
+        [
+          {
+            t: 'update',
+            id,
+            patch: clean as Partial<BoardElement>,
+            updatedAt: Date.now(),
+          },
+        ],
+        fresh ? 'merge' : 'push',
+      );
     },
 
     addImage(at, width, height, uri) {
@@ -1053,9 +1196,26 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     eraseAt(at, radius = 12) {
       if (!get().canEditNow()) return;
+      const { liveErased } = get();
       const held = heldByOthers(get().participants, get().you);
-      const hits = hitTest(get().visibleElements(), at, radius).filter((id) => !held.has(id));
-      if (hits.length) commitLocal(hits.map((id) => ({ t: 'delete', id }) as Op));
+      const hits = hitTest(get().visibleElements(), at, radius).filter(
+        (id) => !held.has(id) && !liveErased.includes(id),
+      );
+      if (hits.length) set({ liveErased: [...liveErased, ...hits] });
+    },
+
+    commitErase() {
+      const { liveErased } = get();
+      if (!liveErased.length) return;
+      set({ liveErased: [] });
+      const held = heldByOthers(get().participants, get().you);
+      const { elements } = get();
+      const ids = liveErased.filter((id) => elements[id] && !elements[id].deleted && !held.has(id));
+      commitLocal(ids.map((id) => ({ t: 'delete', id }) as Op));
+    },
+
+    discardErase() {
+      if (get().liveErased.length) set({ liveErased: [] });
     },
 
     clearBoard() {
@@ -1079,31 +1239,27 @@ export const useBoardStore = create<BoardState>((set, get) => {
       set({ selectedIds: [] });
     },
 
-    paste(at) {
-      const { clipboard } = get();
-      const b = contentBounds(clipboard);
+    deleteSelection() {
+      const sel = get().selectedElements();
+      if (!sel.length || !get().canEditNow()) return;
+      commitLocal(sel.map((el) => ({ t: 'delete', id: el.id }) as Op));
+      set({ selectedIds: [] });
+    },
+
+    duplicateSelection() {
+      const sel = get().selectedElements();
+      if (!sel.length || !get().canEditNow() || get().connection !== 'online') return;
+      const copies = cloneElements(sel, 16, 16);
+      commitLocal(copies.map((el) => ({ t: 'add', el }) as Op));
+      get().select(copies.map((el) => el.id));
+    },
+
+    paste(at, elements = get().clipboard) {
+      const b = contentBounds(elements);
       if (!b || !get().canEditNow() || get().connection !== 'online') return;
       const dx = at ? at.x - (b.x + b.width / 2) : 16;
       const dy = at ? at.y - (b.y + b.height / 2) : 16;
-      // Copies are new elements: new ids, and a group of their own, so the
-      // copy of a group selects apart from the original. A line keeps its
-      // link only to a shape that was copied with it.
-      const ids = new Map(clipboard.map((el) => [el.id, shortId()]));
-      const groups = new Map<string, string>();
-      const relink = (link: Link | null | undefined) =>
-        link && ids.has(link.id) ? { ...link, id: ids.get(link.id)! } : null;
-      const copies = clipboard.map((el) => {
-        const copy = { ...el, ...translate(el, dx, dy), ...baseFields(), id: ids.get(el.id)! } as BoardElement;
-        if (el.group) {
-          if (!groups.has(el.group)) groups.set(el.group, shortId());
-          copy.group = groups.get(el.group);
-        }
-        if (copy.kind === 'shape' && el.kind === 'shape') {
-          if (el.fromLink !== undefined) copy.fromLink = relink(el.fromLink);
-          if (el.toLink !== undefined) copy.toLink = relink(el.toLink);
-        }
-        return copy;
-      });
+      const copies = cloneElements(elements, dx, dy);
       commitLocal(copies.map((el) => ({ t: 'add', el }) as Op));
       // What was pasted is in hand, ready to move: the cursor holds it, its options up.
       if (get().tool !== 'select') get().setTool('select');
@@ -1125,26 +1281,52 @@ export const useBoardStore = create<BoardState>((set, get) => {
     // so collaborators see them as ordinary changes.
 
     undo() {
-      const { undoStack, redoStack, elements, outbox } = get();
+      const { undoStack, redoStack, elements, outbox, liveEdit, selectedIds } = get();
       const entry = undoStack[undoStack.length - 1];
-      if (!entry || get().connection !== 'online') return;
+      // Not under a finger that is still dragging: the drag would land on top of it.
+      if (!entry || get().connection !== 'online' || liveEdit) return;
+      const ops = restoreDeleted(elements, entry.undo);
+      const next = applyOps(elements, ops);
       set({
-        elements: applyOps(elements, entry.undo),
-        outbox: [...outbox, ...entry.undo],
+        elements: next,
+        outbox: [...outbox, ...ops],
         undoStack: undoStack.slice(0, -1),
         redoStack: [...redoStack, entry],
+        ...keepSelected(next, selectedIds),
       });
     },
 
     redo() {
-      const { undoStack, redoStack, elements, outbox } = get();
+      const { undoStack, redoStack, elements, outbox, liveEdit, selectedIds } = get();
       const entry = redoStack[redoStack.length - 1];
-      if (!entry || get().connection !== 'online') return;
+      if (!entry || get().connection !== 'online' || liveEdit) return;
+      const ops = restoreDeleted(elements, entry.redo);
+      const next = applyOps(elements, ops);
       set({
-        elements: applyOps(elements, entry.redo),
-        outbox: [...outbox, ...entry.redo],
+        elements: next,
+        outbox: [...outbox, ...ops],
         redoStack: redoStack.slice(0, -1),
         undoStack: [...undoStack, entry],
+        ...keepSelected(next, selectedIds),
+      });
+    },
+
+    resync(elements, seq) {
+      set((s) => {
+        let map: ElementMap = {};
+        for (const el of elements) map[el.id] = el;
+        if (s.outbox.length) map = applyOps(map, s.outbox);
+        let zCounter = 0;
+        for (const id in map) if (map[id].z > zCounter) zCounter = map[id].z;
+        return {
+          elements: map,
+          zCounter,
+          serverSeq: Math.max(s.serverSeq, seq),
+          undoStack: [],
+          redoStack: [],
+          liveErased: [],
+          ...keepSelected(map, s.selectedIds),
+        };
       });
     },
 
@@ -1197,6 +1379,12 @@ export const useBoardStore = create<BoardState>((set, get) => {
   };
 });
 
+/** `{ selectedIds }` without the ids that are no longer on the board, or nothing if all still are. */
+function keepSelected(elements: ElementMap, selectedIds: ElementId[]) {
+  const kept = selectedIds.filter((id) => elements[id] && !elements[id].deleted);
+  return kept.length === selectedIds.length ? null : { selectedIds: kept };
+}
+
 /**
  * The elements other participants hold — have selected — and who holds each.
  * Theirs until they let go: this client neither selects nor changes them.
@@ -1242,8 +1430,27 @@ export function coveringFigure(
     : null;
 }
 
+/** A stroke's bounding box [minX, minY, maxX, maxY], by its (never mutated) points array. */
+const strokeBoxes = new WeakMap<number[], number[]>();
+
 /** Whether `(x, y)` is within `reach` of the line through a stroke's points. */
 function nearStroke(points: number[], x: number, y: number, reach: number): boolean {
+  // Most strokes are nowhere near the point: their box says so without a walk
+  // over every segment (the eraser asks this of the whole board per sample).
+  let box = strokeBoxes.get(points);
+  if (!box) {
+    box = [Infinity, Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < points.length - 1; i += 2) {
+      box[0] = Math.min(box[0], points[i]);
+      box[1] = Math.min(box[1], points[i + 1]);
+      box[2] = Math.max(box[2], points[i]);
+      box[3] = Math.max(box[3], points[i + 1]);
+    }
+    strokeBoxes.set(points, box);
+  }
+  if (x < box[0] - reach || x > box[2] + reach || y < box[1] - reach || y > box[3] + reach) {
+    return false;
+  }
   const reach2 = reach * reach;
   for (let i = 0; i < points.length - 1; i += 2) {
     const ax = points[i];

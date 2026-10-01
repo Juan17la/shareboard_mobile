@@ -12,6 +12,8 @@ import {
 import {
   ROTATE_HANDLE,
   TEXT_WIDTH_HANDLE,
+  addStroke,
+  strokeToSvgPath,
   boxOf,
   contentBounds,
   handlesOf,
@@ -21,20 +23,31 @@ import {
   shapeHit,
   textLines,
   labelLines,
+  lineLabelCentre,
+  labelBox,
+  labelFromDrag,
+  routePointAt,
+  anchorsOf,
   bendFromDrag,
   bendHandleOf,
-  control,
+  curveHandlesOf,
+  curveFromDrag,
+  elbowAxes,
+  endAngles,
   elementsIn,
   followLinks,
   linkEndpoints,
   linkPoint,
   markerPaths,
   recognizeSketch,
+  sketchResize,
   routePath,
   shapeAt,
   translate,
 } from '../src/features/board/geometry.ts';
-import { coveringFigure, editPatches, fillFor, fillLevelOf, useBoardStore } from '../src/features/board/store.ts';
+import { coveringFigure, editPatches, fillColorOf, fillOpacityOf, fillWith, parseHex, useBoardStore } from '../src/features/board/store.ts';
+import { decodeClip, encodeClip } from '../src/features/board/clip.ts';
+import { splitOps } from '../src/features/board/ops.ts';
 import { toSvg } from '../src/features/board/svg.ts';
 
 const base = (id, z) => ({ id, createdBy: 'u', createdAt: 0, updatedAt: 0, z });
@@ -104,15 +117,10 @@ for (const kind of ALL_MARKERS) {
   assert.equal(parts.length > 0, kind !== 'none', kind);
   for (const p of parts) assert.match(p.d, /^M /, kind);
 }
-for (const route of ROUTES) assert.match(routePath({ x: 0, y: 0 }, { x: 10, y: 5 }, route), /^M 0 0 /, route);
-assert.equal(routePath({ x: 0, y: 0 }, { x: 10, y: 0 }, 'elbow').split('L').length, 4);
+for (const route of ROUTES) assert.match(routePath({ from: { x: 0, y: 0 }, to: { x: 10, y: 5 }, route }), /^M 0 0 /, route);
+assert.equal(routePath({ from: { x: 0, y: 0 }, to: { x: 10, y: 0 }, route: 'elbow' }).split('L').length, 4);
 
 // --- fill levels -----------------------------------------------------------
-assert.equal(fillFor('#FF0000', 'low'), '#FF00002E');
-assert.equal(fillFor('#FF0000', 'full'), '#FF0000FF');
-assert.equal(fillFor('#FF0000', 'none'), null);
-assert.equal(fillLevelOf('#FF000080'), 'medium');
-assert.equal(fillLevelOf(null), 'none');
 
 // --- ordering and groups, through the store --------------------------------
 const meta = { id: 'b', shortCode: 'ABCDEF', name: '', access: 'public', editPolicy: 'everyone', editors: [], creatorId: 'u', hasPin: false, createdAt: 0, updatedAt: 0 };
@@ -121,6 +129,16 @@ const C = box('C', 0, 0, 10, 10, 3);
 useBoardStore.getState().hydrate({ meta, elements: [A, B, C], participants: [you], you, seq: 0 });
 useBoardStore.getState().setConnection('online');
 const s = () => useBoardStore.getState();
+// A real hydrate keeps ops that were still waiting to be sent (a reconnect);
+// these checks start each scene on a clean outbox, the one that reconnects
+// (`hydrateKeeping`) aside.
+const hydrateKeeping = s().hydrate;
+useBoardStore.setState({
+  hydrate: (args) => {
+    useBoardStore.setState({ outbox: [] });
+    hydrateKeeping(args);
+  },
+});
 const zs = () => s().visibleElements().map((e) => e.id).join('');
 
 s().select('A');
@@ -147,7 +165,7 @@ s().ungroup();
 assert.equal(s().elements.A.group, undefined, 'null in a patch unsets the key');
 
 // Restyle reaches every selected kind.
-s().restyle({ color: '#123456', fill: 'medium' });
+s().restyle({ color: '#123456', fillOpacity: 50 });
 assert.equal(s().elements.A.stroke, '#123456');
 assert.equal(s().elements.A.fill, '#12345680');
 
@@ -192,15 +210,37 @@ assert.equal('fontSize' in s().elements.A, false, 'the key is gone, not null');
 // Absent `bend` must reproduce the old fixed-fold look exactly (no visual
 // change for every board saved before this field existed).
 const line = { from: { x: 0, y: 0 }, to: { x: 100, y: 0 } };
-assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'curved' }), control(line.from, line.to));
+assert.equal(bendHandleOf({ ...line, shape: 'arrow', route: 'curved' }), null, 'a curve is shaped by its own handles');
 assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow' }), { x: 50, y: 0 });
 assert.equal(bendHandleOf({ ...line, shape: 'arrow', route: 'straight' }), null, 'nothing to fold on a straight line');
 assert.equal(bendHandleOf({ ...line, shape: 'rectangle', route: 'curved' }), null, 'only lines fold');
 // Dragging the fold handle to a point, then reading it back, must return to
 // that same point. A curve only moves perpendicular to its chord — here,
 // straight up/down from the midpoint (50, 0) — so that is the point dragged.
-const draggedCurve = bendFromDrag({ ...line, route: 'curved' }, { x: 50, y: -20 });
-assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'curved', bend: draggedCurve }), { x: 50, y: -20 });
+// A curve nobody has shaped is the original bow, drawn as the equivalent cubic:
+// its middle is where the quadratic's was.
+const bowed = { ...line, shape: 'arrow', route: 'curved' };
+const near1 = (a, b, tol, msg) => assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < tol, `${msg}: ${JSON.stringify(a)} vs ${JSON.stringify(b)}`);
+near1(curveHandlesOf(bowed).mid, { x: 50, y: 12.5 }, 1e-9, 'the original bow');
+// Dragging a handle, then reading it back, returns to the point dragged.
+const midDrag = { ...bowed, ...curveFromDrag(bowed, 'mid', { x: 50, y: -20 }) };
+near1(curveHandlesOf(midDrag).mid, { x: 50, y: -20 }, 0.05, 'the middle of a curve dragged');
+const startDrag = { ...bowed, ...curveFromDrag(bowed, 'start', { x: 0, y: -50 }) };
+near1(curveHandlesOf(startDrag).start, { x: 0, y: -50 }, 0.01, 'the start pull dragged');
+near1(curveHandlesOf(startDrag).end, curveHandlesOf(bowed).end, 0.01, 'and the far end left alone');
+// A handle on its end still has a direction for the marker.
+assert.ok(Number.isFinite(endAngles({ ...bowed, curveFrom: { x: 0, y: 0 }, curveTo: { x: 0, y: 0 } }).start));
+// --- an elbow's ends: the long axis, the side it leaves a shape by, or a choice ---
+const step = { from: { x: 0, y: 0 }, to: { x: 100, y: 50 }, route: 'elbow' };
+assert.deepEqual(elbowAxes(step), ['h', 'h'], 'the long axis, both ends');
+assert.equal(routePath(step).split('L').length, 4, 'three segments');
+assert.deepEqual(elbowAxes({ ...step, startAxis: 'v' }), ['v', 'h']);
+assert.equal(routePath({ ...step, startAxis: 'v', endAxis: 'h' }), 'M 0 0 L 0 50 L 100 50', 'up and down, then across: a single corner');
+assert.equal(routePath({ ...step, startAxis: 'h', endAxis: 'v' }), 'M 0 0 L 100 0 L 100 50');
+assert.equal(bendHandleOf({ ...step, shape: 'arrow', startAxis: 'v', endAxis: 'h' }), null, 'a corner has no middle to drag');
+// Bound to the bottom of one shape and the left of another, it leaves and arrives the way the sides face.
+assert.deepEqual(elbowAxes({ ...step, fromLink: { id: 'a', u: 0.5, v: 1 }, toLink: { id: 'b', u: 0, v: 0.5 } }), ['v', 'h']);
+assert.deepEqual(elbowAxes({ ...step, startAxis: 'h', fromLink: { id: 'a', u: 0.5, v: 1 } })[0], 'h', 'a choice beats the side');
 // An elbow's fold only moves along the line's own axis (x, here); the handle
 // always sits back on the chord (y stays 0).
 const draggedElbow = bendFromDrag({ ...line, route: 'elbow' }, { x: 60, y: -20 });
@@ -242,6 +282,8 @@ assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow', bend: d
   assert.equal(coveringFigure(s().visibleElements(), [s().elements.U], { x: 40, y: 40 }, 6), null);
   // The eraser follows the same line: a pass between the stroke's points erases it.
   s().eraseAt({ x: 400, y: 100 });
+  assert.ok(s().liveErased.includes('K'), 'marked while the finger is down');
+  s().commitErase();
   assert.equal(s().elements.K.deleted, true);
 }
 
@@ -297,6 +339,112 @@ assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow', bend: d
   s().setConnection('online');
   s().paste({ x: 0, y: 0 });
   assert.equal(count(), 1);
+}
+
+// --- a copy that travels as text: another tab, board or device ----------------------
+{
+  const P = { ...box('P', 0, 0, 100, 100, 1), text: 'hola', fill: '#FF000033', rotation: 0.5 };
+  const I = { ...base('I', 2), kind: 'image', at: { x: 300, y: 0 }, width: 120, height: 80, uri: 'data:image/png;base64,AAAA' };
+  const L = { ...box('L', 0, 0, 0, 0, 3), shape: 'arrow', from: { x: 100, y: 50 }, to: { x: 300, y: 40 }, bend: 0.3, headEnd: 'triangle', fromLink: { id: 'P', u: 1, v: 0.5 }, toLink: { id: 'I', u: 0, v: 0.5 } };
+  useBoardStore.getState().hydrate({ meta, elements: [P, I, L], participants: [you], you, seq: 0 });
+  s().setConnection('online');
+  s().select(['P', 'I', 'L']);
+  s().copySelection();
+  const text = encodeClip(s().clipboard);
+
+  // Only the text survives: a board with nothing on it, the store's clipboard gone.
+  useBoardStore.getState().hydrate({ meta, elements: [], participants: [you], you, seq: 0 });
+  s().setConnection('online');
+  s().paste({ x: 500, y: 500 }, decodeClip(text));
+  const [p, i, l] = s().visibleElements();
+  const same = (el) => {
+    const rest = { ...el };
+    for (const k of ['id', 'createdBy', 'createdAt', 'updatedAt', 'z', 'from', 'to', 'at', 'fromLink', 'toLink']) delete rest[k];
+    return rest;
+  };
+  assert.deepEqual([same(p), same(i), same(l)], [same(P), same(I), same(L)], 'every other field comes across untouched');
+  assert.deepEqual([l.fromLink.id, l.toLink.id], [p.id, i.id], 'the arrow still joins the pasted shape and image');
+  assert.equal(i.at.x - p.to.x, I.at.x - P.to.x, 'same layout');
+  assert.equal(l.to.y - l.from.y, L.to.y - L.from.y);
+
+  // Duplicate keeps what is joined: the arrow follows the copies, not the originals.
+  s().select([p.id, i.id, l.id]);
+  s().duplicateSelection();
+  const [, , , dp, di, dl] = s().visibleElements();
+  assert.deepEqual([dl.fromLink.id, dl.toLink.id], [dp.id, di.id]);
+
+  // Text that is not ours is not parsed, and a half-formed copy is not trusted.
+  assert.equal(decodeClip('hello'), null);
+  assert.equal(decodeClip('shareboard:v1:{'), null);
+  assert.equal(decodeClip('shareboard:v1:[{"id":"x","kind":"shape"}]'), null);
+  assert.equal(decodeClip(undefined), null);
+}
+
+// --- a burst of ops goes out in frames that fit ------------------------------------------
+{
+  const ops = Array.from({ length: 10 }, (_, n) => ({ t: 'delete', id: `${n}`.padEnd(100, 'x') }));
+  const groups = splitOps(ops, 450);
+  assert.deepEqual(groups.flat(), ops, 'nothing lost, same order');
+  assert.ok(groups.length > 1 && groups.every((g) => JSON.stringify(g).length <= 450));
+  assert.equal(splitOps([], 450).length, 0);
+  assert.equal(splitOps(ops, 10).length, 10, 'an op over the limit still goes, alone');
+}
+
+// --- fill: a colour typed as HEX and an opacity -----------------------------------------
+{
+  assert.equal(parseHex('f80'), '#FF8800');
+  assert.equal(parseHex(' #ff8800 '), '#FF8800');
+  assert.equal(parseHex('FF8800'), '#FF8800');
+  for (const bad of ['', '#', 'ff88', '#ff88001', 'gg0000', '#12 456']) assert.equal(parseHex(bad), null, bad);
+
+  // Opacity is a whole percent and comes back as the same number; 0 is no fill.
+  for (let pct = 1; pct <= 100; pct++) assert.equal(fillOpacityOf(fillWith('#336699', pct)), pct, `${pct}%`);
+  assert.equal(fillWith('#336699', 0), null);
+  assert.equal(fillWith('#336699', 140), '#336699FF', 'clamped');
+  assert.equal(fillColorOf('#33669980'), '#336699');
+  assert.equal(fillColorOf(null), null);
+  // Boards drawn with the old Light / Medium / Solid levels read back as plain numbers, untouched.
+  assert.deepEqual(['#FF00002E', '#FF000080', '#FF0000FF', '#FF0000', null].map(fillOpacityOf), [18, 50, 100, 100, 0]);
+  assert.equal(fillWith('#FF0000', 18), '#FF00002E');
+  assert.equal(fillWith('#FF0000', 50), '#FF000080');
+
+  const R = { ...box('R', 0, 0, 100, 100, 1), stroke: '#FF0000', fill: '#FF00002E' };
+  const G = { ...box('G', 200, 0, 100, 100, 2), stroke: '#FF0000', fill: '#00AA0080' };
+  useBoardStore.getState().hydrate({ meta, elements: [R, G], participants: [you], you, seq: 0 });
+  s().setConnection('online');
+
+  // A fill in the line's own colour keeps following it, as it always did; one with a colour of its own stays.
+  s().select(['R', 'G']);
+  s().restyle({ color: '#0000FF' });
+  assert.equal(s().elements.R.fill, '#0000FF2E');
+  assert.equal(s().elements.G.fill, '#00AA0080');
+
+  // Colour and opacity are set apart: changing one keeps the other.
+  s().select('R');
+  s().restyle({ fillOpacity: 60 });
+  assert.equal(s().elements.R.fill, '#0000FF99');
+  s().restyle({ fillColor: '#abcdef' });
+  assert.equal(s().elements.R.fill, '#ABCDEF99');
+  s().restyle({ color: '#222222' });
+  assert.equal(s().elements.R.fill, '#ABCDEF99', 'its own colour now: no longer follows the line');
+  s().restyle({ fillColor: null });
+  assert.equal(s().elements.R.fill, '#22222299', 'same as the line again');
+  s().restyle({ fillOpacity: 0 });
+  assert.ok(!s().elements.R.fill, '0% is no fill');
+  s().restyle({ fillOpacity: 30 });
+  assert.equal(s().elements.R.fill, '#2222224D', 'back from none, in the line colour');
+  s().undo();
+  assert.ok(!s().elements.R.fill);
+
+  // The next shape drawn takes the configured colour and opacity; the line is its own colour.
+  s().setConfig({ color: '#E5484D', fillColor: '#00FF00', fillOpacity: 25 });
+  s().select(null);
+  s().addShape('ellipse', { from: { x: 0, y: 0 }, to: { x: 50, y: 50 } });
+  const drawn = s().visibleElements().slice(-1)[0];
+  assert.deepEqual([drawn.stroke, drawn.fill], ['#E5484D', '#00FF0040']);
+  s().setConfig({ fillColor: null });
+  s().addShape('rectangle', { from: { x: 0, y: 0 }, to: { x: 50, y: 50 } });
+  assert.equal(s().visibleElements().slice(-1)[0].fill, '#E5484D40', 'following the line colour');
 }
 
 // --- a held pen stroke becomes the figure it was meant to be ---------------------
@@ -360,7 +508,7 @@ assert.deepEqual(bendHandleOf({ ...line, shape: 'arrow', route: 'elbow', bend: d
   // Held and lifted, it lands as the pen's figure: its ink and width, no fill, a plain arrow.
   useBoardStore.getState().hydrate({ meta, elements: [], participants: [you], you, seq: 0 });
   s().setConnection('online');
-  s().setConfig({ color: '#E5484D', width: 5, fill: 'medium', route: 'curved', dash: 'dashed' });
+  s().setConfig({ color: '#E5484D', width: 5, fillOpacity: 50, route: 'curved', dash: 'dashed' });
   s().addSketch(arrowSketch);
   const drawn = s().visibleElements()[0];
   assert.deepEqual(
@@ -484,6 +632,301 @@ assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rec
   st().hydrate({ meta, elements: [], participants: [you], you, seq: 1 });
   assert.deepEqual(st().camera, st().homeCamera(), 'an empty board stays centred on the origin');
   st().reset();
+}
+
+// --- the live stroke is the committed stroke ----------------------------------
+{
+  const asSvg = (flat, smooth) => {
+    const d = [];
+    addStroke(
+      {
+        moveTo: (x, y) => d.push(`M ${x} ${y}`),
+        lineTo: (x, y) => d.push(`L ${x} ${y}`),
+        cubicTo: (...v) => d.push(`C ${v.join(' ')}`),
+      },
+      flat,
+      smooth,
+    );
+    return d.join(' ');
+  };
+  const wobble = (n) => Array.from({ length: 2 * n }, (_, i) => Math.round((Math.sin(i * 1.7) * 90 + i * 3.3) * 1000) / 1000);
+  for (const smooth of [true, false]) {
+    for (const n of [0, 1, 2, 3, 4, 57]) {
+      const flat = wobble(n);
+      assert.equal(asSvg(flat, smooth), strokeToSvgPath(flat, smooth), `${n} points, smooth ${smooth}`);
+    }
+  }
+}
+
+// --- a line's label: on the line, cut into it, movable along it -------------------
+{
+  const line = (extra) => ({ ...base('LBL', 1), kind: 'shape', shape: 'line', from: { x: 0, y: 0 }, to: { x: 200, y: 100 }, stroke: '#000000', strokeWidth: 2, fill: null, text: 'hello', ...extra });
+  const near = (a, b, msg) => assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < 1e-6, `${msg}: ${JSON.stringify(a)} vs ${JSON.stringify(b)}`);
+  // Centred on the line, in the middle unless it was moved.
+  near(lineLabelCentre(line({})), { x: 100, y: 50 }, 'the middle');
+  near(lineLabelCentre(line({ labelAt: 0.25 })), { x: 50, y: 25 }, 'a quarter along');
+  // An elbow is measured along its bends: 100 across, 100 down, 100 across.
+  const elbowed = line({ route: 'elbow' });
+  near(routePointAt(elbowed, 0.5), { x: 100, y: 50 }, 'half the length of an elbow is the middle of its middle leg');
+  near(routePointAt(elbowed, 1), { x: 200, y: 100 }, 'the end');
+  // Dragging finds the same place back, and stays off the very ends.
+  for (const t of [0.1, 0.5, 0.9]) {
+    const at = routePointAt(line({ route: 'curved' }), t);
+    assert.ok(Math.abs(labelFromDrag(line({ route: 'curved' }), at) - t) < 0.02, `drag back to ${t}`);
+  }
+  assert.equal(labelFromDrag(line({}), { x: -500, y: -500 }), 0.04);
+  assert.equal(labelFromDrag(line({}), { x: 900, y: 900 }), 0.96);
+  // The gap is centred on the label, and a touch on the label hits the line.
+  const box = labelBox(line({}), ['hello'], 18);
+  near({ x: box.x + box.width / 2, y: box.y + box.height / 2 }, { x: 100, y: 50 }, 'the gap is centred on the text');
+  assert.equal(shapeHit(line({}), { x: 100, y: 50 }, 4), true, 'the label is still part of the line');
+  assert.equal(shapeHit(line({ text: '' }), { x: 100, y: 62 }, 4), false, 'far from a bare line');
+  assert.equal(shapeHit(line({ labelAt: 0.9 }), { x: 100, y: 50 }, 4), true, 'the line itself, where the label no longer is');
+}
+
+// --- connection points on the real outline -------------------------------------
+{
+  const on = (p, el, msg) => {
+    const b = boxOf(el);
+    const cx = b.x + b.width / 2;
+    const cy = b.y + b.height / 2;
+    if (el.shape === 'ellipse') {
+      const d = Math.hypot((p.x - cx) / (b.width / 2), (p.y - cy) / (b.height / 2));
+      assert.ok(Math.abs(d - 1) < 1e-6, `${msg}: not on the ellipse`);
+    }
+  };
+  const circle = { ...base('C', 1), kind: 'shape', shape: 'ellipse', from: { x: 0, y: 0 }, to: { x: 200, y: 100 }, stroke: '#000000', strokeWidth: 2, fill: null };
+  const hex = { ...circle, id: 'H', shape: 'polygon', sides: 6 };
+  const tri = { ...circle, id: 'T', shape: 'triangle' };
+  assert.equal(anchorsOf(circle).length, 1 + 8, 'an ellipse: its centre and eight on the outline');
+  assert.equal(anchorsOf(hex).length, 1 + 12, 'a hexagon: its centre, six corners and six middles');
+  assert.equal(anchorsOf(tri).length, 1 + 6, 'a triangle: its centre, three corners and three middles');
+  for (const p of anchorsOf(circle).slice(1)) on(p, circle, 'an ellipse anchor');
+  // A line end dropped near the outline of an ellipse lands on it, not on its box.
+  const r = linkEndpoints([circle], { x: 160, y: 20 }, { x: 600, y: 600 }, 18);
+  on(r.from, circle, 'a free end pinned to an ellipse');
+  assert.ok(r.fromLink, 'and bound to it');
+  // Near one of the eight, it takes that one exactly.
+  const snap = linkEndpoints([circle], { x: 100, y: 4 }, { x: 600, y: 600 }, 18);
+  near2(snap.from, { x: 100, y: 0 });
+  // Aimed at another shape, it leaves by the outline towards it.
+  const aim = linkEndpoints([circle], { x: 100, y: 50 }, { x: 600, y: 50 }, 18);
+  near2(aim.from, { x: 200, y: 50 });
+  // Resize the shape: the bound end stays on the outline.
+  const bound = { ...base('L2', 2), kind: 'shape', shape: 'line', from: r.from, to: { x: 600, y: 600 }, stroke: '#000000', strokeWidth: 2, fill: null, fromLink: r.fromLink, toLink: null };
+  const bigger = { ...circle, to: { x: 400, y: 300 } };
+  const moved = followLinks([bigger, bound], ['C'])[0].from;
+  on(moved, bigger, 'an end that followed a resized ellipse');
+  function near2(a, b) { assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < 1e-6, `${JSON.stringify(a)} vs ${JSON.stringify(b)}`); }
+}
+
+// --- a hand-drawn polygon is read as one --------------------------------------------
+{
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+  const noise = (a) => (rnd() - 0.5) * 2 * a;
+  const drawn = (n, rot) => {
+    const pts = [];
+    const corner = (i) => ({ x: 100 * Math.cos(rot + (i * 2 * Math.PI) / n), y: 100 * Math.sin(rot + (i * 2 * Math.PI) / n) });
+    for (let i = 0; i <= n; i++) {
+      const a = corner(i);
+      const b = corner(i + 1);
+      for (let k = 0; k < 14; k++) pts.push(a.x + ((b.x - a.x) * k) / 14 + noise(2.5), a.y + ((b.y - a.y) * k) / 14 + noise(2.5));
+    }
+    return pts;
+  };
+  for (const n of [5, 6, 7]) {
+    const sketch = recognizeSketch(drawn(n, 0.4), 24);
+    assert.equal(sketch?.shape, 'polygon', `a hand-drawn ${n}-gon is a polygon`);
+    assert.equal(sketch.sides, n, `with ${n} sides`);
+  }
+  // `drawn` puts the first corner at the angle given: a quarter turn plus a little is a square standing on its side.
+  assert.equal(recognizeSketch(drawn(4, Math.PI / 4 + 0.1), 24)?.shape, 'rectangle', 'a four-sided one is still a rectangle');
+  assert.equal(recognizeSketch(drawn(3, 0.3), 24)?.shape, 'triangle', 'and three a triangle');
+  const lumpy = [];
+  for (let i = 0; i <= 90; i++) {
+    const a = (i / 90) * 2 * Math.PI * 1.03;
+    const r = 100 * (1 + 0.06 * Math.sin(3 * a + 1) + noise(0.02));
+    lumpy.push(r * Math.cos(a), r * Math.sin(a));
+  }
+  assert.equal(recognizeSketch(lumpy, 24)?.shape, 'ellipse', 'a lumpy circle is still a circle');
+}
+
+// --- four corners: a rectangle, or a diamond once it is tilted enough -----------------
+{
+  let seed = 3;
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+  const through = (deg) => {
+    const a = (deg * Math.PI) / 180;
+    const corners = [[-100, -100], [100, -100], [100, 100], [-100, 100]].map(([x, y]) => ({ x: x * Math.cos(a) - y * Math.sin(a), y: x * Math.sin(a) + y * Math.cos(a) }));
+    const pts = [];
+    for (let i = 0; i <= 4; i++) {
+      const p = corners[i % 4];
+      const q = corners[(i + 1) % 4];
+      for (let k = 0; k < 14; k++) pts.push(p.x + ((q.x - p.x) * k) / 14 + (rnd() - 0.5) * 5, p.y + ((q.y - p.y) * k) / 14 + (rnd() - 0.5) * 5);
+    }
+    return pts;
+  };
+  assert.equal(recognizeSketch(through(0), 24)?.shape, 'rectangle');
+  assert.equal(recognizeSketch(through(12), 24)?.shape, 'rectangle', 'slightly tilted is still a rectangle');
+  const diamond = recognizeSketch(through(45), 24);
+  assert.ok(diamond?.shape === 'polygon' && diamond.sides === 4, 'a square on its corner is a four-sided polygon (a diamond)');
+  // A four-sided shape with a soft corner is not a triangle.
+  assert.notEqual(recognizeSketch(through(45), 24)?.shape, 'triangle');
+}
+
+// --- a figure made from the pen stays, and the pen then sizes it -----------------------
+{
+  const near = (a, b, msg) => assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < 1e-9, `${msg}: ${JSON.stringify(a)}`);
+  const ring = { shape: 'ellipse', from: { x: 0, y: 0 }, to: { x: 100, y: 100 } };
+  // The pen was on the ring's right edge (100, 50) when it was made; pulling out to 200 doubles it about the centre.
+  let r = sketchResize(ring, { x: 100, y: 50 }, { x: 150, y: 50 });
+  near(r.from, { x: -50, y: -50 }, 'grown about its centre');
+  near(r.to, { x: 150, y: 150 }, 'grown about its centre');
+  r = sketchResize(ring, { x: 100, y: 50 }, { x: 50, y: 50 });
+  near(r.from, { x: 37.5, y: 37.5 }, 'pulled in to the centre it stops at a quarter of the size');
+  // A line's tip follows the pen.
+  near(sketchResize({ shape: 'arrow', from: { x: 0, y: 0 }, to: { x: 50, y: 0 } }, { x: 50, y: 0 }, { x: 90, y: 30 }).to, { x: 90, y: 30 }, 'the arrow tip');
+  // In the store: the figure is added at once, resizing it joins the same undo step.
+  useBoardStore.getState().reset();
+  useBoardStore.getState().hydrate({ meta, elements: [], participants: [you], you, seq: 0 });
+  useBoardStore.getState().setConnection('online');
+  const id = s().addSketch(ring);
+  assert.ok(id && s().elements[id], 'the figure is on the board the moment it is made');
+  const steps = s().undoStack.length;
+  s().finishFigure(id, { from: { x: -50, y: -50 }, to: { x: 150, y: 150 } });
+  assert.equal(s().undoStack.length, steps, 'resizing it is not another undo step');
+  assert.equal(s().elements[id].to.x, 150);
+  s().undo();
+  assert.equal(s().visibleElements().length, 0, 'one undo takes the whole figure back');
+}
+
+// --- history, played against the real server's rules ---------------------------
+// What a client does and what the server keeps must agree, or a change is on
+// one screen and nowhere else. `wire` stands in for the socket and the server.
+{
+  const { applyOps: serverApply } = await import('../../server/src/model/ops.ts');
+  const { validateOps } = await import('../../server/src/model/validate.ts');
+  const server = new Map();
+  let topZ = 0;
+  const wire = () => {
+    const batch = s().drainOutbox();
+    if (!batch) return;
+    const ops = validateOps(JSON.parse(JSON.stringify(batch.ops)));
+    topZ = serverApply(server, ops, topZ);
+    s().applyRemote(ops, 1, true);
+  };
+  const order = (elements) =>
+    [...elements].filter((e) => !e.deleted).sort((a, b) => a.z - b.z).map((e) => e.id).join('');
+  const agree = (what) => assert.equal(order(s().visibleElements()), order(server.values()), what);
+  const start = () => {
+    server.clear();
+    topZ = 0;
+    useBoardStore.getState().reset();
+    useBoardStore.getState().hydrate({ meta, elements: [], participants: [you], you, seq: 0 });
+    s().setConnection('online');
+  };
+  const draw = (id, x) => {
+    const made = s().addShape('rectangle', { from: { x, y: 0 }, to: { x: x + 50, y: 50 } });
+    wire();
+    return made;
+  };
+  const named = (ids) => (el) => ids[el.id];
+
+  // Undoing an erase puts the element back where it was in the stack, not on top.
+  start();
+  const [a, b, c] = [draw('a', 0), draw('b', 100), draw('c', 200)];
+  const ids = { [a]: 'A', [b]: 'B', [c]: 'C' };
+  const seen = () => s().visibleElements().map(named(ids)).join('');
+  s().eraseAt({ x: 110, y: 10 }, 1);
+  assert.equal(s().visibleElements().length, 3, 'nothing is deleted while the finger is down');
+  s().commitErase();
+  wire();
+  assert.equal(seen(), 'AC');
+  s().undo();
+  wire();
+  assert.equal(seen(), 'ABC', 'back in the middle');
+  agree('server agrees after undoing an erase');
+  s().redo();
+  wire();
+  s().undo();
+  wire();
+  assert.equal(seen(), 'ABC');
+  agree('and after redo, undo');
+
+  // One scrub over several figures is one step; cancelling deletes nothing.
+  s().eraseAt({ x: 10, y: 10 }, 1);
+  s().eraseAt({ x: 210, y: 10 }, 1);
+  s().discardErase();
+  assert.equal(s().visibleElements().length, 3, 'a cancelled scrub leaves everything');
+  const steps = s().undoStack.length;
+  s().eraseAt({ x: 10, y: 10 }, 1);
+  s().eraseAt({ x: 210, y: 10 }, 1);
+  s().commitErase();
+  wire();
+  assert.equal(s().undoStack.length, steps + 1, 'one undo step for the scrub');
+  s().undo();
+  wire();
+  assert.equal(seen(), 'ABC');
+  agree('server agrees after undoing a scrub');
+
+  // Undoing a creation lets go of it: the selection never names what is gone.
+  s().select([c]);
+  s().undoStack.length = 0;
+  const d = draw('d', 300);
+  s().select([d]);
+  s().undo();
+  assert.deepEqual(s().selectedIds, []);
+  wire();
+  agree('undo of a draw');
+
+  // A text is one undo step, however it was typed.
+  start();
+  const t = s().addText({ x: 0, y: 0 });
+  s().updateText(t, { text: 'hello' });
+  wire();
+  assert.equal(s().undoStack.length, 1, 'adding and typing are one step');
+  s().undo();
+  wire();
+  assert.equal(s().visibleElements().length, 0, 'one undo removes the whole text');
+  s().redo();
+  wire();
+  assert.equal(s().elements[t].text, 'hello');
+  assert.equal(server.get(t).text, 'hello');
+  // Left empty, it never happened: no element and nothing to undo.
+  const e = s().addText({ x: 0, y: 40 });
+  s().updateText(e, { text: '   ' });
+  wire();
+  assert.equal(s().undoStack.length, 1, 'an empty text leaves no step');
+  assert.equal(s().visibleElements().length, 1);
+  // Editing the text again is a step of its own.
+  s().updateText(t, { text: 'bye' });
+  assert.equal(s().undoStack.length, 2);
+  wire();
+
+  // A batch the server refuses must not stay applied on this screen.
+  start();
+  const q = draw('q', 0);
+  s().commitEdit({ ids: [q], mode: 'move', handle: -1, start: { x: 0, y: 0 }, dx: 500, dy: 0, patch: null });
+  // The server never sees it (say it was rejected): the board it sends back wins.
+  s().drainOutbox();
+  assert.equal(s().elements[q].from.x, 500);
+  s().resync([...server.values()], 2);
+  assert.equal(s().elements[q].from.x, 0, 'snapped back to what the server has');
+  assert.equal(s().undoStack.length, 0, 'history describing it is dropped');
+
+  // Ops waiting when the connection dropped survive the reconnect's hydrate.
+  start();
+  const r = draw('r', 0);
+  s().commitEdit({ ids: [r], mode: 'move', handle: -1, start: { x: 0, y: 0 }, dx: 70, dy: 0, patch: null });
+  const pending = s().outbox;
+  assert.equal(pending.length, 1);
+  hydrateKeeping({ meta, elements: [...server.values()], participants: [you], you, seq: 3 });
+  assert.equal(s().elements[r].from.x, 70, 'still where it was dragged');
+  assert.notEqual(s().outbox, pending, 'a fresh array, so the sync hook sends it');
+  wire();
+  assert.equal(server.get(r).from.x, 70, 'and the server has it');
+  start();
 }
 
 console.log('geometry: ok');
