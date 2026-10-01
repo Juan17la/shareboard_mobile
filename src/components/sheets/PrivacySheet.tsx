@@ -193,7 +193,7 @@ export function PrivacySheet({
               <Txt weight="extrabold" size={12.5} tone="accent">
                 {t.chooseEditors}
               </Txt>
-              <Icon name="chevron" size={15} color={c.accent} strokeWidth={2.4} />
+              <Icon name="chevron" size={15} color={c.accentText} />
             </Pressable>
           ) : null}
 

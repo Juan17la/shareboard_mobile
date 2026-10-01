@@ -1,4 +1,11 @@
-import { ActivityIndicator, Pressable, View, type PressableProps, type ViewStyle } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  View,
+  type PressableProps,
+  type ViewStyle,
+} from 'react-native';
 
 import { Radius, Shadow, type Palette } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
@@ -34,20 +41,39 @@ function foreground(c: Palette, variant: ButtonVariant): string {
   }
 }
 
-function container(c: Palette, variant: ButtonVariant, disabled: boolean): ViewStyle {
+function container(
+  c: Palette,
+  variant: ButtonVariant,
+  disabled: boolean,
+  pressed: boolean,
+): ViewStyle {
   const base: ViewStyle = {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 9,
-    borderRadius: Radius.xl,
+    borderRadius: 14,
     opacity: disabled ? 0.55 : 1,
   };
   switch (variant) {
+    // Filled the iOS way: the flat system colour, a hairline ring, a tight
+    // shadow, and a deeper shade while the finger is on it.
     case 'primary':
-      return { ...base, backgroundColor: c.accent, ...(disabled ? null : Shadow.accent) };
+      return {
+        ...base,
+        backgroundColor: pressed ? c.accentDeep : c.accent,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(0,55,130,0.45)',
+        ...(disabled ? null : Shadow.accent),
+      };
     case 'danger':
-      return { ...base, backgroundColor: c.danger, ...(disabled ? null : Shadow.danger) };
+      return {
+        ...base,
+        backgroundColor: pressed ? '#B00012' : c.danger,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(150,10,20,0.45)',
+        ...(disabled ? null : Shadow.danger),
+      };
     case 'secondary':
       return {
         ...base,
@@ -90,7 +116,7 @@ export function Button({
       accessibilityState={{ disabled: off }}
       disabled={off}
       style={({ pressed }) => [
-        container(c, variant, off),
+        container(c, variant, off, pressed),
         {
           paddingVertical: compact ? 12 : 16,
           paddingHorizontal: compact ? 16 : 18,
@@ -106,7 +132,7 @@ export function Button({
       ) : (
         <>
           {icon ? <Icon name={icon} size={compact ? 16 : 19} color={fg} /> : null}
-          <Txt weight="extrabold" size={compact ? 13.5 : 15.5} color={fg}>
+          <Txt weight="bold" size={compact ? 13.5 : 15.5} color={fg}>
             {label}
           </Txt>
         </>
