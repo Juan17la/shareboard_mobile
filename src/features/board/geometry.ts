@@ -12,7 +12,9 @@
  */
 import {
   DEFAULT_SIDES,
+  SHAPE_TEXT_SIZE,
   LIMITS,
+  type Axis,
   type BoardElement,
   type Dash,
   type Link,
@@ -53,7 +55,10 @@ export function simplify(flat: number[], min = 1.5): number[] {
 }
 
 /** Two decimals is well below one device pixel and keeps the path string short. */
-export const n = (v: number) => Math.round(v * 100) / 100;
+export const n = (v: number) => {
+  'worklet';
+  return Math.round(v * 100) / 100;
+};
 
 /**
  * `smooth` is the settings-sheet switch. Off, the points are joined with
@@ -80,12 +85,48 @@ export function strokeToSvgPath(flat: number[], smooth = true): string {
   return d;
 }
 
+/** What a path is written to: a Skia path builder, or anything else with these three. */
+export interface PathSink {
+  moveTo(x: number, y: number): unknown;
+  lineTo(x: number, y: number): unknown;
+  cubicTo(c1x: number, c1y: number, c2x: number, c2y: number, x: number, y: number): unknown;
+}
+
+/**
+ * `strokeToSvgPath`'s path, written straight to a path builder. The live stroke
+ * is drawn with this on the UI thread (hence the worklet), so what shows under
+ * the finger is the curve that will be committed — the geometry is pinned to
+ * `strokeToSvgPath` by the geometry check.
+ */
+export function addStroke(b: PathSink, flat: number[], smooth: boolean): void {
+  'worklet';
+  const m = flat.length >> 1;
+  if (m === 0) return;
+  b.moveTo(n(flat[0]), n(flat[1]));
+  // A dot: the zero-length line still paints a round cap.
+  if (m === 1) {
+    b.lineTo(n(flat[0]), n(flat[1]));
+    return;
+  }
+  if (!smooth || m === 2) {
+    for (let i = 1; i < m; i++) b.lineTo(n(flat[2 * i]), n(flat[2 * i + 1]));
+    return;
+  }
+  const p: Point[] = [];
+  for (let i = 0; i < m; i++) p.push({ x: flat[2 * i], y: flat[2 * i + 1] });
+  for (let i = 0; i < m - 1; i++) {
+    const seg = curveSegment(p, i);
+    b.cubicTo(seg[0], seg[1], seg[2], seg[3], seg[4], seg[5]);
+  }
+}
+
 /**
  * Segment `i` of the smoothed stroke through `p` (from `p[i]` to `p[i + 1]`),
  * as the cubic's rounded `c1x c1y c2x c2y x y`. Shared with the live stroke
  * (`livePath`), which builds the same curve a point at a time.
  */
 export function curveSegment(p: Point[], i: number): number[] {
+  'worklet';
   // Each segment is steered by its neighbours, so the curve stays continuous
   // across joins. The ends have no outer neighbour and reuse the endpoint.
   const prev = p[i - 1] ?? p[i];
@@ -244,6 +285,82 @@ export function labelLines(
   if (isLineLike(el)) return text.split('\n');
   const inner = shapeBounds(el).width - LABEL_PAD * 2;
   return textLines({ text, fontSize, font: el.font, width: Math.max(fontSize, inner) });
+}
+
+/** A line's label: how far along its route it stands, 0..1 (the middle when absent). */
+export const LABEL_DEFAULT_AT = 0.5;
+/** Room left round a label's text where it cuts the line. */
+const LABEL_GAP = 6;
+
+/** The route as a polyline to measure along: a curve sampled, an elbow as it is. */
+const routeSamples = (el: RouteSpec): Point[] => routePoints(el);
+
+/** The point `t` (0..1) of the way along a line's route, by length. */
+export function routePointAt(el: RouteSpec, t: number): Point {
+  const pts = routeSamples(el);
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) total += dist(pts[i - 1], pts[i]);
+  let left = Math.max(0, Math.min(1, t)) * total;
+  for (let i = 1; i < pts.length; i++) {
+    const d = dist(pts[i - 1], pts[i]);
+    if (left <= d && d > 0) {
+      const k = left / d;
+      return { x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * k, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * k };
+    }
+    left -= d;
+  }
+  return pts[pts.length - 1];
+}
+
+/**
+ * Where a line's label is centred: on the line itself, `labelAt` of the way
+ * along it. The line is cut away behind the text (`labelBox`), so it reads as
+ * one thing; the label is dragged along the line to move it.
+ */
+export function lineLabelCentre(el: RouteSpec & Pick<ShapeElement, 'labelAt'>): Point {
+  return routePointAt(el, el.labelAt ?? LABEL_DEFAULT_AT);
+}
+
+/**
+ * The room a line's label takes: the gap cut in the line behind it, and what a
+ * touch on the label hits. The text's width is estimated (half an em a
+ * character) rather than measured, so the canvases, the editors and the SVG
+ * export, which measure differently, all cut the same gap.
+ */
+export function labelBox(
+  el: RouteSpec & Pick<ShapeElement, 'labelAt'>,
+  lines: string[],
+  fontSize: number,
+): Bounds {
+  const c = lineLabelCentre(el);
+  const width = Math.max(1, ...lines.map((l) => l.length)) * fontSize * 0.5 + 2 * LABEL_GAP;
+  const height = lines.length * fontSize * TEXT_LINE_HEIGHT + 4;
+  return { x: c.x - width / 2, y: c.y - height / 2, width, height };
+}
+
+/** The `labelAt` a drag to `p` implies: the nearest point of the route, kept off its very ends. */
+export function labelFromDrag(el: RouteSpec, p: Point): number {
+  const pts = routeSamples(el);
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) total += dist(pts[i - 1], pts[i]);
+  if (!total) return LABEL_DEFAULT_AT;
+  let best = Infinity;
+  let at = LABEL_DEFAULT_AT * total;
+  let walked = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const d = dist(a, b);
+    const k = d ? Math.max(0, Math.min(1, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / (d * d))) : 0;
+    const q = { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+    const off = dist(p, q);
+    if (off < best) {
+      best = off;
+      at = walked + d * k;
+    }
+    walked += d;
+  }
+  return Math.max(0.04, Math.min(0.96, at / total));
 }
 
 // --- rotation ----------------------------------------------------------------
@@ -459,13 +576,23 @@ export function resizeElement(el: BoardElement, h: number, p: Point): Partial<Bo
   return { fontSize, ...(width ? { width } : null), ...placeBox(el, boxFrom(nb.width, nb.height)) };
 }
 
+const MIN_SIDES = LIMITS.minSides;
+const MAX_SIDES = LIMITS.maxSides;
+
 /** A regular polygon's corners inside `b`, the first straight up, on the box's inscribed ellipse. */
 export function polygonPoints(b: Bounds, sides = DEFAULT_SIDES): Point[] {
-  const n = Math.round(clamp(sides, LIMITS.minSides, LIMITS.maxSides));
-  return Array.from({ length: n }, (_, i) => {
+  'worklet';
+  // Nothing captured but plain numbers and functions declared above it: a
+  // worklet takes what it names when it is created, so a `const` helper
+  // declared further down the file is `undefined` in it (this once named
+  // `clamp`), and `LIMITS` holds a RegExp, which cannot cross to the UI thread.
+  const n = Math.round(Math.max(MIN_SIDES, Math.min(MAX_SIDES, sides)));
+  const out: Point[] = [];
+  for (let i = 0; i < n; i++) {
     const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-    return { x: b.x + (b.width / 2) * (1 + Math.cos(a)), y: b.y + (b.height / 2) * (1 + Math.sin(a)) };
-  });
+    out.push({ x: b.x + (b.width / 2) * (1 + Math.cos(a)), y: b.y + (b.height / 2) * (1 + Math.sin(a)) });
+  }
+  return out;
 }
 
 /** Elements whose box lies entirely inside `b` — the marquee's pick. */
@@ -480,18 +607,54 @@ export function elementsIn(elements: BoardElement[], b: Bounds): BoardElement[] 
 
 // --- connection points -----------------------------------------------------
 // A line's end dropped on an enclosed shape binds to it: the point is kept as
-// a fraction (u, v) of the shape's box, so it is anywhere on the outline the
-// user chose and follows the shape when it moves or resizes (`followLinks`).
-// The one dot shown on a shape is its centre: dropping there aims at the other
-// end instead of pinning a spot.
+// a fraction (u, v) of the shape's box, so it follows the shape when it moves
+// or resizes (`followLinks`). What a shape offers is on its real outline — an
+// ellipse's eight, a triangle's and a polygon's corners and the middle of each
+// side, a rectangle's corners and sides' middles — plus its centre: dropping
+// there aims at the other end instead of pinning a spot. Near none of them, the
+// end pins the nearest point of the outline.
 
 /** What a line end can bind to: an enclosed shape or an image. */
 export const isLinkTarget = (el: BoardElement): boolean =>
   el.kind === 'image' || (el.kind === 'shape' && !isLineLike(el));
 
-/** The connection hint of a link target: its centre. */
+/** A link target's outline in its own unturned frame: an ellipse's box, or a polygon's corners. */
+type Outline = { ellipse: Bounds } | { poly: Point[] };
+
+function outlineOf(el: BoardElement): Outline {
+  const b = boxOf(el);
+  if (el.kind === 'shape') {
+    if (el.shape === 'ellipse') return { ellipse: b };
+    if (el.shape === 'triangle') {
+      return { poly: [{ x: b.x + b.width / 2, y: b.y }, { x: b.x + b.width, y: b.y + b.height }, { x: b.x, y: b.y + b.height }] };
+    }
+    if (el.shape === 'polygon') return { poly: polygonPoints(b, el.sides) };
+  }
+  return { poly: cornersOfBox(b) };
+}
+
+/** The connection points on the outline, in the element's unturned frame. */
+function localAnchors(el: BoardElement): Point[] {
+  const o = outlineOf(el);
+  if ('ellipse' in o) {
+    const { x, y, width, height } = o.ellipse;
+    return Array.from({ length: 8 }, (_, k) => {
+      const a = -Math.PI / 2 + (k * Math.PI) / 4;
+      return { x: x + (width / 2) * (1 + Math.cos(a)), y: y + (height / 2) * (1 + Math.sin(a)) };
+    });
+  }
+  const out: Point[] = [];
+  o.poly.forEach((p, i) => {
+    const next = o.poly[(i + 1) % o.poly.length];
+    out.push(p, { x: (p.x + next.x) / 2, y: (p.y + next.y) / 2 });
+  });
+  return out;
+}
+
+/** The connection points of a link target on the board: its centre, then the ones on its outline. */
 export function anchorsOf(el: BoardElement): Point[] {
-  return isLinkTarget(el) ? [centreOf(boxOf(el))] : [];
+  if (!isLinkTarget(el)) return [];
+  return [centreOf(boxOf(el)), ...localAnchors(el).map((p) => toWorld(el, p))];
 }
 
 /** Where a link lands on its target's current (turned) box. */
@@ -514,6 +677,38 @@ function edgePoint(p: Point, b: Bounds): Point {
   return { x, y: b.y + b.height };
 }
 
+/** The point of the segment `a`→`b` nearest to `p`. */
+function nearestOnSegment(a: Point, b: Point, p: Point): Point {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 ? clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / len2, 0, 1) : 0;
+  return { x: a.x + t * dx, y: a.y + t * dy };
+}
+
+/** The point of a link target's real outline nearest to `p` (unturned frame). */
+function outlinePoint(el: BoardElement, p: Point): Point {
+  const o = outlineOf(el);
+  if ('ellipse' in o) {
+    const { x, y, width, height } = o.ellipse;
+    const rx = width / 2;
+    const ry = height / 2;
+    const dx = rx ? (p.x - x - rx) / rx : 0;
+    const dy = ry ? (p.y - y - ry) / ry : -1;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: x + rx + (dx / len) * rx, y: y + ry + (dy / len) * ry };
+  }
+  if (o.poly.length === 4 && (el.kind === 'image' || (el.kind === 'shape' && el.shape === 'rectangle'))) {
+    return edgePoint(p, boxOf(el));
+  }
+  let best = o.poly[0];
+  for (let i = 0; i < o.poly.length; i++) {
+    const q = nearestOnSegment(o.poly[i], o.poly[(i + 1) % o.poly.length], p);
+    if (dist(q, p) < dist(best, p)) best = q;
+  }
+  return best;
+}
+
 /** Where the ray from the box centre towards `target` leaves the box. */
 function rayToBox(target: Point, b: Bounds): Point {
   const c = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
@@ -525,6 +720,41 @@ function rayToBox(target: Point, b: Bounds): Point {
     dy ? b.height / 2 / Math.abs(dy) : Infinity,
   );
   return { x: c.x + dx * t, y: c.y + dy * t };
+}
+
+/** Where the ray from a link target's centre towards `target` leaves its real outline (unturned frame). */
+function rayToOutline(el: BoardElement, target: Point): Point {
+  const o = outlineOf(el);
+  const b = boxOf(el);
+  if (!('ellipse' in o) && o.poly.length === 4 && (el.kind === 'image' || (el.kind === 'shape' && el.shape === 'rectangle'))) {
+    return rayToBox(target, b);
+  }
+  const c = centreOf(b);
+  const dx = target.x - c.x;
+  const dy = target.y - c.y;
+  if (!dx && !dy) return outlinePoint(el, c);
+  if ('ellipse' in o) {
+    const k = 1 / Math.hypot(dx / (b.width / 2 || 1), dy / (b.height / 2 || 1));
+    return { x: c.x + dx * k, y: c.y + dy * k };
+  }
+  // The nearest crossing of the ray with a side.
+  let best: Point | null = null;
+  let bestT = Infinity;
+  for (let i = 0; i < o.poly.length; i++) {
+    const a = o.poly[i];
+    const e = o.poly[(i + 1) % o.poly.length];
+    const sx = e.x - a.x;
+    const sy = e.y - a.y;
+    const den = dx * sy - dy * sx;
+    if (!den) continue;
+    const t = ((a.x - c.x) * sy - (a.y - c.y) * sx) / den;
+    const s = ((a.x - c.x) * dy - (a.y - c.y) * dx) / den;
+    if (t > 0 && s >= 0 && s <= 1 && t < bestT) {
+      bestT = t;
+      best = { x: c.x + dx * t, y: c.y + dy * t };
+    }
+  }
+  return best ?? outlinePoint(el, c);
 }
 
 /**
@@ -547,8 +777,15 @@ export function linkEndpoints(
     const b = boxOf(el);
     const c = centre(el);
     const lp = toLocal(el, p);
+    // The nearest connection point, when the end is within reach of one.
+    let near: Point | null = null;
+    for (const a of localAnchors(el)) {
+      if (Math.hypot(a.x - lp.x, a.y - lp.y) <= radius && (!near || dist(a, lp) < dist(near, lp))) near = a;
+    }
     const at =
-      Math.hypot(lp.x - c.x, lp.y - c.y) <= radius ? rayToBox(toLocal(el, other), b) : edgePoint(lp, b);
+      Math.hypot(lp.x - c.x, lp.y - c.y) <= radius
+        ? rayToOutline(el, toLocal(el, other))
+        : (near ?? outlinePoint(el, lp));
     return {
       p: toWorld(el, at),
       link: {
@@ -620,10 +857,15 @@ function targetAt(elements: BoardElement[], at: Point, pad: number): BoardElemen
  */
 export function shapeHit(el: ShapeElement, at: Point, pad: number): boolean {
   if (isLineLike(el)) {
-    const pts = routePoints(el.from, el.to, el.route, el.bend);
+    const pts = routePoints(el);
     const reach = pad + el.strokeWidth / 2;
     for (let i = 1; i < pts.length; i++) {
       if (segmentDistance(pts[i - 1], pts[i], at) <= reach) return true;
+    }
+    // The line is cut away behind its label, which is still part of it.
+    if (el.text) {
+      const size = el.fontSize ?? SHAPE_TEXT_SIZE;
+      return inBox(at, labelBox(el, labelLines(el, size), size), pad);
     }
     return false;
   }
@@ -639,20 +881,29 @@ function segmentDistance(a: Point, b: Point, p: Point): number {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
+/**
+ * What a route is drawn from: a line's own fields (a `ShapeElement` fits), or
+ * just two points and a kind for an icon.
+ */
+export interface RouteSpec {
+  from: Point;
+  to: Point;
+  route?: Route;
+  bend?: number;
+  startAxis?: Axis | null;
+  endAxis?: Axis | null;
+  curveFrom?: Point | null;
+  curveTo?: Point | null;
+  fromLink?: Link | null;
+  toLink?: Link | null;
+}
+
 /** The route as a polyline: the curve is sampled, the others are their corners. */
-function routePoints(from: Point, to: Point, route: Route = 'straight', bend?: number): Point[] {
-  if (route === 'elbow') return elbow(from, to, bend);
-  if (route !== 'curved') return [from, to];
-  const c = control(from, to, bend);
+function routePoints(r: RouteSpec): Point[] {
+  if (r.route === 'elbow') return elbowPoints(r);
+  if (r.route !== 'curved') return [r.from, r.to];
   const pts: Point[] = [];
-  for (let i = 0; i <= 8; i++) {
-    const t = i / 8;
-    const u = 1 - t;
-    pts.push({
-      x: u * u * from.x + 2 * u * t * c.x + t * t * to.x,
-      y: u * u * from.y + 2 * u * t * c.y + t * t * to.y,
-    });
-  }
+  for (let i = 0; i <= 24; i++) pts.push(curvePoint(r, i / 24));
   return pts;
 }
 
@@ -662,9 +913,9 @@ function routePoints(from: Point, to: Point, route: Route = 'straight', bend?: n
 // icons are drawn by the very same generators as the board.
 
 /**
- * The bend of a curved route: `bend` board units to the side of the chord's
- * midpoint (positive: left of from→to), a quarter of the chord's length when
- * absent — the route's original fixed look.
+ * The bow of a curved route in its original form: `bend` board units to the
+ * side of the chord's midpoint (positive: left of from→to), a quarter of the
+ * chord's length when absent. A curve nobody has shaped still has this look.
  */
 export function control(from: Point, to: Point, bend?: number): Point {
   const dx = to.x - from.x;
@@ -677,39 +928,98 @@ export function control(from: Point, to: Point, bend?: number): Point {
   };
 }
 
-/** Elbow: two right angles, the long axis first. `bend`: where along it, 0..1 (midpoint absent). */
-function elbow(from: Point, to: Point, bend?: number): Point[] {
-  const horizontal = Math.abs(to.x - from.x) >= Math.abs(to.y - from.y);
-  const t = bend ?? 0.5;
-  const mx = from.x + (to.x - from.x) * t;
-  const my = from.y + (to.y - from.y) * t;
-  return horizontal
-    ? [from, { x: mx, y: from.y }, { x: mx, y: to.y }, to]
-    : [from, { x: from.x, y: my }, { x: to.x, y: my }, to];
+// An elbow is a run of right angles, and what it leaves and arrives along is a
+// choice, as it is in a diagramming tool: the long axis by default; straight
+// out of the side of a shape it is bound to; or whichever way was asked for.
+// Two ends on the same axis make three segments (and a middle to drag); two
+// different axes, a single corner.
+
+/** Out of which side of its shape a bound end leaves: a left or right side runs across, a top or bottom up and down. */
+function sideAxis(link: Link | null | undefined): Axis | null {
+  if (!link) return null;
+  if (link.u <= 0.02 || link.u >= 0.98) return 'h';
+  if (link.v <= 0.02 || link.v >= 0.98) return 'v';
+  return null;
 }
 
-export function routePath(from: Point, to: Point, route: Route = 'straight', bend?: number): string {
-  if (route === 'curved') {
-    const c = control(from, to, bend);
-    return `M ${n(from.x)} ${n(from.y)} Q ${n(c.x)} ${n(c.y)} ${n(to.x)} ${n(to.y)}`;
+/** The axis an elbow leaves its start along, and arrives at its end along. */
+export function elbowAxes(r: RouteSpec): [Axis, Axis] {
+  const long: Axis = Math.abs(r.to.x - r.from.x) >= Math.abs(r.to.y - r.from.y) ? 'h' : 'v';
+  return [r.startAxis ?? sideAxis(r.fromLink) ?? long, r.endAxis ?? sideAxis(r.toLink) ?? long];
+}
+
+/** An elbow's corners. `bend`: where along the shared axis the middle segment stands, 0..1 (midpoint absent). */
+function elbowPoints(r: RouteSpec): Point[] {
+  const { from, to } = r;
+  const [start, end] = elbowAxes(r);
+  if (start !== end) {
+    return start === 'h' ? [from, { x: to.x, y: from.y }, to] : [from, { x: from.x, y: to.y }, to];
   }
-  const pts = route === 'elbow' ? elbow(from, to, bend) : [from, to];
+  const t = r.bend ?? 0.5;
+  if (start === 'h') {
+    const mx = from.x + (to.x - from.x) * t;
+    return [from, { x: mx, y: from.y }, { x: mx, y: to.y }, to];
+  }
+  const my = from.y + (to.y - from.y) * t;
+  return [from, { x: from.x, y: my }, { x: to.x, y: my }, to];
+}
+
+// A curve is a cubic with a handle at each end: how far and which way the line
+// pulls as it leaves the start and as it arrives. A curve nobody has shaped is
+// the original quadratic bow, which the same cubic draws exactly.
+
+/** Where a curve's two control points stand, as offsets from the start and from the end. */
+function curveOffsets(r: RouteSpec): [Point, Point] {
+  const q = control(r.from, r.to, r.bend);
+  const own: [Point, Point] = [
+    { x: ((q.x - r.from.x) * 2) / 3, y: ((q.y - r.from.y) * 2) / 3 },
+    { x: ((q.x - r.to.x) * 2) / 3, y: ((q.y - r.to.y) * 2) / 3 },
+  ];
+  return [r.curveFrom ?? own[0], r.curveTo ?? own[1]];
+}
+
+/** A curve's two control points on the board. */
+export function curveControls(r: RouteSpec): [Point, Point] {
+  const [a, b] = curveOffsets(r);
+  return [
+    { x: r.from.x + a.x, y: r.from.y + a.y },
+    { x: r.to.x + b.x, y: r.to.y + b.y },
+  ];
+}
+
+/** The point `t` (0..1) of the way along a curve, by its parameter. */
+function curvePoint(r: RouteSpec, t: number): Point {
+  const [c1, c2] = curveControls(r);
+  const u = 1 - t;
+  return {
+    x: u * u * u * r.from.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * r.to.x,
+    y: u * u * u * r.from.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * r.to.y,
+  };
+}
+
+export function routePath(r: RouteSpec): string {
+  if (r.route === 'curved') {
+    const [c1, c2] = curveControls(r);
+    return `M ${n(r.from.x)} ${n(r.from.y)} C ${n(c1.x)} ${n(c1.y)} ${n(c2.x)} ${n(c2.y)} ${n(r.to.x)} ${n(r.to.y)}`;
+  }
+  const pts = r.route === 'elbow' ? elbowPoints(r) : [r.from, r.to];
   return pts.map((p, i) => `${i ? 'L' : 'M'} ${n(p.x)} ${n(p.y)}`).join(' ');
 }
 
 /** The outward direction at each end, for the markers. */
-export function endAngles(
-  from: Point,
-  to: Point,
-  route: Route = 'straight',
-  bend?: number,
-): { start: number; end: number } {
+export function endAngles(r: RouteSpec): { start: number; end: number } {
   const angle = (a: Point, b: Point) => Math.atan2(b.y - a.y, b.x - a.x);
-  if (route === 'curved') {
-    const c = control(from, to, bend);
-    return { start: angle(c, from), end: angle(c, to) };
+  const { from, to } = r;
+  if (r.route === 'curved') {
+    const [c1, c2] = curveControls(r);
+    // A handle lying on its end has no direction; look at the other handle, then the chord.
+    const out = (end: Point, own: Point, other: Point, far: Point) => {
+      if (own.x !== end.x || own.y !== end.y) return angle(own, end);
+      return other.x !== end.x || other.y !== end.y ? angle(other, end) : angle(far, end);
+    };
+    return { start: out(from, c1, c2, to), end: out(to, c2, c1, from) };
   }
-  const pts = route === 'elbow' ? elbow(from, to, bend) : [from, to];
+  const pts = r.route === 'elbow' ? elbowPoints(r) : [from, to];
   const inner = (a: Point, b: Point) => (a.x === b.x && a.y === b.y ? null : b);
   // A zero-length elbow segment has no direction; fall back to the chord.
   const s = inner(from, pts[1]) ?? to;
@@ -718,35 +1028,47 @@ export function endAngles(
 }
 
 /**
- * Where the fold handle of a curved or elbow route sits: the curve's control
- * point, or the midpoint of an elbow's middle segment. `null` for a route
- * with no fold to drag (straight), or anything that is not a line.
+ * Where an elbow's fold handle sits: the middle of its middle segment — there
+ * is one only when both ends run along the same axis. `null` for anything else.
  */
-export function bendHandleOf(el: Pick<ShapeElement, 'shape' | 'from' | 'to' | 'route' | 'bend'>): Point | null {
-  if (!isLineLike(el) || (el.route !== 'curved' && el.route !== 'elbow')) return null;
-  if (el.route === 'curved') return control(el.from, el.to, el.bend);
-  const pts = elbow(el.from, el.to, el.bend);
+export function bendHandleOf(el: RouteSpec & Pick<ShapeElement, 'shape'>): Point | null {
+  if (!isLineLike(el) || el.route !== 'elbow') return null;
+  const [start, end] = elbowAxes(el);
+  if (start !== end) return null;
+  const pts = elbowPoints(el);
   return { x: (pts[1].x + pts[2].x) / 2, y: (pts[1].y + pts[2].y) / 2 };
 }
 
-/** The `bend` a drag of the fold handle to `p` implies, inverting `bendHandleOf`. */
-export function bendFromDrag(
-  el: Pick<ShapeElement, 'from' | 'to' | 'route'>,
-  p: Point,
-): number {
+/** The `bend` a drag of an elbow's fold handle to `p` implies, inverting `bendHandleOf`. */
+export function bendFromDrag(el: RouteSpec, p: Point): number {
   const dx = el.to.x - el.from.x;
   const dy = el.to.y - el.from.y;
-  if (el.route === 'curved') {
-    const len = Math.hypot(dx, dy) || 1;
-    const mx = (el.from.x + el.to.x) / 2;
-    const my = (el.from.y + el.to.y) / 2;
-    return ((p.x - mx) * -dy + (p.y - my) * dx) / len;
-  }
-  // Elbow: how far along the long axis, clamped off the very ends so the
-  // route never collapses onto an endpoint.
-  const horizontal = Math.abs(dx) >= Math.abs(dy);
-  const t = horizontal ? (dx ? (p.x - el.from.x) / dx : 0.5) : dy ? (p.y - el.from.y) / dy : 0.5;
+  // How far along the shared axis, clamped off the very ends so the route
+  // never collapses onto an endpoint.
+  const t = elbowAxes(el)[0] === 'h' ? (dx ? (p.x - el.from.x) / dx : 0.5) : dy ? (p.y - el.from.y) / dy : 0.5;
   return clamp(t, 0.08, 0.92);
+}
+
+/** The three handles of a curved line: its pull at the start, at the end, and its middle. `null` for any other line. */
+export function curveHandlesOf(
+  el: RouteSpec & Pick<ShapeElement, 'shape'>,
+): { start: Point; end: Point; mid: Point } | null {
+  if (!isLineLike(el) || el.route !== 'curved') return null;
+  const [start, end] = curveControls(el);
+  return { start, end, mid: curvePoint(el, 0.5) };
+}
+
+/** The patch a drag of one of a curve's handles to `p` makes: the pull at an end, or the whole bow sideways. */
+export function curveFromDrag(el: RouteSpec, which: 'start' | 'end' | 'mid', p: Point): { curveFrom: Point; curveTo: Point } {
+  const [a, b] = curveOffsets(el);
+  const r2 = (q: Point) => ({ x: n(q.x), y: n(q.y) });
+  if (which === 'start') return { curveFrom: r2({ x: p.x - el.from.x, y: p.y - el.from.y }), curveTo: r2(b) };
+  if (which === 'end') return { curveFrom: r2(a), curveTo: r2({ x: p.x - el.to.x, y: p.y - el.to.y }) };
+  // Moving the middle of a cubic by d takes both control points 4/3 d.
+  const m = curvePoint(el, 0.5);
+  const dx = ((p.x - m.x) * 4) / 3;
+  const dy = ((p.y - m.y) * 4) / 3;
+  return { curveFrom: r2({ x: a.x + dx, y: a.y + dy }), curveTo: r2({ x: b.x + dx, y: b.y + dy }) };
 }
 
 /** Dash intervals for a stroke of `width`; null for solid. */
@@ -861,13 +1183,17 @@ export function markerPaths(kind: Marker, tip: Point, angle: number, size: numbe
 // its tip an arrow. Anything else stays the stroke it was.
 
 export interface Sketch {
-  shape: 'ellipse' | 'rectangle' | 'triangle' | 'line' | 'arrow';
+  shape: 'ellipse' | 'rectangle' | 'triangle' | 'polygon' | 'line' | 'arrow';
+  /** A polygon's corner count. */
+  sides?: number;
   from: Point;
   to: Point;
 }
 
 /** How sharply the loop has to turn, in degrees, for a corner. */
 const CORNER_DEG = 55;
+/** The gentler turn a polygon's corners are looked for at: five or more corners turn less. */
+const SOFT_CORNER_DEG = 30;
 
 const dist = (a: Point, b: Point) => Math.hypot(b.x - a.x, b.y - a.y);
 
@@ -911,7 +1237,7 @@ function resampleLoop(p: Point[], n: number): Point[] {
 }
 
 /** The loop's corners — where it turns sharply, one per turn — with how sharply. */
-function cornersOf(q: Point[]): { i: number; turn: number }[] {
+function cornersOf(q: Point[], minTurn = CORNER_DEG): { i: number; turn: number }[] {
   const n = q.length;
   const k = 3;
   const turn = q.map((p, i) => {
@@ -926,7 +1252,7 @@ function cornersOf(q: Point[]): { i: number; turn: number }[] {
   });
   const out: { i: number; turn: number }[] = [];
   for (let i = 0; i < n; i++) {
-    if (turn[i] < CORNER_DEG) continue;
+    if (turn[i] < minTurn) continue;
     let peak = true;
     for (let d = 1; d <= k && peak; d++) {
       peak = turn[i] >= turn[(i + d) % n] && turn[i] > turn[(i - d + n) % n];
@@ -976,12 +1302,15 @@ function closedSketch(loop: Point[]): Sketch | null {
   const b = boundsOf(loop);
   const q = resampleLoop(loop, 64);
   const size = (b.width + b.height) / 4;
-  const found = cornersOf(q);
+  // The corners a sketch turns at, at the gentle threshold: a corner drawn a
+  // little soft is still a corner (a four-sided shape with one of them missed
+  // used to be read as a triangle).
+  const soft = cornersOf(q, SOFT_CORNER_DEG);
   // The strongest n corners, in their order round the loop.
   const polygon = (n: number) =>
-    found.length < n
+    soft.length < n
       ? null
-      : [...found]
+      : [...soft]
           .sort((a, c) => c.turn - a.turn)
           .slice(0, n)
           .sort((a, c) => a.i - c.i)
@@ -995,12 +1324,55 @@ function closedSketch(loop: Point[]): Sketch | null {
   const [shape, error] =
     quadError < triError * 0.7 ? (['rectangle', quadError] as const) : (['triangle', triError] as const);
   const round = ellipseError(q, b);
+  // Five to eight corners: a polygon — when it fits clearly better than a
+  // triangle or a rectangle with corners missing, and than the curve a lumpy
+  // circle would also be read as.
+  let many: { sides: number; error: number } | null = null;
+  for (let sides = 5; sides <= 8; sides++) {
+    const corners = polygon(sides);
+    if (!corners) break;
+    const fit = polygonError(q, corners, size);
+    // Fewer corners win a tie: one more has to fit noticeably better.
+    if (!many || fit < many.error * 0.75) many = { sides, error: fit };
+  }
+  if (many && many.error <= 0.06 && many.error < round * 0.5 && many.error < Math.min(triError, quadError) * 0.6) {
+    return { ...boxed('polygon', b), sides: many.sides };
+  }
   // Corners win only when they fit clearly better than a curve: a lumpy
   // circle has "corners" too, and is still a circle.
-  if (error <= 0.15 && error < round * 0.6) return boxed(shape, b);
+  if (error <= 0.15 && error < round * 0.6) {
+    if (shape === 'rectangle') {
+      // Four corners on the middles of the box's sides are a diamond — a
+      // polygon of four sides, first corner up — not a rectangle.
+      const { x, y, width: w, height: h } = b;
+      const box = polygonError(q, [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }], size);
+      const diamond = polygonError(
+        q,
+        [{ x: x + w / 2, y }, { x: x + w, y: y + h / 2 }, { x: x + w / 2, y: y + h }, { x, y: y + h / 2 }],
+        size,
+      );
+      if (diamond < box * 0.5) return { ...boxed('polygon', b), sides: 4 };
+    }
+    return boxed(shape, b);
+  }
   // Lenient: this is what a really bad circle is for.
   if (round <= 0.28) return boxed('ellipse', b);
   return null;
+}
+
+/**
+ * The figure a sketch became, as the pen keeps moving: a line or an arrow has
+ * its tip follow the pen; a closed figure is scaled about its centre by how
+ * much further (or nearer) the pen now is than where it was when the figure
+ * was made (`p0`) — pull outwards to grow it, in to shrink it.
+ */
+export function sketchResize(sketch: Sketch, p0: Point, p: Point): { from: Point; to: Point } {
+  if (sketch.shape === 'line' || sketch.shape === 'arrow') return { from: sketch.from, to: p };
+  const c = { x: (sketch.from.x + sketch.to.x) / 2, y: (sketch.from.y + sketch.to.y) / 2 };
+  const before = dist(p0, c);
+  const k = before > 1 ? Math.max(0.25, Math.min(8, dist(p, c) / before)) : 1;
+  const grow = (q: Point) => ({ x: c.x + (q.x - c.x) * k, y: c.y + (q.y - c.y) * k });
+  return { from: grow(sketch.from), to: grow(sketch.to) };
 }
 
 /** Whether every point of `p` lies near the segment `a`→`b`: within 8% of its length. */
