@@ -21,9 +21,10 @@ All notable changes to the Shareboard mobile app. The format follows
 
 - Fill is two options instead of four buttons: a colour (typed as a HEX code such
   as `#FF8800` or `f80`, or picked) and an opacity from 0 to 100%, in one sheet
-  behind a single chip in the options strip (0% is no fill). A fill still follows
-  the line's colour until it is given a colour of its own. Boards drawn with the
-  old Light / Medium / Solid fills open exactly as before (18%, 50%, 100%).
+  behind a single chip in the options strip (0% is no fill). The border's colour
+  and the fill's are independent: recolouring the border no longer recolours the
+  fill, and a new shape starts with a fill in its border's colour. Boards drawn
+  with the old Light / Medium / Solid fills open exactly as before (18%, 50%, 100%).
 - The options strip keeps only the style controls; copy, cut, stacking order and
   group moved to the hold menu.
 - Edits sent in one burst (a paste of several images) are split to fit the
