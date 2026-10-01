@@ -1,6 +1,6 @@
 /**
  * The board's header: who you are looking at, how to get others in, and the
- * way out.
+ * two buttons everything else hangs off — the menu and the settings.
  *
  * It floats over the canvas behind a blur with a fade to transparent rather
  * than sitting in a bar above it, so the board really does run edge to edge —
@@ -8,7 +8,6 @@
  * shortcut into a sheet, except the code chip, which the design makes directly
  * tappable to copy because that is the single most repeated action in a class.
  */
-import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   Animated,
@@ -22,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Defs, LinearGradient, Rect, Stop, Svg } from 'react-native-svg';
 
 import { Radius, StatusColors } from '@/constants/theme';
-import { useColors, useDark, useSessionStore } from '@/features/session/store';
+import { useColors } from '@/features/session/store';
 import { useT, useTf } from '@/features/i18n/store';
 import { useBoardStore } from '@/features/board/store';
 import { formatShortCode } from '@/utils/short-code';
@@ -87,6 +86,7 @@ export function BoardHeader({
   onOpenMenu,
   onOpenPrivacy,
   onOpenShare,
+  onOpenSettings,
 }: {
   landscape: boolean;
   codeCopied: boolean;
@@ -95,10 +95,9 @@ export function BoardHeader({
   onOpenMenu: () => void;
   onOpenPrivacy: () => void;
   onOpenShare: () => void;
+  onOpenSettings: () => void;
 }) {
   const c = useColors();
-  const dark = useDark();
-  const toggleTheme = useSessionStore((s) => s.toggleTheme);
   const insets = useSafeAreaInsets();
   const t = useT();
   const tf = useTf();
@@ -120,14 +119,6 @@ export function BoardHeader({
     : connection === 'offline'
       ? t.offline
       : t.connecting;
-
-  // A board opened from a deep link, or replaced after an import, is the first
-  // screen in the stack — there is nothing behind it to go back to, so "back"
-  // has to mean "home" rather than doing nothing.
-  const goHome = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/');
-  };
 
   const shown = participants.slice(0, 3);
   const overflow = participants.length - shown.length;
@@ -153,9 +144,9 @@ export function BoardHeader({
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
       <IconButton icon="more" label={t.boardMenu} onPress={onOpenMenu} size={30} iconSize={17} />
       <IconButton
-        icon={dark ? 'sun' : 'moon'}
-        label={dark ? t.themeLight : t.themeDark}
-        onPress={toggleTheme}
+        icon="settings"
+        label={t.sheetSettings}
+        onPress={onOpenSettings}
         size={30}
         iconSize={16}
       />
@@ -255,11 +246,8 @@ export function BoardHeader({
         gap: 6,
       }}
     >
-      {/* Who and where: back, the board, (the actions, in landscape) and who
-          else is here. */}
+      {/* Who and where: the board, (the actions, in landscape) and who else is here. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <IconButton icon="back" label={t.back} onPress={goHome} size={34} />
-
         <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
           <Txt weight="extrabold" size={15} leading={1.2} tracking={-0.2} numberOfLines={1}>
             {meta?.name ?? t.appName}

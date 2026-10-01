@@ -7,6 +7,171 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.2.0-beta] - 2026-09-30
+
+### Added
+
+- Holding a finger on a figure (with the cursor) selects it and opens a menu:
+  copy, cut, paste, duplicate, to front, to back, group / ungroup, delete. On
+  empty board the hold still offers paste.
+- Copy puts the selection on the system clipboard as well as in the app, so it
+  pastes as the same elements — arrows still bound to their shapes, groups,
+  images — on another board, on the web, or on another phone. A picture or text
+  copied in another app pastes as an image or a text element.
+
+### Changed
+
+- Fill is two options instead of four buttons: a colour (typed as a HEX code such
+  as `#FF8800` or `f80`, or picked) and an opacity from 0 to 100%, in one sheet
+  behind a single chip in the options strip (0% is no fill). The border's colour
+  and the fill's are independent: recolouring the border no longer recolours the
+  fill, and a new shape starts with a fill in its border's colour. Boards drawn
+  with the old Light / Medium / Solid fills open exactly as before (18%, 50%, 100%).
+- The options strip keeps only the style controls; copy, cut, stacking order and
+  group moved to the hold menu.
+- Edits sent in one burst (a paste of several images) are split to fit the
+  server's frame limit instead of closing the connection.
+- New app icon (launcher, adaptive and monochrome layers, splash and web favicon);
+  the splash and the adaptive background are white.
+
+### Changed
+
+- Elbow lines choose their ends like a diagramming tool: by default they leave
+  and arrive along the long axis — or straight out of the side of a shape they
+  are bound to; a new row of options picks the direction at each end (across or
+  up and down, in any pairing — two different ones make a single corner), and
+  the middle segment is still dragged.
+- Curved lines are cubic, with a handle on a stem at each end (the direction and
+  pull as the line leaves and arrives) and one in the middle that slides the
+  whole bow. Curves saved before look exactly as they did until they are shaped.
+- A polygon has four sides at least (three is the triangle); a hand-drawn
+  four-sided shape is read as a rectangle, or as a four-sided polygon (a diamond)
+  when it stands on a corner — not as a triangle when one corner was drawn soft.
+- When the pen is held and the stroke is read as a figure (circle, rectangle,
+  polygon, line…), the figure is made on the board at once and stays: the pen,
+  still down, then resizes it (pull out to grow it, in to shrink it; a line's tip
+  follows) instead of turning it back into the stroke. One undo takes it all back.
+
+### Fixed
+
+- The AI preview can no longer take the answer with it: if a drawing cannot be
+  painted, the reply and the Add/Discard buttons still show. (A polygon in a
+  drawing was the cause of the error that replaced the answer, fixed with the
+  polygon maths.)
+
+### Changed
+
+- A line's or arrow's label now sits **in** the line: the line is cut away
+  behind the text (canvas, editor and SVG export alike), and the label is
+  dragged along the line to move it (a dashed frame shows it is held when the
+  line is selected). A touch on the label still picks the line. The place is a
+  new `labelAt` (0..1 along the route).
+- More connection points: an ellipse offers eight on its outline, a triangle and
+  a polygon their corners and the middle of each side, a rectangle its corners
+  and sides' middles, plus the centre (which aims at the other end). Line ends
+  land on the real outline — no longer on the shape's box — and follow when the
+  shape is resized.
+- The pencil reads a hand-drawn polygon of five to eight corners as a polygon,
+  and a held stroke turns into its figure after 700 ms instead of 800.
+- Text fields have a clearly visible edge (accent, with a halo, while typing)
+  instead of a hairline lost on the frosted panels; rows that hold a bare field
+  draw one ring instead of two.
+- The AI chat takes the whole height of the screen and reads top to bottom —
+  the oldest message first, the newest last, following it down — with the input
+  pinned under the list.
+- A handle you take hold of keeps its distance from your finger.
+
+### Fixed
+
+- Polygons failed with "undefined is not a function": their corner maths is a
+  worklet that captured a `clamp` helper declared further down the file, which
+  is `undefined` at the moment a worklet is created. It now captures nothing it
+  does not need.
+- A line's label no longer has the line through it: it stands beside the line's
+  midpoint on the side facing up (to the right of a vertical line), pushed off
+  just far enough to clear it; a flat line's label stays exactly where it was.
+  The editor, the canvas and the SVG export agree on the place.
+- Double-tapping a line to write on it no longer moves an end of it: a handle
+  keeps its distance from the finger that took hold of it instead of jumping
+  under it, a nudge of a pixel or two is not committed as a move, and a move
+  cannot pick up the offset of the drag before it.
+- Sheets shrink to the screen and scroll (Settings' delete button was cut off,
+  out of reach), Settings uses the tall sheet, and a sheet lifts above the
+  keyboard (the join code input was covered).
+- The Menu is one list again, without the heavy divider between groups.
+
+### Changed
+
+- There is no home screen. The app opens on the whiteboard you were last at, or
+  — the first time, or when it is gone — makes a blank one and opens that, so
+  there is always something to draw on at once. A guest name stands in until you
+  pick one in the settings.
+- Two buttons on the whiteboard hold the rest: **Menu** (new whiteboard, my
+  whiteboards, join with a code, import, export, who can edit, who is here, the
+  assistant) and **Settings** (your name and icon, the board's name, the
+  switches, theme, language). The back button and the header's theme toggle are
+  gone; both live in those two.
+
+### Fixed
+
+- Drawing or previewing a polygon no longer fails: its corner maths is a worklet
+  and named the whole `LIMITS` object (which holds a RegExp, which cannot cross
+  to the UI thread); it now uses plain numbers.
+
+### Performance
+
+- Pan and pinch run on the UI thread: they move the camera's shared value
+  directly and the store gets the camera once, when the fingers lift. The
+  selection frame and its handles sit in the camera's group, and the peers'
+  cursors, the "held by" tags and the label button follow the same value, so a
+  pan or a pinch no longer renders React or re-records the board at all.
+- The pen draws on the UI thread: each touch sample appends to a shared buffer
+  and the live stroke is rebuilt there (same curve as the committed one), with
+  no JS work or React render per sample. The JS side only starts the stroke,
+  reads a held stroke as a figure, and commits on lift. One-finger panning
+  (hand tool, viewers) does the same.
+- Carrying a selection with the cursor and drawing a rectangle, ellipse,
+  triangle or polygon also run on the UI thread: the dragged elements and their
+  frame are drawn through a shared offset, and the shape preview is rebuilt from
+  two shared corners — no render per touch sample. Lines bound to what moves
+  are still re-laid by JS, once a frame; lines and arrows are drawn by JS.
+- The Android glass snapshots are taken once the board holds still (140 ms)
+  instead of every ~90 ms while it moves, and a new one re-renders the panels'
+  blur canvases only, not the whole board screen.
+- Hit tests skip a stroke whose bounding box is nowhere near the point, so the
+  eraser no longer walks every segment of every stroke per touch sample.
+- A rotated element no longer gets a fresh copy on every render (which defeated
+  its memo), and polygons build their path once per box.
+
+### Fixed
+
+- Undoing an erase (or a cut, or redoing a draw) puts the element back in its
+  layer instead of on top of everything.
+- A text is one undo step, and one that is left empty leaves none; one eraser
+  scrub is one step, however many figures it crossed.
+- Undo and redo let go of a selected element that is no longer there.
+- An error about a single request (a refused batch, a rate limit) is a toast
+  and a resync, not the "could not open" screen; edits waiting when the
+  connection dropped are kept and sent after the rejoin (they used to be sent
+  right behind `join`, before the server had the client on the board).
+
+### Added
+
+- A perf HUD (UI and JS frame rate) behind `EXPO_PUBLIC_PERF_HUD=1`, an
+  `EXPO_PUBLIC_NO_MIRROR=1` switch for the Android glass snapshots, the `perf`
+  and `perf-nomirror` EAS profiles, and `test/bench-board.mjs`, which writes a
+  fixed 730-element board to import and measure against.
+
+### Changed
+
+- Home is more compact and keeps one card height across its tabs; it floats over
+  an empty board (the dot grid) instead of a blurred demo board, which is gone.
+- Home has a fourth tab, *Import*, and the logo sits above the name.
+- All icons are [Phosphor](https://phosphoricons.com) (`phosphor-react-native`),
+  mapped in `components/ui/Icon.tsx`.
+- The accent is Apple's blue (`#0071E3`); filled buttons are flat with a hairline
+  ring, a tight shadow and a deeper shade while pressed. Unverified on a device.
+
 ## [1.1.0-beta] - 2026-09-29
 
 ### Added

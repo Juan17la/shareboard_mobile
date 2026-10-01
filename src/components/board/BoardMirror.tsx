@@ -13,26 +13,60 @@
  * — so the window size is watched as well.
  */
 import { Image, Rect, type CanvasRef, type SkImage } from '@shopify/react-native-skia';
-import { useCallback, useEffect, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, type ReactNode, type RefObject } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
+import { create } from 'zustand';
 
 import { useBoardStore } from '@/features/board/store';
 import { useColors } from '@/features/session/store';
 
 import type { SceneSize } from '../ui/Glass';
 
-const ENABLED = Platform.OS === 'android';
-/** Snapshot cadence while the board is changing. */
-const EVERY_MS = 90;
+// `EXPO_PUBLIC_NO_MIRROR=1` turns the snapshots off, to measure what they cost.
+const ENABLED = Platform.OS === 'android' && process.env.EXPO_PUBLIC_NO_MIRROR !== '1';
+/**
+ * How long the board holds still before it is photographed. Not while it
+ * moves: a snapshot is a full-screen GPU read-back, and taking one every
+ * ~90 ms during a pan or a stroke was a large part of what the frame rate
+ * paid for the frosted panels. They show the board as it was a moment ago
+ * until it settles — blurred and small, that is hard to see.
+ */
+const IDLE_MS = 140;
+/** How long a replaced snapshot is kept: the panels' canvases render on their own schedule. */
+const DISPOSE_AFTER_MS = 1000;
+
+/**
+ * The latest snapshot, in a store of its own so a new one re-renders the
+ * panels' blur canvases and nothing else — it used to be board-screen state,
+ * and the whole screen rendered once per snapshot.
+ */
+const useMirrorImage = create<{ image: SkImage | null }>(() => ({ image: null }));
+
+function publish(next: SkImage | null) {
+  const prev = useMirrorImage.getState().image;
+  useMirrorImage.setState({ image: next });
+  if (prev) setTimeout(() => prev.dispose(), DISPOSE_AFTER_MS);
+}
+
+/** What each panel's blur canvas paints as the scene behind it. */
+function MirrorLayer({ width, height, ground }: { width: number; height: number; ground: string }) {
+  const image = useMirrorImage((s) => s.image);
+  return (
+    <>
+      {/* The canvas surface is transparent where nothing is drawn; the ground
+          comes from the view behind it, so paint it here too. */}
+      <Rect x={0} y={0} width={width} height={height} color={ground} />
+      {image ? <Image image={image} x={0} y={0} width={width} height={height} fit="fill" /> : null}
+    </>
+  );
+}
 
 export function useBoardMirror(canvasRef: RefObject<CanvasRef | null>) {
-  const [image, setImage] = useState<SkImage | null>(null);
   const { width, height } = useWindowDimensions();
 
   useEffect(() => {
     if (!ENABLED) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    let again = false;
     let gone = false;
 
     const capture = async () => {
@@ -53,22 +87,16 @@ export function useBoardMirror(canvasRef: RefObject<CanvasRef | null>) {
         next.dispose();
         return;
       }
-      setImage(next);
+      publish(next);
     };
 
+    // Every change pushes the snapshot back; it is taken once things go quiet.
     const schedule = () => {
-      if (timer) {
-        again = true;
-        return;
-      }
-      void capture();
+      if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;
-        if (again) {
-          again = false;
-          schedule();
-        }
-      }, EVERY_MS);
+        void capture();
+      }, IDLE_MS);
     };
 
     const unsub = useBoardStore.subscribe((s, prev) => {
@@ -77,7 +105,8 @@ export function useBoardMirror(canvasRef: RefObject<CanvasRef | null>) {
         s.camera !== prev.camera ||
         s.liveStroke !== prev.liveStroke ||
         s.liveShape !== prev.liveShape ||
-        s.liveSketch !== prev.liveSketch
+        s.liveSketch !== prev.liveSketch ||
+        s.liveErased !== prev.liveErased
       ) {
         schedule();
       }
@@ -91,22 +120,14 @@ export function useBoardMirror(canvasRef: RefObject<CanvasRef | null>) {
     };
   }, [canvasRef, width, height]);
 
-  // Frees each snapshot once the next one has replaced it, and the last one on
-  // unmount.
-  useEffect(() => () => image?.dispose(), [image]);
+  // The last snapshot goes with the board screen.
+  useEffect(() => () => publish(null), []);
 
   const c = useColors();
   return useCallback(
     (size: SceneSize): ReactNode => (
-      <>
-        {/* The canvas surface is transparent where nothing is drawn; the ground
-            comes from the view behind it, so paint it here too. */}
-        <Rect x={0} y={0} width={size.width} height={size.height} color={c.background} />
-        {image ? (
-          <Image image={image} x={0} y={0} width={size.width} height={size.height} fit="fill" />
-        ) : null}
-      </>
+      <MirrorLayer width={size.width} height={size.height} ground={c.background} />
     ),
-    [image, c.background],
+    [c.background],
   );
 }

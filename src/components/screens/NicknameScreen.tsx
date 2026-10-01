@@ -80,7 +80,7 @@ export function NicknameScreen({
             </Txt>
           </View>
 
-          <GlassPanel level="row" radius={Radius.xl} border={c.border}>
+          <GlassPanel level="row" radius={Radius.xl} border={c.borderField}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 }}>
               <Avatar name={draft || '?'} color={nickColor} avatar={avatar} size={46} />
               <View style={{ flex: 1, minWidth: 0 }}>

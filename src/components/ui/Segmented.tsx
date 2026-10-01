@@ -1,6 +1,5 @@
 import { Pressable, View } from 'react-native';
 
-import { Radius } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 
 import { Txt } from './Text';
@@ -10,7 +9,7 @@ export interface SegmentOption<T extends string> {
   label: string;
 }
 
-/** Two-or-three-way choice: visibility, export format. */
+/** Two-to-four-way choice: visibility, export format. */
 export function Segmented<T extends string>({
   options,
   value,
@@ -27,9 +26,9 @@ export function Segmented<T extends string>({
     <View
       style={{
         flexDirection: 'row',
-        gap: 7,
-        padding: 5,
-        borderRadius: Radius.lg,
+        gap: 2,
+        padding: 3,
+        borderRadius: 11,
         backgroundColor: c.surfaceSelected,
         opacity: disabled ? 0.5 : 1,
       }}
@@ -47,21 +46,21 @@ export function Segmented<T extends string>({
             style={{
               flex: 1,
               alignItems: 'center',
-              paddingVertical: 9,
-              borderRadius: 11,
+              paddingVertical: 7,
+              borderRadius: 9,
               backgroundColor: active ? c.background : 'transparent',
               ...(active
                 ? {
                     shadowColor: '#151A2D',
-                    shadowOpacity: 0.1,
-                    shadowRadius: 6,
-                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.14,
+                    shadowRadius: 3,
+                    shadowOffset: { width: 0, height: 1 },
                     elevation: 2,
                   }
                 : null),
             }}
           >
-            <Txt weight="extrabold" size={12.5} color={active ? c.accent : c.textSecondary}>
+            <Txt weight="bold" size={12.5} color={active ? c.accentText : c.textSecondary}>
               {opt.label}
             </Txt>
           </Pressable>
