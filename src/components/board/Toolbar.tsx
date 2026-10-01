@@ -18,7 +18,7 @@
 import { useState } from 'react';
 import { Pressable, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Path as SvgPath, Svg } from 'react-native-svg';
+import { Path as SvgPath, Rect, Svg } from 'react-native-svg';
 import { useShallow } from 'zustand/shallow';
 
 import { DrawingPalette, StrokeSizes, inkFor } from '@/constants/theme';
@@ -656,14 +656,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                     setConfig({ width: cycle(StrokeSizes, cur.width) });
                   }}
                 >
-                  <View
-                    style={{
-                      width: Math.min(20, cur.width + 3),
-                      height: Math.min(20, cur.width + 3),
-                      borderRadius: 10,
-                      backgroundColor: c.text,
-                    }}
-                  />
+                  <WidthGlyph width={cur.width} />
                 </MiniButton>
               ) : null}
 
@@ -827,6 +820,30 @@ const stripStyle = {
 
 /** What a box opens: the same wrap, a little tighter to the strip it hangs from. */
 const popoverStyle = { ...stripStyle, paddingVertical: 8 } as const;
+
+/**
+ * Stroke width, as design tools draw it: four bars, each thicker than the last,
+ * one per size. The bar for the width in use is solid, the rest are faded — so
+ * the icon says "thickness" and shows which one is set.
+ */
+function WidthGlyph({ width }: { width: number }) {
+  const c = useColors();
+  const bars = [
+    { y: 1, h: 1.2 },
+    { y: 5, h: 2.4 },
+    { y: 10, h: 3.8 },
+    { y: 15.5, h: 5.5 },
+  ];
+  // The nearest size, for a selected figure drawn at a width the buttons never set.
+  const now = StrokeSizes.reduce((best, size, i) => (Math.abs(size - width) < Math.abs(StrokeSizes[best] - width) ? i : best), 0);
+  return (
+    <Svg width={20} height={22} viewBox="0 0 20 22">
+      {bars.map((bar, i) => (
+        <Rect key={i} x={1} y={bar.y} width={18} height={bar.h} rx={bar.h / 2} fill={c.text} opacity={i === now ? 1 : 0.3} />
+      ))}
+    </Svg>
+  );
+}
 
 function Divider() {
   const c = useColors();
