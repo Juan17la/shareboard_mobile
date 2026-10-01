@@ -17,6 +17,12 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ### Fixed
 
+- An elbow's handle is back on every route that has a middle segment, not only
+  the plain three-segment ones: wrapped round a shape, or with an end leaving
+  sideways, the diamond on the middle run still slides it where you want it. It
+  stops where the line would reach a shape or fold back on itself. The paths and
+  directions the elbow takes are as they were.
+
 - An elbow arrow no longer runs through the shape it is bound to. Every link
   leaves its shape straight out, away from the shape's centre — not only one on a
   rectangle's side, but any point of an ellipse, a triangle or a polygon's outline —

@@ -285,7 +285,15 @@ assert.deepEqual(bendHandleOf({ ...step, shape: 'arrow', ...draggedElbow }), { x
   const c = spec({ x: -200, y: 250 }, { id: 'C', u: 1, v: 0.5 });
   const wrapped = points(c);
   assert.equal(enters(wrapped, A) || enters(wrapped, boxes.C), false, `no shape crossed: ${JSON.stringify(wrapped)}`);
-  assert.equal(bendHandleOf({ ...c, shape: 'arrow' }), null);
+  // The wrap has a middle run too, and its handle: drag it further out and the line follows, never into a shape.
+  assert.deepEqual(bendHandleOf({ ...c, shape: 'arrow' }), { x: 118, y: 150 });
+  const out = { ...c, ...elbowDragPatch(c, { x: 160, y: 150 }) };
+  assert.equal(bendHandleOf({ ...out, shape: 'arrow' }).x > 150, true, 'dragged further out');
+  assert.equal(enters(points(out), A) || enters(points(out), boxes.C), false, 'still round the shapes');
+  // Dragged in, towards the shapes, it stops short of them instead of crossing.
+  const inward = { ...c, ...elbowDragPatch(c, { x: 50, y: 150 }) };
+  assert.equal(enters(points(inward), A) || enters(points(inward), boxes.C), false, `stopped at the shape: ${JSON.stringify(points(inward))}`);
+  // A free two-segment Z keeps its handle and its old way of being dragged.
 
   // Turning the arrow's end to another side of the same shape turns the way it leaves.
   const top = points(spec({ x: 300, y: -100 }, null, { fromLink: { id: 'A', u: 0.5, v: 0 }, from: { x: 50, y: 0 } }));
@@ -319,7 +327,8 @@ assert.deepEqual(bendHandleOf({ ...step, shape: 'arrow', ...draggedElbow }), { x
       };
       const a = onOutline(A);
       const b = onOutline(B);
-      const pts = points({ from: a.p, to: b.p, route: 'elbow', fromLink: a.link('A'), toLink: b.link('B') });
+      const bend = n % 2 ? undefined : rnd() * 6 - 2;
+      const pts = points({ from: a.p, to: b.p, route: 'elbow', fromLink: a.link('A'), toLink: b.link('B'), bend });
       const last = pts.length - 2;
       pts.slice(1).forEach((q, i) => {
         const p = pts[i];
@@ -328,7 +337,7 @@ assert.deepEqual(bendHandleOf({ ...step, shape: 'arrow', ...draggedElbow }), { x
           const x = p.x + ((q.x - p.x) * k) / 10;
           const y = p.y + ((q.y - p.y) * k) / 10;
           const inside = (box) => x > box.x + 1e-6 && x < box.x + box.width - 1e-6 && y > box.y + 1e-6 && y < box.y + box.height - 1e-6;
-          const msg = `layout ${n}: ${JSON.stringify({ A, B, pts })}`;
+          const msg = `layout ${n}: ${JSON.stringify({ A, B, pts, bend, a: a.p, b: b.p })}`;
           if (i === 0) assert.ok(outside(A, { x, y }) && !inside(B), `leaves A outward — ${msg}`);
           else if (i === last) assert.ok(outside(B, { x, y }) && !inside(A), `arrives at B from outside — ${msg}`);
           else assert.ok(!inside(A) && !inside(B), `goes round — ${msg}`);
