@@ -192,7 +192,16 @@ export const useSessionStore = create<SessionState>()(
         };
       },
       onRehydrateStorage: () => () => {
-        useSessionStore.setState({ hydrated: true });
+        // Nobody is asked their name before they can draw: until they pick one
+        // in Settings, a guest name stands in (the identity screen is left for
+        // a clash with someone's name on the board).
+        const { nickname, lang } = useSessionStore.getState();
+        useSessionStore.setState({
+          hydrated: true,
+          ...(nickname
+            ? null
+            : { nickname: `${lang === 'es' ? 'Invitado' : 'Guest'} ${1000 + Math.floor(Math.random() * 9000)}` }),
+        });
       },
     },
   ),

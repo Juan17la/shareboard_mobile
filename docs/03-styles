@@ -49,8 +49,8 @@ pizarra oscura (`inkFor`) sin cambiar el dato: quien esté en claro la ve igual.
 
 | Token | Valor | Uso |
 |---|---|---|
-| `accent` | `#7A1F2B` | CTA principal, herramienta activa, selección |
-| `accent-soft` | `rgba(122,31,43,.11)` | fila seleccionada, chip de icono |
+| `accent` | `#0071E3` | CTA principal, herramienta activa, selección |
+| `accent-soft` | `rgba(0,113,227,.11)` | fila seleccionada, chip de icono |
 | `danger` | `#C4353A` | eliminar |
 | `danger-bright` | `#E5484D` | borde/realce destructivo |
 | `warn` | `#B4530A` | confirmación reversible (vaciar) |
@@ -82,7 +82,7 @@ Más un selector "Otro" (`components/ui/ColorPickerSheet.tsx`): una rejilla de
 tonos × luminosidades, no deslizadores. Se elige de un toque y no hay que saber
 qué es la saturación.
 
-**Colores de identidad** (`NicknameColors`, la pantalla de nombre): `#7A1F2B`,
+**Colores de identidad** (`NicknameColors`, la pantalla de nombre): `#0071E3`,
 `#E5484D`, `#F76808`, `#30A46C`, `#0091FF`, `#8E4EC6`. El color elegido viaja
 en el `join` y el servidor lo respeta salvo que ya lo tenga otra persona.
 

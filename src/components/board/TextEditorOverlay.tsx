@@ -19,6 +19,7 @@ import {
   boxOf,
   isLineLike,
   labelLines,
+  lineLabelCentre,
   LABEL_PAD,
   rotationOf,
   shapeBounds,
@@ -77,12 +78,12 @@ export function TextEditorOverlay({
     const width = draft.width ? draft.width * s : Math.max(b.width * s + fontSize * 2, 80);
     box = { x: b.x * s + camera.x, y: b.y * s + camera.y, width, height: b.height * s };
   } else if (isLineLike(draft)) {
-    // A line's label floats just above its midpoint (ShapeLabel).
-    const b = shapeBounds(draft);
-    const lines = labelLines(draft, fontSize / s).length;
-    const cx = (b.x + b.width / 2) * s + camera.x;
-    const cy = (b.y + b.height / 2) * s + camera.y - (lines * step) / 2 - fontSize * 0.4;
-    box = { x: cx - 120, y: cy - (lines * step) / 2, width: 240, height: lines * step };
+    // A line's label is centred where it stands along the line (ShapeLabel).
+    const lines = labelLines(draft, fontSize / s);
+    const at = lineLabelCentre(draft);
+    const cx = at.x * s + camera.x;
+    const cy = at.y * s + camera.y;
+    box = { x: cx - 120, y: cy - (lines.length * step) / 2, width: 240, height: lines.length * step };
   } else {
     // A box's label is centred in it, wrapped inside its padding.
     const b = shapeBounds(draft);

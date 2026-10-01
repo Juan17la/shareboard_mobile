@@ -37,6 +37,8 @@ export type ServerMessage =
   | { type: 'participants'; participants: Participant[] }
   | { type: 'cursor'; from: UserId; at: Point }
   | { type: 'permissions'; meta: BoardMeta; you: Participant }
+  /** The board as it stands, after a batch this client sent was refused. */
+  | { type: 'resync'; elements: BoardElement[]; seq: number }
   | { type: 'error'; code: ServerErrorCode; message: string }
   | { type: 'pong'; t: number };
 

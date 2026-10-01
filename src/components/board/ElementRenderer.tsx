@@ -1,5 +1,6 @@
 import {
   DashPathEffect,
+  Circle,
   Group,
   Image,
   Line,
@@ -7,34 +8,36 @@ import {
   Path,
   Rect,
   RoundedRect,
-  Circle,
   Skia,
   useImage,
   usePathValue,
   type SkFont,
+  type Transforms3d,
   type SkPath,
   type SkPathBuilder,
 } from '@shopify/react-native-skia';
 import { memo, useMemo } from 'react';
-import type { SharedValue } from 'react-native-reanimated';
+import type { DerivedValue, SharedValue } from 'react-native-reanimated';
 
 import { Palettes, inkFor } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 import {
+  addStroke,
   anchorsOf,
   bendHandleOf,
+  curveHandlesOf,
   boxOf,
   canRotate,
-  curveSegment,
   dashIntervals,
   elementBounds,
   endAngles,
   handlesOf,
   headsOf,
   isLineLike,
+  labelBox,
   labelLines,
+  lineLabelCentre,
   markerPaths,
-  n as round,
   polygonPoints,
   rotateHandleOf,
   rotationOf,
@@ -53,6 +56,7 @@ import {
   type Marker,
   type Point,
   type ShapeElement,
+  type ShapeKind,
 } from '@/features/board/model';
 import type { Camera } from '@/features/board/store';
 
@@ -145,10 +149,8 @@ function ShapeLabel({ el }: { el: ShapeElement }) {
   const step = fontSize * TEXT_LINE_HEIGHT;
   // Wrapped inside the figure (a line's label only breaks where typed).
   const lines = labelLines(el, fontSize);
-  const cx = x + width / 2;
-  const cy = isLineLike(el)
-    ? y + height / 2 - (lines.length * step) / 2 - fontSize * 0.4
-    : y + height / 2;
+  // Centred in a box; on a line, where it stands along it (the line is cut behind it).
+  const { x: cx, y: cy } = isLineLike(el) ? lineLabelCentre(el) : { x: x + width / 2, y: y + height / 2 };
   // Skia draws from the baseline: centre the block, then sit each line on it.
   const top = cy - ((lines.length - 1) * step) / 2 + fontSize * 0.35;
   return (
@@ -169,46 +171,50 @@ function ShapeLabel({ el }: { el: ShapeElement }) {
 
 /**
  * The selection frame: a dashed box round the selection and, for a single
- * element, a handle on each corner (each endpoint for a line). Rendered in
- * screen space — outside the camera group — so the handles stay finger-sized
- * at any zoom.
+ * element, a handle on each corner (each endpoint for a line).
+ *
+ * Drawn in board space, inside the camera's group, so a pan moves it with the
+ * board on the UI thread; its pixel sizes (handles, hairlines, dashes) come
+ * from `scale`, the zoom the store last settled on — a pinch resizes them when
+ * it lifts. Plain nodes, placed with the elements they frame, so a dragged
+ * frame and the thing it frames are always in the same frame of the same render.
  */
 export const HANDLE_SIZE = 12;
 
 /** How opaque an element someone else holds is painted. */
 export const HELD_ALPHA = 0.45;
 
-/** A dashed screen-space box round board-space bounds: the frame, and the marquee. */
+/** A dashed box round board-space bounds, 4 screen px outside them: the frame, and the marquee. */
 export function DashedBox({
   b,
-  camera,
+  scale,
   angle = 0,
   color,
 }: {
   b: Bounds;
-  camera: { x: number; y: number; scale: number };
+  scale: number;
   /** Turns the box about its centre, for a single turned element. */
   angle?: number;
   /** The accent unless given: a holder's presence colour. */
   color?: string;
 }) {
   const c = useColors();
-  const origin = {
-    x: (b.x + b.width / 2) * camera.scale + camera.x,
-    y: (b.y + b.height / 2) * camera.scale + camera.y,
-  };
+  const k = 1 / scale;
   return (
-    <Group transform={angle ? [{ rotate: angle }] : undefined} origin={origin}>
+    <Group
+      transform={angle ? [{ rotate: angle }] : undefined}
+      origin={{ x: b.x + b.width / 2, y: b.y + b.height / 2 }}
+    >
       <Rect
-        x={b.x * camera.scale + camera.x - 4}
-        y={b.y * camera.scale + camera.y - 4}
-        width={b.width * camera.scale + 8}
-        height={b.height * camera.scale + 8}
+        x={b.x - 4 * k}
+        y={b.y - 4 * k}
+        width={b.width + 8 * k}
+        height={b.height + 8 * k}
         color={color ?? c.accent}
         style="stroke"
-        strokeWidth={1.5}
+        strokeWidth={1.5 * k}
       >
-        <DashPathEffect intervals={[5, 4]} />
+        <DashPathEffect intervals={[5 * k, 4 * k]} />
       </Rect>
     </Group>
   );
@@ -216,19 +222,21 @@ export function DashedBox({
 
 export function SelectionFrame({
   elements,
-  camera,
+  scale,
 }: {
   elements: BoardElement[];
-  camera: { x: number; y: number; scale: number };
+  scale: number;
 }) {
   const c = useColors();
-  const sx = (v: number) => v * camera.scale + camera.x;
-  const sy = (v: number) => v * camera.scale + camera.y;
+  const k = 1 / scale;
+  const half = (HANDLE_SIZE / 2) * k;
+  const hair = 1.5 * k;
   const one = elements.length === 1 ? elements[0] : null;
   const line = one?.kind === 'shape' && isLineLike(one) ? one : null;
-  const fold = line ? bendHandleOf(line) : null;
+  const curve = line ? curveHandlesOf(line) : null;
+  const fold = curve ? curve.mid : line ? bendHandleOf(line) : null;
   const b = one ? elementBounds(one) : unionBounds(elements);
-  const knob = one ? rotateHandleOf(one, camera.scale) : null;
+  const knob = one ? rotateHandleOf(one, scale) : null;
   const top = one ? boxOf(one) : null;
   const knobStem = one && knob && top ? toWorld(one, { x: top.x + top.width / 2, y: top.y }) : null;
   return (
@@ -236,98 +244,63 @@ export function SelectionFrame({
       {/* The rotate knob: a round handle on a short stem above the top edge. */}
       {knob && knobStem ? (
         <Group>
-          <Line
-            p1={{ x: sx(knobStem.x), y: sy(knobStem.y) }}
-            p2={{ x: sx(knob.x), y: sy(knob.y) }}
-            color={c.accent}
-            strokeWidth={1.5}
-          />
-          <Circle cx={sx(knob.x)} cy={sy(knob.y)} r={HANDLE_SIZE / 2 + 1} color={c.background} />
-          <Circle
-            cx={sx(knob.x)}
-            cy={sy(knob.y)}
-            r={HANDLE_SIZE / 2 + 1}
-            color={c.accent}
-            style="stroke"
-            strokeWidth={1.5}
-          />
+          <Line p1={knobStem} p2={knob} color={c.accent} strokeWidth={hair} />
+          <Circle cx={knob.x} cy={knob.y} r={half + k} color={c.background} />
+          <Circle cx={knob.x} cy={knob.y} r={half + k} color={c.accent} style="stroke" strokeWidth={hair} />
         </Group>
       ) : null}
       {line ? (
         // A line has no box to frame, so the line itself lights up: a soft
         // accent halo along its route, and round handles at the two ends it
         // can be dragged by — unmistakably not the square corners of a box.
-        <Group
-          transform={[{ translateX: camera.x }, { translateY: camera.y }, { scale: camera.scale }]}
-        >
-          <Halo line={line} color={c.accent} width={line.strokeWidth + 8 / camera.scale} />
-        </Group>
+        <>
+          <Halo line={line} color={c.accent} width={line.strokeWidth + 8 * k} />
+          {/* The label is held by its own frame: drag it to move it along the line. */}
+          {line.text ? (
+            <DashedBox
+              b={labelBox(line, labelLines(line, line.fontSize ?? SHAPE_TEXT_SIZE), line.fontSize ?? SHAPE_TEXT_SIZE)}
+              scale={scale}
+            />
+          ) : null}
+        </>
       ) : one && canRotate(one) ? (
         // One turnable element is framed along its own (turned) box.
-        <DashedBox b={boxOf(one)} camera={camera} angle={rotationOf(one)} />
+        <DashedBox b={boxOf(one)} scale={scale} angle={rotationOf(one)} />
       ) : (
-        <DashedBox b={b} camera={camera} />
+        <DashedBox b={b} scale={scale} />
       )}
+      {/* A curve's pull at each end: a round handle on a stem out of the end it
+          shapes — drag it to change which way the line leaves, and how hard. */}
+      {line && curve
+        ? [
+            [line.from, curve.start],
+            [line.to, curve.end],
+          ].map(([end, handle], i) => (
+            <Group key={`pull-${i}`}>
+              <Line p1={end} p2={handle} color={c.accent} strokeWidth={hair} opacity={0.6} />
+              <Circle cx={handle.x} cy={handle.y} r={half * 0.8} color={c.background} />
+              <Circle cx={handle.x} cy={handle.y} r={half * 0.8} color={c.accent} style="stroke" strokeWidth={hair} />
+            </Group>
+          ))
+        : null}
       {/* A curved or elbow line's fold: a diamond handle, dragged to reshape
           how far it bows or where it turns. */}
       {fold ? (
-        <Group
-          key="fold"
-          transform={[
-            { translateX: sx(fold.x) },
-            { translateY: sy(fold.y) },
-            { rotate: Math.PI / 4 },
-          ]}
-        >
-          <Rect
-            x={-HANDLE_SIZE / 2}
-            y={-HANDLE_SIZE / 2}
-            width={HANDLE_SIZE}
-            height={HANDLE_SIZE}
-            color={c.background}
-          />
-          <Rect
-            x={-HANDLE_SIZE / 2}
-            y={-HANDLE_SIZE / 2}
-            width={HANDLE_SIZE}
-            height={HANDLE_SIZE}
-            color={c.accent}
-            style="stroke"
-            strokeWidth={1.5}
-          />
+        <Group key="fold" transform={[{ translateX: fold.x }, { translateY: fold.y }, { rotate: Math.PI / 4 }]}>
+          <Rect x={-half} y={-half} width={2 * half} height={2 * half} color={c.background} />
+          <Rect x={-half} y={-half} width={2 * half} height={2 * half} color={c.accent} style="stroke" strokeWidth={hair} />
         </Group>
       ) : null}
       {(one ? handlesOf(one) : []).map((h, i) =>
         line ? (
           <Group key={i}>
-            <Circle cx={sx(h.x)} cy={sy(h.y)} r={HANDLE_SIZE / 2 + 1} color={c.accent} />
-            <Circle
-              cx={sx(h.x)}
-              cy={sy(h.y)}
-              r={HANDLE_SIZE / 2 + 1}
-              color={c.background}
-              style="stroke"
-              strokeWidth={1.5}
-            />
+            <Circle cx={h.x} cy={h.y} r={half + k} color={c.accent} />
+            <Circle cx={h.x} cy={h.y} r={half + k} color={c.background} style="stroke" strokeWidth={hair} />
           </Group>
         ) : (
           <Group key={i}>
-            <Rect
-              x={sx(h.x) - HANDLE_SIZE / 2}
-              y={sy(h.y) - HANDLE_SIZE / 2}
-              width={HANDLE_SIZE}
-              height={HANDLE_SIZE}
-              color={c.background}
-            />
-            <Rect
-              x={sx(h.x) - HANDLE_SIZE / 2}
-              y={sy(h.y) - HANDLE_SIZE / 2}
-              width={HANDLE_SIZE}
-              height={HANDLE_SIZE}
-              color={c.accent}
-              style="stroke"
-              strokeWidth={1.5}
-            />
+            <Rect x={h.x - half} y={h.y - half} width={2 * half} height={2 * half} color={c.background} />
+            <Rect x={h.x - half} y={h.y - half} width={2 * half} height={2 * half} color={c.accent} style="stroke" strokeWidth={hair} />
           </Group>
         ),
       )}
@@ -337,7 +310,7 @@ export function SelectionFrame({
 
 /** The soft accent along a selected line's route. */
 function Halo({ line, color, width }: { line: ShapeElement; color: string; width: number }) {
-  const path = useSvgPath(routePath(line.from, line.to, line.route, line.bend));
+  const path = useSvgPath(routePath(line));
   if (!path) return null;
   return (
     <Path
@@ -375,7 +348,7 @@ function ShapeView({ el, ground }: { el: ShapeElement; ground: string }) {
 
 function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
   // Only a line or an arrow is drawn along a route; the other kinds pay nothing.
-  const route = useSvgPath(isLineLike(el) ? routePath(el.from, el.to, el.route, el.bend) : null);
+  const route = useSvgPath(isLineLike(el) ? routePath(el) : null);
   const x = Math.min(el.from.x, el.to.x);
   const y = Math.min(el.from.y, el.to.y);
   const w = Math.abs(el.to.x - el.from.x);
@@ -420,50 +393,38 @@ function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
   }
 
   if (el.shape === 'triangle' || el.shape === 'polygon') {
-    // A triangle: apex centred on the top edge, base along the bottom — the
-    // shape the tool icon promises. A polygon: regular, first corner up.
-    const pts =
-      el.shape === 'triangle'
-        ? [
-            { x: x + w / 2, y },
-            { x: x + w, y: y + h },
-            { x, y: y + h },
-          ]
-        : polygonPoints({ x, y, width: w, height: h }, el.sides);
-    const builder = Skia.PathBuilder.Make().moveTo(pts[0].x, pts[0].y);
-    for (const p of pts.slice(1)) builder.lineTo(p.x, p.y);
-    const path = builder.close().detach();
-    return (
-      <Group>
-        {el.fill ? <Path path={path} color={el.fill} /> : null}
-        <Path
-          path={path}
-          color={el.stroke}
-          style="stroke"
-          strokeWidth={el.strokeWidth}
-          strokeJoin="round"
-        />
-      </Group>
-    );
+    return <PolygonView el={el} x={x} y={y} w={w} h={h} />;
   }
 
   // line / arrow
   const [headStart, headEnd] = headsOf(el);
-  const angles = endAngles(el.from, el.to, el.route, el.bend);
+  const angles = endAngles(el);
   const dash = dashIntervals(el.dash, el.strokeWidth);
   if (!route) return null;
+  // The line is cut away behind its label, so the text sits in it.
+  const size = el.fontSize ?? SHAPE_TEXT_SIZE;
+  const gap = el.text ? labelBox(el, labelLines(el, size), size) : null;
+  const stroke = (
+    <Path
+      path={route}
+      color={el.stroke}
+      style="stroke"
+      strokeWidth={el.strokeWidth}
+      strokeCap="round"
+      strokeJoin="round"
+    >
+      {dash ? <DashPathEffect intervals={dash} /> : null}
+    </Path>
+  );
   return (
     <Group>
-      <Path
-        path={route}
-        color={el.stroke}
-        style="stroke"
-        strokeWidth={el.strokeWidth}
-        strokeCap="round"
-        strokeJoin="round"
-      >
-        {dash ? <DashPathEffect intervals={dash} /> : null}
-      </Path>
+      {gap ? (
+        <Group clip={gap} invertClip>
+          {stroke}
+        </Group>
+      ) : (
+        stroke
+      )}
       <MarkerView
         kind={headStart}
         tip={el.from}
@@ -480,6 +441,46 @@ function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
         width={el.strokeWidth}
         ground={ground}
       />
+    </Group>
+  );
+}
+
+/**
+ * A triangle: apex centred on the top edge, base along the bottom — the shape
+ * the tool icon promises. A polygon: regular, first corner up. Its path is
+ * built once per box, not on every render.
+ */
+function PolygonView({
+  el,
+  x,
+  y,
+  w,
+  h,
+}: {
+  el: ShapeElement;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}) {
+  const { shape, sides } = el;
+  const path = useMemo(() => {
+    const pts =
+      shape === 'triangle'
+        ? [
+            { x: x + w / 2, y },
+            { x: x + w, y: y + h },
+            { x, y: y + h },
+          ]
+        : polygonPoints({ x, y, width: w, height: h }, sides);
+    const builder = Skia.PathBuilder.Make().moveTo(pts[0].x, pts[0].y);
+    for (const p of pts.slice(1)) builder.lineTo(p.x, p.y);
+    return builder.close().detach();
+  }, [shape, sides, x, y, w, h]);
+  return (
+    <Group>
+      {el.fill ? <Path path={path} color={el.fill} /> : null}
+      <Path path={path} color={el.stroke} style="stroke" strokeWidth={el.strokeWidth} strokeJoin="round" />
     </Group>
   );
 }
@@ -547,78 +548,108 @@ function TextView({ el }: { el: Extract<BoardElement, { kind: 'text' }> }) {
   );
 }
 
-/** The id the canvas gives the stroke still under the finger. */
-export const LIVE_STROKE = 'live-stroke';
-
 /**
- * How far the live stroke's path has been built (see `livePath`): the points
- * it was built from and a builder holding every segment that is final.
- */
-const live = {
-  points: null as number[] | null,
-  smooth: true,
-  builder: null as SkPathBuilder | null,
-  done: 0,
-};
-
-/** Point `i` of a flat buffer of `m` points, or nothing past either end. */
-const pointAt = (flat: number[], i: number, m: number) =>
-  i >= 0 && i < m ? { x: flat[2 * i], y: flat[2 * i + 1] } : undefined;
-
-function addSegment(b: SkPathBuilder, flat: number[], i: number, m: number, smooth: boolean) {
-  if (!smooth) {
-    b.lineTo(round(flat[2 * i + 2]), round(flat[2 * i + 3]));
-    return;
-  }
-  const near = [-1, 0, 1, 2].map((k) => pointAt(flat, i + k, m));
-  const [c1x, c1y, c2x, c2y, x, y] = curveSegment(near as Point[], 1);
-  b.cubicTo(c1x, c1y, c2x, c2y, x, y);
-}
-
-/**
- * The path of the stroke under the finger, grown a point at a time.
+ * The stroke under the finger: its points live in a shared value that the pen
+ * gesture appends to on the UI thread, and this path is rebuilt from them
+ * there too. Nothing on the JS thread, and no React render, runs per touch
+ * sample — the board under it could have any number of elements.
  *
- * It used to be rebuilt as a string from the first point and re-parsed on
- * every touch sample, so a stroke got slower to draw the longer it was. The
- * finger only ever appends, and a new point changes only the segment before
- * it (a smoothed segment is steered by the point after it): everything
- * earlier stays in the builder. The segments and their rounding are
- * `strokeToSvgPath`'s own, so the curve is the same one.
+ * Rebuilt whole each time rather than grown: a stroke is capped at
+ * `LIMITS.maxStrokePoints`, and a few hundred segments cost far less than a
+ * frame. (ponytail: grow a builder in place if a 2000-point stroke ever shows.)
  */
-function livePath(flat: number[], smooth: boolean): SkPath | null {
-  const m = flat.length >> 1;
-  const prev = live.points;
-  const grows =
-    !!prev &&
-    !!live.builder &&
-    live.smooth === smooth &&
-    prev.length <= flat.length &&
-    prev.every((v, i) => v === flat[i]);
-  live.points = flat;
-  // A dot, or the first straight piece: nothing to grow yet.
-  if (m < 3) {
-    live.builder = null;
-    return Skia.Path.MakeFromSVGString(strokeToSvgPath(flat, smooth));
-  }
-  if (!grows) {
-    live.builder = Skia.PathBuilder.Make().moveTo(round(flat[0]), round(flat[1]));
-    live.smooth = smooth;
-    live.done = 0;
-  }
-  const b = live.builder!;
-  // Straight segments are final at once; a smoothed one once the point after it exists.
-  const final = smooth ? m - 2 : m - 1;
-  for (; live.done < final; live.done++) addSegment(b, flat, live.done, m, smooth);
-  if (!smooth) return b.build();
-  const out = Skia.PathBuilder.MakeFromPath(b.build());
-  addSegment(out, flat, m - 2, m, true);
-  return out.detach();
+export function LiveStroke({
+  points,
+  color,
+  width,
+  smooth,
+}: {
+  points: SharedValue<number[]>;
+  color: string;
+  width: number;
+  smooth: boolean;
+}) {
+  const path = usePathValue((b) => {
+    'worklet';
+    addStroke(b, points.get(), smooth);
+  });
+  return (
+    <Path
+      path={path}
+      style="stroke"
+      strokeWidth={width}
+      color={color}
+      strokeCap="round"
+      strokeJoin="round"
+    />
+  );
 }
 
 /**
- * The path is memoised on the points: while a stroke is being drawn the canvas
- * re-renders on every touch sample, and rebuilding the path of every other
- * stroke on the board each time is what made the JS thread drop samples.
+ * The box shape under the finger (rectangle, ellipse, triangle, polygon): its
+ * two corners are shared values the shape gesture moves on the UI thread, and
+ * the path is rebuilt from them there — the same figures `ShapeGeometry` draws.
+ * Nothing shows while `active` is off.
+ */
+export function LiveBoxShape({
+  from,
+  to,
+  active,
+  shape,
+  sides,
+  stroke,
+  strokeWidth,
+  fill,
+}: {
+  from: SharedValue<Point>;
+  to: SharedValue<Point>;
+  active: SharedValue<boolean>;
+  shape: ShapeKind;
+  sides: number;
+  stroke: string;
+  strokeWidth: number;
+  fill: string | null;
+}) {
+  const path = usePathValue((b) => {
+    'worklet';
+    if (!active.get()) return;
+    const f = from.get();
+    const t = to.get();
+    const x = Math.min(f.x, t.x);
+    const y = Math.min(f.y, t.y);
+    const w = Math.abs(t.x - f.x);
+    const h = Math.abs(t.y - f.y);
+    if (shape === 'rectangle') {
+      // Softly rounded, capped so a thin sliver does not turn into a lozenge.
+      const r = Math.min(8, w / 4, h / 4);
+      b.addRRect({ rect: { x, y, width: w, height: h }, rx: r, ry: r });
+    } else if (shape === 'ellipse') {
+      b.addOval({ x, y, width: w, height: h });
+    } else {
+      const pts =
+        shape === 'triangle'
+          ? [
+              { x: x + w / 2, y },
+              { x: x + w, y: y + h },
+              { x, y: y + h },
+            ]
+          : polygonPoints({ x, y, width: w, height: h }, sides);
+      b.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) b.lineTo(pts[i].x, pts[i].y);
+      b.close();
+    }
+  });
+  return (
+    <>
+      {fill ? <Path path={path} color={fill} /> : null}
+      <Path path={path} color={stroke} style="stroke" strokeWidth={strokeWidth} strokeJoin="round" />
+    </>
+  );
+}
+
+/**
+ * The path is memoised on the points: the canvas re-renders on any change, and
+ * rebuilding the path of every stroke on the board each time would be costly.
  */
 function StrokeView({
   el,
@@ -627,13 +658,9 @@ function StrokeView({
   el: Extract<BoardElement, { kind: 'stroke' }>;
   smooth: boolean;
 }) {
-  const growing = el.id === LIVE_STROKE;
   const path = useMemo(
-    () =>
-      growing
-        ? livePath(el.points, smooth)
-        : Skia.Path.MakeFromSVGString(strokeToSvgPath(el.points, smooth)),
-    [growing, el.points, smooth],
+    () => Skia.Path.MakeFromSVGString(strokeToSvgPath(el.points, smooth)),
+    [el.points, smooth],
   );
   if (!path) return null;
   return (
@@ -650,39 +677,20 @@ function StrokeView({
 
 /**
  * Connection points on every enclosed shape, shown while a line or an arrow is
- * being drawn so the snap targets are visible. Screen-space dots.
+ * being drawn so the snap targets are visible. Board space, pixel-sized by `scale`.
  */
-export function Anchors({
-  elements,
-  camera,
-}: {
-  elements: BoardElement[];
-  camera: { x: number; y: number; scale: number };
-}) {
+export function Anchors({ elements, scale }: { elements: BoardElement[]; scale: number }) {
   const c = useColors();
+  const k = 1 / scale;
   return (
     <Group>
       {elements.map((el) =>
-        anchorsOf(el).length
-          ? anchorsOf(el).map((a, i) => (
-              <Group key={`${el.id}-${i}`}>
-                <Circle
-                  cx={a.x * camera.scale + camera.x}
-                  cy={a.y * camera.scale + camera.y}
-                  r={4}
-                  color={c.background}
-                />
-                <Circle
-                  cx={a.x * camera.scale + camera.x}
-                  cy={a.y * camera.scale + camera.y}
-                  r={4}
-                  color={c.accent}
-                  style="stroke"
-                  strokeWidth={1.5}
-                />
-              </Group>
-            ))
-          : null,
+        anchorsOf(el).map((a, i) => (
+          <Group key={`${el.id}-${i}`}>
+            <Circle cx={a.x} cy={a.y} r={4 * k} color={c.background} />
+            <Circle cx={a.x} cy={a.y} r={4 * k} color={c.accent} style="stroke" strokeWidth={1.5 * k} />
+          </Group>
+        )),
       )}
     </Group>
   );
@@ -704,35 +712,16 @@ function inked(el: BoardElement): BoardElement {
   }
 }
 
-/**
- * Renders one board element with Skia primitives. Memoised: see `StrokeView`.
- * `dark` paints for the dark board; the export preview leaves it off, since a
- * saved picture is always ink on white.
- */
-export const ElementRenderer = memo(function ElementRenderer({
+/** The element's own paint, unturned. Memoised: see `StrokeView`. */
+const Painted = memo(function Painted({
   el,
-  smooth = true,
-  dark = false,
+  smooth,
+  ground,
 }: {
   el: BoardElement;
-  smooth?: boolean;
-  dark?: boolean;
+  smooth: boolean;
+  ground: string;
 }) {
-  if (dark) el = inked(el);
-  const ground = dark ? Palettes.dark.background : Palettes.light.background;
-  const angle = rotationOf(el);
-  if (angle) {
-    // Turned about the centre of its box: the element itself paints unturned.
-    const b = boxOf(el);
-    return (
-      <Group
-        transform={[{ rotate: angle }]}
-        origin={{ x: b.x + b.width / 2, y: b.y + b.height / 2 }}
-      >
-        <ElementRenderer el={{ ...el, rotation: 0 }} smooth={smooth} />
-      </Group>
-    );
-  }
   switch (el.kind) {
     case 'stroke':
       return <StrokeView el={el} smooth={smooth} />;
@@ -745,6 +734,40 @@ export const ElementRenderer = memo(function ElementRenderer({
     default:
       return null;
   }
+});
+
+/**
+ * Renders one board element with Skia primitives. Memoised: see `StrokeView`.
+ * `dark` paints for the dark board; the export preview leaves it off, since a
+ * saved picture is always ink on white.
+ */
+export const ElementRenderer = memo(function ElementRenderer({
+  el,
+  smooth = true,
+  dark = false,
+  shift,
+}: {
+  el: BoardElement;
+  smooth?: boolean;
+  dark?: boolean;
+  /** A translation the UI thread drives, while the cursor carries this element. */
+  shift?: DerivedValue<Transforms3d>;
+}) {
+  // Kept by identity: a fresh copy each render would make `Painted` repaint.
+  const shown = useMemo(() => (dark ? inked(el) : el), [el, dark]);
+  const ground = dark ? Palettes.dark.background : Palettes.light.background;
+  const angle = rotationOf(shown);
+  const painted = <Painted el={shown} smooth={smooth} ground={ground} />;
+  // Turned about the centre of its box: the element itself paints unturned.
+  const b = boxOf(shown);
+  const placed = angle ? (
+    <Group transform={[{ rotate: angle }]} origin={{ x: b.x + b.width / 2, y: b.y + b.height / 2 }}>
+      {painted}
+    </Group>
+  ) : (
+    painted
+  );
+  return shift ? <Group transform={shift}>{placed}</Group> : placed;
 });
 
 /**

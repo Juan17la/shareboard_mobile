@@ -5,12 +5,13 @@
  * user's own edit (one undo step), *Discard* drops it. Each prompt is
  * independent: the model does not see the board.
  *
- * The input sits on top and the newest message right under it: the sheet body
- * is already a ScrollView, and this way nothing needs scrolling to the end.
+ * A chat, read top to bottom: the oldest message first, the newest last, with
+ * the input pinned under them. The sheet takes the whole height so there is
+ * room for a drawing preview, and the list follows the newest message down.
  */
 import { Canvas, Group, Rect } from '@shopify/react-native-skia';
-import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Component, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ScrollView, View } from 'react-native';
 
 import { fill } from '@/features/i18n/strings';
 import { useT } from '@/features/i18n/store';
@@ -47,7 +48,9 @@ export function AiSheet({ open, onClose }: { open: boolean; onClose: () => void 
   const addElements = useBoardStore((s) => s.addElements);
   const smooth = useSessionStore((s) => s.settings.smooth);
 
-  const push = (msg: Message) => setLog((l) => [msg, ...l].slice(0, 30));
+  const list = useRef<ScrollView>(null);
+
+  const push = (msg: Message) => setLog((l) => [...l, msg].slice(-30));
 
   const decide = (msg: Message, accept: boolean) => {
     const els = msg.elements ?? [];
@@ -84,73 +87,110 @@ export function AiSheet({ open, onClose }: { open: boolean; onClose: () => void 
   }
 
   return (
-    <Sheet open={open} title={t.sheetAi} onClose={onClose} closeLabel={t.close} tall>
-      <View style={{ gap: 12 }}>
-        <Field
-          autoFocus
-          value={prompt}
-          maxLength={1000}
-          placeholder={t.aiPlaceholder}
-          accessibilityLabel={t.aiPlaceholder}
-          hint={log.length ? undefined : t.aiHint}
-          returnKeyType="send"
-          onChangeText={setPrompt}
-          onSubmitEditing={() => void send()}
-        />
-        <Button
-          icon="sparkle"
-          label={t.aiSend}
-          compact
-          loading={busy}
-          disabled={!prompt.trim()}
-          onPress={() => void send()}
-        />
-
-        {busy ? (
-          <Txt size={12} tone="secondary">
-            {t.aiThinking}
-          </Txt>
-        ) : null}
-        {log.map((m, i) => (
-          <View
-            key={log.length - i}
-            style={{
-              alignSelf: m.from === 'you' ? 'flex-end' : 'flex-start',
-              maxWidth: '85%',
-              gap: 8,
-              borderRadius: 12,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              backgroundColor:
-                m.from === 'you' ? c.accent : m.from === 'error' ? c.dangerSoft : c.surfaceSelected,
-            }}
-          >
-            <Txt
-              size={13}
-              leading={1.4}
-              tone={m.from === 'you' ? 'inverse' : m.from === 'error' ? 'danger' : 'default'}
-            >
-              {m.text}
+    <Sheet open={open} title={t.sheetAi} onClose={onClose} closeLabel={t.close} full>
+      <View style={{ flex: 1, gap: 10 }}>
+        <ScrollView
+          ref={list}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ gap: 12, paddingBottom: 6 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          // The newest message is the last one: keep it in view as it arrives.
+          onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
+        >
+          {log.length === 0 ? (
+            <Txt size={12.5} leading={1.45} tone="secondary">
+              {t.aiHint}
             </Txt>
-            {m.elements ? (
-              <>
-                <Preview elements={m.elements} smooth={smooth} />
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <Button compact icon="check" label={t.aiAccept} onPress={() => decide(m, true)} />
-                  <Button
-                    compact
-                    variant="secondary"
-                    label={t.aiDiscard}
-                    onPress={() => decide(m, false)}
-                  />
-                </View>
-              </>
-            ) : null}
+          ) : null}
+          {log.map((m, i) => (
+            <View
+              key={i}
+              style={{
+                alignSelf: m.from === 'you' ? 'flex-end' : 'flex-start',
+                maxWidth: '85%',
+                gap: 8,
+                borderRadius: 12,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                backgroundColor:
+                  m.from === 'you' ? c.accent : m.from === 'error' ? c.dangerSoft : c.surfaceSelected,
+              }}
+            >
+              <Txt
+                size={13}
+                leading={1.4}
+                tone={m.from === 'you' ? 'inverse' : m.from === 'error' ? 'danger' : 'default'}
+              >
+                {m.text}
+              </Txt>
+              {m.elements ? (
+                <>
+                  {/* A drawing that cannot be painted must not take the answer with it. */}
+                  <PreviewGuard fallback={t.aiNoPreview}>
+                    <Preview elements={m.elements} smooth={smooth} />
+                  </PreviewGuard>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <Button compact icon="check" label={t.aiAccept} onPress={() => decide(m, true)} />
+                    <Button
+                      compact
+                      variant="secondary"
+                      label={t.aiDiscard}
+                      onPress={() => decide(m, false)}
+                    />
+                  </View>
+                </>
+              ) : null}
+            </View>
+          ))}
+          {busy ? (
+            <Txt size={12} tone="secondary">
+              {t.aiThinking}
+            </Txt>
+          ) : null}
+        </ScrollView>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Field
+              value={prompt}
+              maxLength={1000}
+              placeholder={t.aiPlaceholder}
+              accessibilityLabel={t.aiPlaceholder}
+              returnKeyType="send"
+              onChangeText={setPrompt}
+              onSubmitEditing={() => void send()}
+            />
           </View>
-        ))}
+          <Button
+            icon="sparkle"
+            label={t.aiSend}
+            compact
+            loading={busy}
+            disabled={!prompt.trim()}
+            onPress={() => void send()}
+          />
+        </View>
       </View>
     </Sheet>
   );
+}
+
+/** Shows `fallback` instead of the preview if painting it throws. */
+class PreviewGuard extends Component<{ children: ReactNode; fallback: string }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? (
+      <Txt size={12} tone="secondary">
+        {this.props.fallback}
+      </Txt>
+    ) : (
+      this.props.children
+    );
+  }
 }
 
 const PREVIEW_W = 260;

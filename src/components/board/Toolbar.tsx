@@ -38,6 +38,7 @@ import {
   ROUTES,
   SHAPE_TEXT_SIZE,
   isFillable,
+  type Axis,
   type BoardElement,
   type Dash,
   type Marker,
@@ -46,23 +47,23 @@ import {
   type ToolType,
 } from '@/features/board/model';
 import {
-  fillFor,
-  fillLevelOf,
+  fillColorOf,
+  fillOpacityOf,
+  fillWith,
   useBoardStore,
-  type FillLevel,
-  type ReorderOp,
 } from '@/features/board/store';
 import { useSessionStore, useColors, useDark } from '@/features/session/store';
 import { tick } from '@/utils/haptics';
 
 import { StepperButton } from '../ui/Button';
 import { ColorPickerSheet } from '../ui/ColorPickerSheet';
+import { FillSheet } from './FillSheet';
 import { GlassPanel } from '../ui/Glass';
 import { Icon, type IconName } from '../ui/Icon';
 import { Txt } from '../ui/Text';
 
 import { FAMILIES } from './BoardFonts';
-import { tip, toast } from '../ui/Toast';
+import { tip } from '../ui/Toast';
 
 type LabelKey =
   | 'hand'
@@ -127,11 +128,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const config = useBoardStore((s) => s.config);
   const pickTool = useBoardStore((s) => s.pickTool);
   const setConfig = useBoardStore((s) => s.setConfig);
-  const reorder = useBoardStore((s) => s.reorder);
-  const copySelection = useBoardStore((s) => s.copySelection);
-  const cutSelection = useBoardStore((s) => s.cutSelection);
-  const group = useBoardStore((s) => s.group);
-  const ungroup = useBoardStore((s) => s.ungroup);
   // The selection, when a tool that has one is in hand. Only the selected
   // elements are read, not the board: a stroke drawn elsewhere, or anything a
   // peer does, leaves the toolbar alone.
@@ -152,6 +148,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const open = useBoardStore((s) => s.railOpen);
   const setOpen = useBoardStore((s) => s.setRailOpen);
   const [picking, setPicking] = useState(false);
+  const [filling, setFilling] = useState(false);
   /** Which end's marker grid is open, replacing the strip while it is. */
   const [pickingHead, setPickingHead] = useState<'headStart' | 'headEnd' | null>(null);
 
@@ -205,11 +202,10 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const showStyle = tool === 'text' || selText;
   const showColor =
     tool !== 'hand' && tool !== 'eraser' && (tool !== 'select' || selected.length > 0);
-  const showOrder = tool === 'select' && selected.length > 0;
   // The cursor with nothing selected, and the hand, have nothing to offer: an
   // empty strip is noise, whatever asked for it.
   const hasOptions =
-    showSizes || showFill || showLine || showTextOptions || showOrder || showColor;
+    showSizes || showFill || showLine || showTextOptions || showColor;
   // A selected shape can change kind within its family: box to box, line to
   // arrow. With the shapes tool in hand, the strip is where the kind is chosen.
   const kinds: ShapeKind[] = selLine
@@ -224,9 +220,14 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     if (selected.length) setConfig({ shape: kind });
     else pickTool('shape', kind);
   };
-  // Group only when there is more than one thing to join: loose elements or separate groups.
-  const showGroup = new Set(selected.map((el) => el.group ?? el.id)).size > 1;
 
+  // A selected line's axis: its own (null when it is automatic), or the tool's when no line is selected.
+  const axisOf = (key: 'startAxis' | 'endAxis'): Axis | null | undefined => {
+    const v = first((el) =>
+      el.kind === 'shape' && isLineLike(el) ? (el[key] ?? 'auto') : undefined,
+    );
+    return v === undefined ? undefined : v === 'auto' ? null : v;
+  };
   const cur = {
     width:
       first((el) =>
@@ -236,10 +237,15 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
       first((el) =>
         el.kind === 'shape' ? el.stroke : el.kind === 'image' ? undefined : el.color,
       ) ?? config.color,
-    fill:
+    // What the fill chip shows: the first selected shape's own fill, else the next shape's.
+    fillOpacity:
       first((el) =>
-        el.kind === 'shape' && isFillable(el.shape) ? fillLevelOf(el.fill) : undefined,
-      ) ?? config.fill,
+        el.kind === 'shape' && isFillable(el.shape) ? fillOpacityOf(el.fill) : undefined,
+      ) ?? config.fillOpacity,
+    fillColor:
+      first((el) =>
+        el.kind === 'shape' && isFillable(el.shape) ? (fillColorOf(el.fill) ?? undefined) : undefined,
+      ) ?? config.fillColor,
     fontSize:
       first((el) =>
         el.kind === 'text'
@@ -271,19 +277,25 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     dash:
       first((el) => (el.kind === 'shape' && isLineLike(el) ? (el.dash ?? 'solid') : undefined)) ??
       config.dash,
+    startAxis: axisOf('startAxis') === undefined ? config.startAxis : axisOf('startAxis')!,
+    endAxis: axisOf('endAxis') === undefined ? config.endAxis : axisOf('endAxis')!,
   };
   const fontSize = cur.fontSize;
   // The board ink flips on the dark theme (`inkFor`); the swatches follow it.
   const ink = inkFor(cur.color, dark);
+  const fillInk = inkFor(cur.fillColor ?? cur.color, dark);
   const setFontSize = (next: number) => setConfig({ fontSize: next });
-  const fillLevels: {
-    level: FillLevel;
-    labelKey: 'fillNone' | 'fillLow' | 'fillMedium' | 'fillFull';
+  // An elbow's ends: automatic, or which way it leaves and arrives.
+  const axisChoices: {
+    start: Axis | null;
+    end: Axis | null;
+    labelKey: 'axisAuto' | 'axisHH' | 'axisVV' | 'axisHV' | 'axisVH';
   }[] = [
-    { level: 'none', labelKey: 'fillNone' },
-    { level: 'low', labelKey: 'fillLow' },
-    { level: 'medium', labelKey: 'fillMedium' },
-    { level: 'full', labelKey: 'fillFull' },
+    { start: null, end: null, labelKey: 'axisAuto' },
+    { start: 'h', end: 'h', labelKey: 'axisHH' },
+    { start: 'v', end: 'v', labelKey: 'axisVV' },
+    { start: 'h', end: 'v', labelKey: 'axisHV' },
+    { start: 'v', end: 'h', labelKey: 'axisVH' },
   ];
   const routeLabel: Record<Route, 'routeStraight' | 'routeCurved' | 'routeElbow'> = {
     straight: 'routeStraight',
@@ -295,16 +307,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     dashed: 'dashDashed',
     dotted: 'dashDotted',
   };
-  const orderOps: {
-    op: ReorderOp;
-    icon: IconName;
-    labelKey: 'toBack' | 'backward' | 'forward' | 'toFront';
-  }[] = [
-    { op: 'back', icon: 'to-back', labelKey: 'toBack' },
-    { op: 'backward', icon: 'backward', labelKey: 'backward' },
-    { op: 'forward', icon: 'forward', labelKey: 'forward' },
-    { op: 'front', icon: 'to-front', labelKey: 'toFront' },
-  ];
 
   // The row is seven tools, a hairline and the swatch: nine children, eight
   // gaps, inside the panel's padding and border and the screen's own gutter.
@@ -457,14 +459,15 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                       ) : null}
                       {showFill ? (
                         <MiniButton
-                          label={t[fillLevels.find((f) => f.level === cur.fill)?.labelKey ?? 'fillNone']}
-                          active={false}
+                          label={`${t.fill} ${cur.fillOpacity}%`}
+                          active={filling}
+                          wide
                           onPress={() => {
                             nudge();
-                            setConfig({ fill: cycle(fillLevels.map((f) => f.level), cur.fill) });
+                            setFilling(true);
                           }}
                         >
-                          {/* The swatch is the fill itself: the colour at that alpha, outlined. */}
+                          {/* The swatch is the fill itself: its colour at its opacity, outlined, and the number. */}
                           <View
                             style={{
                               width: 16,
@@ -472,9 +475,13 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                               borderRadius: 4,
                               borderWidth: 1.5,
                               borderColor: ink,
-                              backgroundColor: fillFor(ink, cur.fill) ?? 'transparent',
+                              backgroundColor:
+                                fillWith(fillInk, cur.fillOpacity) ?? 'transparent',
                             }}
                           />
+                          <Txt weight="bold" size={11} style={{ marginLeft: 4 }}>
+                            {`${cur.fillOpacity}%`}
+                          </Txt>
                         </MiniButton>
                       ) : null}
                     </Cluster>
@@ -537,11 +544,56 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                               strokeLinecap="round"
                               strokeLinejoin="round"
                             >
-                              <SvgPath d={routePath({ x: 4, y: 19 }, { x: 20, y: 5 }, route)} />
+                              <SvgPath d={routePath({ from: { x: 4, y: 19 }, to: { x: 20, y: 5 }, route })} />
                             </Svg>
                           </MiniButton>
                         ))}
                       </Cluster>
+                      {cur.route === 'elbow' ? (
+                        <Cluster>
+                          {axisChoices.map(({ start, end, labelKey }) => {
+                            const on = cur.startAxis === start && cur.endAxis === end;
+                            return (
+                              <MiniButton
+                                key={labelKey}
+                                label={t[labelKey]}
+                                active={on}
+                                onPress={() => {
+                                  nudge();
+                                  setConfig({ startAxis: start, endAxis: end });
+                                }}
+                              >
+                                {start ? (
+                                  <Svg
+                                    width={20}
+                                    height={20}
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke={on ? '#FFFFFF' : c.text}
+                                    strokeWidth={2}
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <SvgPath
+                                      d={routePath({
+                                        from: { x: 4, y: 19 },
+                                        to: { x: 20, y: 5 },
+                                        route: 'elbow',
+                                        startAxis: start,
+                                        endAxis: end,
+                                      })}
+                                    />
+                                  </Svg>
+                                ) : (
+                                  <Txt weight="extrabold" size={11} color={on ? '#FFFFFF' : c.text}>
+                                    A
+                                  </Txt>
+                                )}
+                              </MiniButton>
+                            );
+                          })}
+                        </Cluster>
+                      ) : null}
                       <Cluster>
                         {DASHES.map((dash) => (
                           <MiniButton
@@ -674,74 +726,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                     </Cluster>
                   ) : null}
 
-                  {showOrder ? (
-                    <Cluster>
-                      <MiniButton
-                        label={t.copy}
-                        active={false}
-                        onPress={() => {
-                          nudge();
-                          copySelection();
-                          toast(t.toastCopiedSelection);
-                        }}
-                      >
-                        <Icon name="copy" size={18} />
-                      </MiniButton>
-                      <MiniButton
-                        label={t.cut}
-                        active={false}
-                        onPress={() => {
-                          nudge();
-                          cutSelection();
-                        }}
-                      >
-                        <Icon name="cut" size={18} />
-                      </MiniButton>
-                    </Cluster>
-                  ) : null}
-
-                  {showOrder ? (
-                    <Cluster>
-                      {orderOps.map(({ op, icon, labelKey }) => (
-                        <MiniButton
-                          key={op}
-                          label={t[labelKey]}
-                          active={false}
-                          onPress={() => {
-                            nudge();
-                            reorder(op);
-                          }}
-                        >
-                          <Icon name={icon} size={18} />
-                        </MiniButton>
-                      ))}
-                      {showGroup ? (
-                        <MiniButton
-                          label={t.group}
-                          active={false}
-                          onPress={() => {
-                            nudge();
-                            group();
-                          }}
-                        >
-                          <Icon name="group" size={18} />
-                        </MiniButton>
-                      ) : null}
-                      {has((el) => !!el.group) ? (
-                        <MiniButton
-                          label={t.ungroup}
-                          active={false}
-                          onPress={() => {
-                            nudge();
-                            ungroup();
-                          }}
-                        >
-                          <Icon name="ungroup" size={18} />
-                        </MiniButton>
-                      ) : null}
-                    </Cluster>
-                  ) : null}
-
                   {showColor ? (
                     <Cluster last>
                       {DrawingPalette.map((swatch) => {
@@ -843,6 +827,15 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
         </GlassPanel>
       </View>
 
+      <FillSheet
+        open={filling}
+        color={cur.fillColor ?? cur.color}
+        custom={cur.fillColor !== null && cur.fillColor.toUpperCase() !== cur.color.slice(0, 7).toUpperCase()}
+        opacity={cur.fillOpacity}
+        onColor={(fillColor) => setConfig({ fillColor, fillOpacity: cur.fillOpacity || 100 })}
+        onOpacity={(fillOpacity) => setConfig({ fillOpacity })}
+        onClose={() => setFilling(false)}
+      />
       <ColorPickerSheet
         open={picking}
         value={cur.color}
@@ -966,6 +959,7 @@ function MiniButton({
   label,
   active,
   onPress,
+  wide = false,
   children,
 }: {
   glyph?: string;
@@ -974,6 +968,8 @@ function MiniButton({
   label: string;
   active: boolean;
   onPress: () => void;
+  /** Room for a swatch and a number, not one glyph. */
+  wide?: boolean;
   /** Drawn instead of the glyph. */
   children?: React.ReactNode;
 }) {
@@ -986,8 +982,9 @@ function MiniButton({
       onPress={onPress}
       onLongPress={() => tip(label)}
       style={{
-        width: 36,
+        ...(wide ? { minWidth: 36, paddingHorizontal: 8 } : { width: 36 }),
         height: 36,
+        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 9,
