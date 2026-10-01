@@ -93,6 +93,36 @@ export interface PathSink {
 }
 
 /**
+ * Segment `i` of the smoothed stroke through `p` (from `p[i]` to `p[i + 1]`),
+ * as the cubic's rounded `c1x c1y c2x c2y x y`. Shared with the live stroke
+ * (`livePath`), which builds the same curve a point at a time.
+ *
+ * Declared before `addStroke` on purpose: a worklet captures what it calls
+ * where it is declared, not hoisted, so `addStroke` above this one got
+ * `undefined` and crashed the app on the UI thread with the first smoothed stroke.
+ */
+export function curveSegment(p: Point[], i: number): number[] {
+  'worklet';
+  // Each segment is steered by its neighbours, so the curve stays continuous
+  // across joins. The ends have no outer neighbour and reuse the endpoint.
+  const prev = p[i - 1] ?? p[i];
+  const from = p[i];
+  const to = p[i + 1];
+  const next = p[i + 2] ?? to;
+
+  // Catmull-Rom -> Bezier: the control points sit a sixth of the way along
+  // the neighbouring chord, which is the standard uniform conversion.
+  return [
+    n(from.x + (to.x - prev.x) / 6),
+    n(from.y + (to.y - prev.y) / 6),
+    n(to.x - (next.x - from.x) / 6),
+    n(to.y - (next.y - from.y) / 6),
+    n(to.x),
+    n(to.y),
+  ];
+}
+
+/**
  * `strokeToSvgPath`'s path, written straight to a path builder. The live stroke
  * is drawn with this on the UI thread (hence the worklet), so what shows under
  * the finger is the curve that will be committed — the geometry is pinned to
@@ -118,32 +148,6 @@ export function addStroke(b: PathSink, flat: number[], smooth: boolean): void {
     const seg = curveSegment(p, i);
     b.cubicTo(seg[0], seg[1], seg[2], seg[3], seg[4], seg[5]);
   }
-}
-
-/**
- * Segment `i` of the smoothed stroke through `p` (from `p[i]` to `p[i + 1]`),
- * as the cubic's rounded `c1x c1y c2x c2y x y`. Shared with the live stroke
- * (`livePath`), which builds the same curve a point at a time.
- */
-export function curveSegment(p: Point[], i: number): number[] {
-  'worklet';
-  // Each segment is steered by its neighbours, so the curve stays continuous
-  // across joins. The ends have no outer neighbour and reuse the endpoint.
-  const prev = p[i - 1] ?? p[i];
-  const from = p[i];
-  const to = p[i + 1];
-  const next = p[i + 2] ?? to;
-
-  // Catmull-Rom -> Bezier: the control points sit a sixth of the way along
-  // the neighbouring chord, which is the standard uniform conversion.
-  return [
-    n(from.x + (to.x - prev.x) / 6),
-    n(from.y + (to.y - prev.y) / 6),
-    n(to.x - (next.x - from.x) / 6),
-    n(to.y - (next.y - from.y) / 6),
-    n(to.x),
-    n(to.y),
-  ];
 }
 
 /**

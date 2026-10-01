@@ -7,6 +7,13 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The pencil no longer closes the app on Android builds. The live stroke's
+  smoothing helper was declared after the code that draws with it, and the
+  release build's UI thread got nothing in its place: the first curved stroke
+  crashed the app.
+
 ## [1.3.0-beta] - 2026-10-01
 
 ### Added
