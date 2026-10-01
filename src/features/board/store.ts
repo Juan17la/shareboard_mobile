@@ -131,6 +131,10 @@ export const fillOpacityOf = (fill: string | null | undefined): number =>
 /** What the bucket paints with when no opacity was chosen yet: the old "Light" wash. */
 export const FILL_WASH = 18;
 
+/** The old Light / Solid levels, kept only for the demo board's sketches; delete with them. */
+export const fillFor = (color: string, level: 'low' | 'full'): string | null =>
+  fillWith(color, level === 'low' ? FILL_WASH : 100);
+
 /**
  * The selection while a finger drags it. `move` shifts every selected element
  * by (dx, dy); `resize` drags one handle of a single element and keeps the
