@@ -9,14 +9,13 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ### Changed
 
-- The options strip is one compact row of boxes instead of a wall of buttons:
-  colour (a ring for a shape's border, a dot for pen, text and fill tool), fill,
-  the four widths in a row, and — for lines — the two ends, the dash (one tap
-  steps through solid, dashed, dotted) and the route. A box that has more to
-  say (colour, shape kind and polygon sides, ends, route and elbow axes, a
-  shape's label size and font) opens a small panel above the strip. Text keeps
-  its size, fonts, bold and italic in the strip itself; the eraser shows only
-  its four widths.
+- The options strip is one row of single boxes, each holding every value of one
+  option: tap steps through them (width, dash, route, an elbow's axes, font,
+  plain / bold / italic / both). The ones with many values open a small panel
+  above the strip instead: colour (a ring for a shape's border, a dot
+  otherwise), the shape kind and a polygon's sides, a line's two ends, a shape's
+  label size and font. Fill still opens its sheet. Text keeps font, style and
+  size in the strip; the eraser shows only its width.
 - A selected box, picture or text now has round handles on its corners (they
   were small squares), like the ends of a line.
 
