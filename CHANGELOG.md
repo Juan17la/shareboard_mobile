@@ -7,6 +7,8 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.3.1-beta] - 2026-10-01
+
 ### Fixed
 
 - The pencil no longer closes the app on Android builds. The live stroke's
