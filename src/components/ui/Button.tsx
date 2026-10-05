@@ -165,7 +165,7 @@ export function IconButton({
 }) {
   const c = useColors();
   const color = tint ?? c.text;
-  const background = fill ?? c.glassTintSolid;
+  const background = fill ?? c.surface;
   return (
     <Pressable
       accessibilityRole="button"
