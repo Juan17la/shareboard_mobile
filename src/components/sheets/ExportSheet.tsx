@@ -87,9 +87,8 @@ function ExportSheetBody({ onClose }: { onClose: () => void }) {
   const height = Math.max(1, Math.ceil((bounds?.height ?? 0) + PADDING * 2));
   const previewScale = Math.min(1, PREVIEW_MAX / Math.max(width, height));
 
-  // A JPEG has no alpha channel, so "transparent" would silently come out black.
-  const canBeTransparent = format !== 'jpg';
-  const paintBackground = !(transparent && canBeTransparent);
+  // A JPEG has no alpha channel, so it is not offered while "transparent" is on.
+  const paintBackground = !transparent;
 
   async function run(action: 'save' | 'share' | 'json') {
     if (!meta) return;
@@ -206,20 +205,21 @@ function ExportSheetBody({ onClose }: { onClose: () => void }) {
         onChange={setFormat}
         options={[
           { value: 'png', label: 'PNG' },
-          { value: 'jpg', label: 'JPG' },
+          ...(transparent ? [] : [{ value: 'jpg' as const, label: 'JPG' }]),
           { value: 'svg', label: 'SVG' },
         ]}
       />
 
       <SheetRow
         title={t.transparentBg}
-        description={canBeTransparent ? undefined : 'JPG'}
         right={
           <Toggle
-            value={transparent && canBeTransparent}
-            onChange={setTransparent}
+            value={transparent}
+            onChange={(on) => {
+              setTransparent(on);
+              if (on && format === 'jpg') setFormat('png');
+            }}
             label={t.transparentBg}
-            disabled={!canBeTransparent}
           />
         }
       />
