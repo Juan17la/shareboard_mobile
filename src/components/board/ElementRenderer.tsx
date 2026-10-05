@@ -36,13 +36,15 @@ import {
   isLineLike,
   labelBox,
   labelLines,
-  lineLabelCentre,
+  labelPlacement,
+  textAnchor,
   markerPaths,
   polygonPoints,
+  cornerRadius,
+  roundedPolygonPath,
   rotateHandleOf,
   rotationOf,
   routePath,
-  shapeBounds,
   strokeToSvgPath,
   textLines,
   toWorld,
@@ -140,25 +142,27 @@ function MarkerPartView({
   );
 }
 
+/** How far left of its anchor a line of width `w` starts: Skia has no text-align. */
+const alignShift = (align: 'left' | 'center' | 'right', w: number) => (align === 'center' ? w / 2 : align === 'right' ? w : 0);
+
 /** A shape's label: centred in its box, or floating just above a line's midpoint. */
 function ShapeLabel({ el }: { el: ShapeElement }) {
   const fontSize = el.fontSize ?? SHAPE_TEXT_SIZE;
   const font = useBoardFont(fontSize, false, false, el.font);
   if (!el.text) return null;
-  const { x, y, width, height } = shapeBounds(el);
   const step = fontSize * TEXT_LINE_HEIGHT;
   // Wrapped inside the figure (a line's label only breaks where typed).
   const lines = labelLines(el, fontSize);
-  // Centred in a box; on a line, where it stands along it (the line is cut behind it).
-  const { x: cx, y: cy } = isLineLike(el) ? lineLabelCentre(el) : { x: x + width / 2, y: y + height / 2 };
+  // Where the figure's alignment puts it; on a line, where it stands along it (the line is cut behind it).
+  const at = labelPlacement(el, fontSize, lines.length);
   // Skia draws from the baseline: centre the block, then sit each line on it.
-  const top = cy - ((lines.length - 1) * step) / 2 + fontSize * 0.35;
+  const top = at.y + fontSize * 0.35;
   return (
     <Group>
       {lines.map((line, i) => (
         <TextPath
           key={i}
-          x={cx - textWidth(font, line) / 2}
+          x={at.x - alignShift(at.align, textWidth(font, line))}
           y={top + i * step}
           text={line}
           font={font}
@@ -361,9 +365,7 @@ function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
   const dashed = outline ? <DashPathEffect intervals={outline} /> : null;
 
   if (el.shape === 'rectangle') {
-    // The design's rectangles are softly rounded, capped so a thin sliver does
-    // not turn into a lozenge.
-    const r = Math.min(8, w / 4, h / 4);
+    const r = el.rounded ? cornerRadius(w, h) : 0;
     return (
       <Group>
         {el.fill ? <RoundedRect x={x} y={y} width={w} height={h} r={r} color={el.fill} /> : null}
@@ -475,7 +477,7 @@ function PolygonView({
   w: number;
   h: number;
 }) {
-  const { shape, sides } = el;
+  const { shape, sides, rounded } = el;
   const outline = dashIntervals(el.dash, el.strokeWidth);
   const path = useMemo(() => {
     const pts =
@@ -486,10 +488,11 @@ function PolygonView({
             { x, y: y + h },
           ]
         : polygonPoints({ x, y, width: w, height: h }, sides);
+    if (rounded) return Skia.Path.MakeFromSVGString(roundedPolygonPath(pts, cornerRadius(w, h)))!;
     const builder = Skia.PathBuilder.Make().moveTo(pts[0].x, pts[0].y);
     for (const p of pts.slice(1)) builder.lineTo(p.x, p.y);
     return builder.close().detach();
-  }, [shape, sides, x, y, w, h]);
+  }, [shape, sides, rounded, x, y, w, h]);
   return (
     <Group>
       {el.fill ? <Path path={path} color={el.fill} /> : null}
@@ -547,12 +550,13 @@ function TextView({ el }: { el: Extract<BoardElement, { kind: 'text' }> }) {
   const step = el.fontSize * TEXT_LINE_HEIGHT;
   // Its own newlines, then wrapped to its width if it has one. Skia draws text
   // from the baseline; nudge each line down by ~the font size.
+  const { x, align } = textAnchor(el);
   return (
     <Group>
       {textLines(el).map((line, i) => (
         <TextPath
           key={i}
-          x={el.at.x}
+          x={x - alignShift(align, textWidth(font, line))}
           y={el.at.y + el.fontSize + i * step}
           text={line}
           font={font}
@@ -615,6 +619,7 @@ export function LiveBoxShape({
   stroke,
   strokeWidth,
   fill,
+  rounded,
 }: {
   from: SharedValue<Point>;
   to: SharedValue<Point>;
@@ -624,6 +629,8 @@ export function LiveBoxShape({
   stroke: string;
   strokeWidth: number;
   fill: string | null;
+  /** Rounds a rectangle's preview; the other figures round once they are placed. */
+  rounded: boolean;
 }) {
   const path = usePathValue((b) => {
     'worklet';
@@ -635,8 +642,7 @@ export function LiveBoxShape({
     const w = Math.abs(t.x - f.x);
     const h = Math.abs(t.y - f.y);
     if (shape === 'rectangle') {
-      // Softly rounded, capped so a thin sliver does not turn into a lozenge.
-      const r = Math.min(8, w / 4, h / 4);
+      const r = rounded ? Math.min(w, h) * 0.18 : 0;
       b.addRRect({ rect: { x, y, width: w, height: h }, rx: r, ry: r });
     } else if (shape === 'ellipse') {
       b.addOval({ x, y, width: w, height: h });
@@ -772,7 +778,9 @@ export const ElementRenderer = memo(function ElementRenderer({
   const shown = useMemo(() => (dark ? inked(el) : el), [el, dark]);
   const ground = dark ? Palettes.dark.background : Palettes.light.background;
   const angle = rotationOf(shown);
-  const painted = <Painted el={shown} smooth={smooth} ground={ground} />;
+  const solid = <Painted el={shown} smooth={smooth} ground={ground} />;
+  // The element's own opacity composites its fill, line and label as one.
+  const painted = shown.opacity != null && shown.opacity < 1 ? <Group opacity={shown.opacity}>{solid}</Group> : solid;
   // Turned about the centre of its box: the element itself paints unturned.
   const b = boxOf(shown);
   const placed = angle ? (

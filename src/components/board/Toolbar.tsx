@@ -18,7 +18,7 @@
 import { createContext, useContext, useState } from 'react';
 import { Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Path as SvgPath, Rect, Svg } from 'react-native-svg';
+import { Circle, Path as SvgPath, Rect, Svg } from 'react-native-svg';
 import { useShallow } from 'zustand/shallow';
 
 import { StrokeSizes, inkFor } from '@/constants/theme';
@@ -29,7 +29,9 @@ import {
   isLineLike,
   markerPaths,
   routePath,
+  canRound,
 } from '@/features/board/geometry';
+import { primaryOptions, subjectsOf, type OptionId } from '@/features/board/tool-options';
 import {
   DASHES,
   FONTS,
@@ -153,6 +155,8 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const open = useBoardStore((s) => s.railOpen);
   const [picking, setPicking] = useState(false);
   const [filling, setFilling] = useState(false);
+  // "More" stays as it was left for the rest of the session (`moreMemo`).
+  const [moreOpen, setMoreOpen] = useState(moreMemo.open);
   /** The box whose options are open in the popover above the strip. */
   const [box, setBox] = useState<Box | null>(null);
   /** The dropdown's second page: the marker grid for one end of a line. */
@@ -205,6 +209,8 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const showFill = (shapeTool && isFillable(config.shape)) || selBox;
   const showLine = lineTool || selLine;
   const showDash = shapeTool || selShape;
+  const showAlign = selText || selShape;
+  const showCorners = (shapeTool && canRound(config.shape)) || has((el) => el.kind === 'shape' && canRound(el.shape));
   const showSides =
     (shapeTool && config.shape === 'polygon') ||
     has((el) => el.kind === 'shape' && el.shape === 'polygon');
@@ -218,6 +224,24 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     (tool !== 'select' || (selected.length > 0 && !selected.every((el) => el.kind === 'image')));
   // The cursor with nothing selected, and the hand, have nothing to offer: an
   // empty strip is noise, whatever asked for it.
+  // Which of them are up front for what is in hand; the rest sit behind "More".
+  const primary = primaryOptions(subjectsOf(tool, config.shape, selected));
+  const at = (id: OptionId, slot: 'main' | 'more') => (primary.has(id) ? 'main' : 'more') === slot;
+  const available: Record<OptionId, boolean> = {
+    kinds: false, // the kinds are up front for every shape, never behind More
+    color: false, // the colour button is always in the strip
+    size: showSizes,
+    fill: showFill,
+    dash: showDash,
+    opacity: showDash,
+    corners: showCorners,
+    sides: false, // a polygon's corners count sits with the kinds
+    ends: showLine,
+    route: showLine,
+    text: showLabelBox,
+    align: false, // inside the text sections
+  };
+  const hasMore = (Object.keys(available) as OptionId[]).some((id) => available[id] && !primary.has(id));
   const hasOptions = showSizes || showFill || showLine || showDash || showStyle || showLabelBox || showColor;
   // A selected shape can change kind within its family: box to box, line to
   // arrow. With the shapes tool in hand, the strip is where the kind is chosen.
@@ -282,6 +306,12 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
       ) ?? config.route,
     shape: first((el) => (el.kind === 'shape' ? el.shape : undefined)) ?? config.shape,
     dash: first((el) => (el.kind === 'shape' ? (el.dash ?? 'solid') : undefined)) ?? config.dash,
+    align:
+      first((el) => (el.kind === 'text' ? (el.align ?? 'left') : el.kind === 'shape' ? (el.align ?? 'center') : undefined)) ??
+      config.align,
+    valign: first((el) => (el.kind === 'shape' ? (el.valign ?? 'middle') : undefined)) ?? config.valign,
+    rounded: first((el) => (el.kind === 'shape' && canRound(el.shape) ? !!el.rounded : undefined)) ?? config.rounded,
+    opacity: first((el) => (el.kind === 'shape' ? Math.round((el.opacity ?? 1) * 100) : undefined)) ?? config.opacity,
   };
   const fontSize = cur.fontSize;
   // The board ink flips on the dark theme (`inkFor`); the swatches follow it.
@@ -372,7 +402,211 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
           />
         </Section>
       ) : null}
+      {showAlign ? (
+        <Section title={t.secAlign}>
+          {H_ALIGNS.map((align) => (
+            <MiniButton
+              key={align}
+              label={t[H_ALIGN_LABEL[align]]}
+              active={cur.align === align}
+              onPress={() => {
+                nudge();
+                setConfig({ align });
+              }}
+            >
+              <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={cur.align === align ? '#FFFFFF' : c.text} strokeWidth={2} strokeLinecap="round">
+                <SvgPath d={H_ALIGN_PATH[align]} />
+              </Svg>
+            </MiniButton>
+          ))}
+          {selShape ? (
+            <>
+              {V_ALIGNS.map((valign) => (
+                <MiniButton
+                  key={valign}
+                  label={t[V_ALIGN_LABEL[valign]]}
+                  active={cur.valign === valign}
+                  onPress={() => {
+                    nudge();
+                    setConfig({ valign });
+                  }}
+                >
+                  <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={cur.valign === valign ? '#FFFFFF' : c.text} strokeWidth={2} strokeLinecap="round">
+                    <Rect x="4" y="4" width="16" height="16" rx="2" />
+                    <SvgPath d={V_ALIGN_PATH[valign]} />
+                  </Svg>
+                </MiniButton>
+              ))}
+              <MiniButton
+                label={t.alignCentered}
+                active={cur.align === 'center' && cur.valign === 'middle'}
+                onPress={() => {
+                  nudge();
+                  setConfig({ align: 'center', valign: 'middle' });
+                }}
+              >
+                <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={cur.align === 'center' && cur.valign === 'middle' ? '#FFFFFF' : c.text} strokeWidth={2}>
+                  <Rect x="4" y="4" width="16" height="16" rx="2" />
+                  <Circle cx="12" cy="12" r="2.2" fill={cur.align === 'center' && cur.valign === 'middle' ? '#FFFFFF' : c.text} />
+                </Svg>
+              </MiniButton>
+            </>
+          ) : null}
+        </Section>
+      ) : null}
     </View>
+  );
+
+  /** The dropdown's sections for one slot: up front (`main`), or behind More. */
+  const sections = (slot: 'main' | 'more') => (
+    <>
+                {showSizes && at('size', slot) ? (
+                  <Section title={t.size}>
+                    <WidthSlider
+                      value={cur.width}
+                      label={t.size}
+                      onChange={(width) => {
+                        nudge();
+                        setConfig({ width });
+                      }}
+                    />
+                  </Section>
+                ) : null}
+  
+                {showDash && at('dash', slot) ? (
+                  <Section title={t.secStroke}>
+                    {DASHES.map((dash) => (
+                      <MiniButton
+                        key={dash}
+                        label={t[dashLabel[dash]]}
+                        active={cur.dash === dash}
+                        onPress={() => {
+                          nudge();
+                          setConfig({ dash });
+                        }}
+                      >
+                        <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={cur.dash === dash ? '#FFFFFF' : c.text} strokeWidth={2.2} strokeLinecap="round">
+                          <SvgPath d="M3 12H21" strokeDasharray={dashIntervals(dash, 2.2)?.join(' ')} />
+                        </Svg>
+                      </MiniButton>
+                    ))}
+                  </Section>
+                ) : null}
+
+                {showDash && at('opacity', slot) ? (
+                  <Section title={t.secOpacity}>
+                    {OPACITIES.map((pct) => (
+                      <MiniButton
+                        key={pct}
+                        label={`${t.secOpacity} ${pct}%`}
+                        active={cur.opacity === pct}
+                        onPress={() => {
+                          nudge();
+                          setConfig({ opacity: pct });
+                        }}
+                      >
+                        <Svg width={20} height={20} viewBox="0 0 24 24" fill={cur.opacity === pct ? '#FFFFFF' : c.text} stroke={cur.opacity === pct ? '#FFFFFF' : c.text} strokeWidth={2}>
+                          <Circle cx="12" cy="12" r="8" fillOpacity={pct / 100} />
+                        </Svg>
+                      </MiniButton>
+                    ))}
+                  </Section>
+                ) : null}
+  
+                {showFill && at('fill', slot) ? (
+                  <Section title={t.fillColor}>
+                    <MiniButton
+                      label={t.noFill}
+                      active={cur.fillOpacity === 0}
+                      onPress={() => {
+                        nudge();
+                        setConfig({ fillOpacity: 0 });
+                      }}
+                    >
+                      <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={cur.fillOpacity === 0 ? '#FFFFFF' : c.text} strokeWidth={2} strokeLinecap="round">
+                        <Rect x={4} y={4} width={16} height={16} rx={3} />
+                        <SvgPath d="M4 20L20 4" />
+                      </Svg>
+                    </MiniButton>
+                    {[25, 50, 75, 100].map((pct) => (
+                      <MiniButton
+                        key={pct}
+                        wide
+                        glyph={`${pct}%`}
+                        label={`${t.opacity} ${pct}%`}
+                        active={cur.fillOpacity === pct}
+                        onPress={() => {
+                          nudge();
+                          setConfig({ fillOpacity: pct });
+                        }}
+                      />
+                    ))}
+                  </Section>
+                ) : null}
+  
+                {showCorners && at('corners', slot) ? (
+                  <Section title={t.secCorners}>
+                    {([false, true] as const).map((rounded) => (
+                      <MiniButton
+                        key={String(rounded)}
+                        label={rounded ? t.cornerRounded : t.cornerSharp}
+                        active={cur.rounded === rounded}
+                        onPress={() => {
+                          nudge();
+                          setConfig({ rounded });
+                        }}
+                      >
+                        <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={cur.rounded === rounded ? '#FFFFFF' : c.text} strokeWidth={2.2}>
+                          <Rect x="4" y="4" width="16" height="16" rx={rounded ? 6 : 0} />
+                        </Svg>
+                      </MiniButton>
+                    ))}
+                  </Section>
+                ) : null}
+
+                {showLine && at('route', slot) ? (
+                  <Section title={t.secRoute}>
+                    {ROUTES.map((route) => (
+                      <MiniButton
+                        key={route}
+                        label={t[routeLabel[route]]}
+                        active={cur.route === route}
+                        onPress={() => {
+                          nudge();
+                          setConfig({ route });
+                        }}
+                      >
+                        <LineGlyph d={routePath({ from: { x: 4, y: 19 }, to: { x: 20, y: 5 }, route })} on={cur.route === route} />
+                      </MiniButton>
+                    ))}
+                  </Section>
+                ) : null}
+  
+                {showLine && at('ends', slot) ? (
+                  <Section title={t.secEnds}>
+                    {(['headStart', 'headEnd'] as const).map((end) => (
+                      <MiniButton
+                        key={end}
+                        wide
+                        label={t[end]}
+                        active={false}
+                        onPress={() => {
+                          nudge();
+                          setEndsPage(end);
+                        }}
+                      >
+                        <MarkerIcon kind={cur[end]} end={end === 'headEnd'} color={c.text} small />
+                        <Txt weight="bold" size={10} color={c.textSecondary} style={{ marginLeft: 4 }}>
+                          {t[end]}
+                        </Txt>
+                        <Icon name="chevron" size={11} color={c.textSecondary} />
+                      </MiniButton>
+                    ))}
+                  </Section>
+                ) : null}
+  
+                {showLabelBox && at('text', slot) ? textSections : null}
+    </>
   );
 
   const bottomGap = Math.max(insets.bottom, landscape ? 10 : 16);
@@ -499,112 +733,24 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </>
                 ) : (
                   <>
-                {showSizes ? (
-                  <Section title={t.size}>
-                    <WidthSlider
-                      value={cur.width}
-                      label={t.size}
-                      onChange={(width) => {
-                        nudge();
-                        setConfig({ width });
-                      }}
-                    />
-                  </Section>
+                {sections('main')}
+                {hasMore ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: moreOpen }}
+                    onPress={() => {
+                      nudge();
+                      moreMemo.open = !moreOpen;
+                      setMoreOpen(!moreOpen);
+                    }}
+                    style={{ alignSelf: 'center', paddingHorizontal: 10, paddingVertical: 6 }}
+                  >
+                    <Txt weight="extrabold" size={11} tone="secondary">
+                      {moreOpen ? t.optionsLess : t.optionsMore}
+                    </Txt>
+                  </Pressable>
                 ) : null}
-  
-                {showDash ? (
-                  <Section title={t.secStroke}>
-                    {DASHES.map((dash) => (
-                      <MiniButton
-                        key={dash}
-                        label={t[dashLabel[dash]]}
-                        active={cur.dash === dash}
-                        onPress={() => {
-                          nudge();
-                          setConfig({ dash });
-                        }}
-                      >
-                        <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={cur.dash === dash ? '#FFFFFF' : c.text} strokeWidth={2.2} strokeLinecap="round">
-                          <SvgPath d="M3 12H21" strokeDasharray={dashIntervals(dash, 2.2)?.join(' ')} />
-                        </Svg>
-                      </MiniButton>
-                    ))}
-                  </Section>
-                ) : null}
-  
-                {showFill ? (
-                  <Section title={t.fillColor}>
-                    <MiniButton
-                      label={t.noFill}
-                      active={cur.fillOpacity === 0}
-                      onPress={() => {
-                        nudge();
-                        setConfig({ fillOpacity: 0 });
-                      }}
-                    >
-                      <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={cur.fillOpacity === 0 ? '#FFFFFF' : c.text} strokeWidth={2} strokeLinecap="round">
-                        <Rect x={4} y={4} width={16} height={16} rx={3} />
-                        <SvgPath d="M4 20L20 4" />
-                      </Svg>
-                    </MiniButton>
-                    {[25, 50, 75, 100].map((pct) => (
-                      <MiniButton
-                        key={pct}
-                        wide
-                        glyph={`${pct}%`}
-                        label={`${t.opacity} ${pct}%`}
-                        active={cur.fillOpacity === pct}
-                        onPress={() => {
-                          nudge();
-                          setConfig({ fillOpacity: pct });
-                        }}
-                      />
-                    ))}
-                  </Section>
-                ) : null}
-  
-                {showLine ? (
-                  <Section title={t.secRoute}>
-                    {ROUTES.map((route) => (
-                      <MiniButton
-                        key={route}
-                        label={t[routeLabel[route]]}
-                        active={cur.route === route}
-                        onPress={() => {
-                          nudge();
-                          setConfig({ route });
-                        }}
-                      >
-                        <LineGlyph d={routePath({ from: { x: 4, y: 19 }, to: { x: 20, y: 5 }, route })} on={cur.route === route} />
-                      </MiniButton>
-                    ))}
-                  </Section>
-                ) : null}
-  
-                {showLine ? (
-                  <Section title={t.secEnds}>
-                    {(['headStart', 'headEnd'] as const).map((end) => (
-                      <MiniButton
-                        key={end}
-                        wide
-                        label={t[end]}
-                        active={false}
-                        onPress={() => {
-                          nudge();
-                          setEndsPage(end);
-                        }}
-                      >
-                        <MarkerIcon kind={cur[end]} end={end === 'headEnd'} color={c.text} small />
-                        <Txt weight="bold" size={10} color={c.textSecondary} style={{ marginLeft: 4 }}>
-                          {t[end]}
-                        </Txt>
-                        <Icon name="chevron" size={11} color={c.textSecondary} />
-                      </MiniButton>
-                    ))}
-                  </Section>
-                ) : null}
-  
-                {showLabelBox ? textSections : null}
+                {hasMore && moreOpen ? sections('more') : null}
                   </>
                 )}
               </ScrollView>
@@ -778,6 +924,20 @@ const Dense = createContext(false);
  * Stroke width as a slider with one stop per size: a track with four dots drawn
  * at their widths; a tap or a drag along it snaps to the nearest stop.
  */
+/** Drawn on a 24px grid: text lines against the left, middle or right; a bar at the top, middle or bottom of a frame. */
+const H_ALIGN_PATH = { left: 'M4 6h16M4 12h10M4 18h14', center: 'M4 6h16M7 12h10M5 18h14', right: 'M4 6h16M10 12h10M6 18h14' } as const;
+const V_ALIGN_PATH = { top: 'M8 8h8', middle: 'M8 12h8', bottom: 'M8 16h8' } as const;
+const H_ALIGNS = ['left', 'center', 'right'] as const;
+const V_ALIGNS = ['top', 'middle', 'bottom'] as const;
+const H_ALIGN_LABEL = { left: 'alignLeft', center: 'alignCenter', right: 'alignRight' } as const;
+const V_ALIGN_LABEL = { top: 'alignTop', middle: 'alignMiddle', bottom: 'alignBottom' } as const;
+
+/** Whether "More options" was left open, kept across the toolbar's remounts. */
+const moreMemo = { open: false };
+
+/** The stops of the figure opacity control, in percent. */
+const OPACITIES = [25, 50, 75, 100];
+
 function WidthSlider({ value, label, onChange }: { value: number; label: string; onChange: (width: number) => void }) {
   const c = useColors();
   const [trackWidth, setTrackWidth] = useState(0);

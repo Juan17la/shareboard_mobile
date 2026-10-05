@@ -17,6 +17,7 @@ import {
   type Axis,
   type BoardElement,
   type Dash,
+  type HAlign,
   type Link,
   type Marker,
   type Point,
@@ -289,6 +290,50 @@ export function labelLines(
   if (isLineLike(el)) return text.split('\n');
   const inner = shapeBounds(el).width - LABEL_PAD * 2;
   return textLines({ text, fontSize, font: el.font, width: Math.max(fontSize, inner) });
+}
+
+/**
+ * Where a figure's label is drawn: the x it is anchored at with its alignment,
+ * and the y of the middle of its first line. A line's label is always centred
+ * on its route. A box's sits in the box inside `LABEL_PAD`; a triangle whose
+ * vertical alignment was chosen keeps to its wide lower half, where the text
+ * fits, instead of the whole box, whose top corner is a point.
+ */
+export function labelPlacement(
+  el: Pick<ShapeElement, 'shape' | 'from' | 'to' | 'labelAt' | 'align' | 'valign'>,
+  fontSize: number,
+  lineCount: number,
+): { x: number; y: number; align: HAlign } {
+  const step = fontSize * TEXT_LINE_HEIGHT;
+  if (isLineLike(el)) {
+    const c = lineLabelCentre(el);
+    return { x: c.x, y: c.y - ((lineCount - 1) * step) / 2, align: 'center' };
+  }
+  const b = shapeBounds(el);
+  const lower = el.shape === 'triangle' && !!el.valign;
+  const top = b.y + (lower ? b.height / 2 : 0) + LABEL_PAD;
+  const height = b.height * (lower ? 0.5 : 1) - LABEL_PAD * 2;
+  const left = b.x + LABEL_PAD;
+  const width = b.width - LABEL_PAD * 2;
+  const align = el.align ?? 'center';
+  const valign = el.valign ?? 'middle';
+  return {
+    x: align === 'left' ? left : align === 'right' ? left + width : left + width / 2,
+    y:
+      valign === 'top'
+        ? top + step / 2
+        : valign === 'bottom'
+          ? top + height - step / 2 - (lineCount - 1) * step
+          : top + height / 2 - ((lineCount - 1) * step) / 2,
+    align,
+  };
+}
+
+/** The x a text element's lines are anchored at: its left, middle or right edge. */
+export function textAnchor(el: TextElement): { x: number; align: HAlign } {
+  const align = el.align ?? 'left';
+  const w = align === 'left' ? 0 : textBox(el).width;
+  return { x: el.at.x + (align === 'center' ? w / 2 : align === 'right' ? w : 0), align };
 }
 
 /** A line's label: how far along its route it stands, 0..1 (the middle when absent). */
@@ -597,6 +642,36 @@ export function polygonPoints(b: Bounds, sides = DEFAULT_SIDES): Point[] {
     out.push({ x: b.x + (b.width / 2) * (1 + Math.cos(a)), y: b.y + (b.height / 2) * (1 + Math.sin(a)) });
   }
   return out;
+}
+
+/** Figures with corners to round: not the ellipse, not the lines. */
+export const canRound = (shape: ShapeElement['shape']): boolean => shape === 'rectangle' || shape === 'triangle' || shape === 'polygon';
+
+/** How round a rounded figure's corners are: a share of its shorter side. */
+export function cornerRadius(width: number, height: number): number {
+  return Math.min(width, height) * 0.18;
+}
+
+/**
+ * A closed polygon as an SVG path with every corner rounded: the corner is cut
+ * back `r` along both edges (at most half of each, so neighbours never overlap)
+ * and joined by a curve through the original vertex.
+ */
+export function roundedPolygonPath(pts: Point[], r: number): string {
+  const f = (v: number) => Math.round(v * 100) / 100;
+  const n = pts.length;
+  let d = '';
+  pts.forEach((p, i) => {
+    const a = pts[(i + n - 1) % n];
+    const b = pts[(i + 1) % n];
+    const la = Math.hypot(a.x - p.x, a.y - p.y);
+    const lb = Math.hypot(b.x - p.x, b.y - p.y);
+    const k = Math.min(r, la / 2, lb / 2);
+    const s = la ? { x: p.x + ((a.x - p.x) / la) * k, y: p.y + ((a.y - p.y) / la) * k } : p;
+    const e = lb ? { x: p.x + ((b.x - p.x) / lb) * k, y: p.y + ((b.y - p.y) / lb) * k } : p;
+    d += `${i ? 'L' : 'M'}${f(s.x)} ${f(s.y)}Q${f(p.x)} ${f(p.y)} ${f(e.x)} ${f(e.y)}`;
+  });
+  return `${d}Z`;
 }
 
 /** Elements whose box lies entirely inside `b` — the marquee's pick. */

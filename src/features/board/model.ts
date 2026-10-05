@@ -49,6 +49,11 @@ export type Dash = (typeof DASHES)[number];
 /** Typefaces a text or a figure's label can be set in; absent is `sans` (Nunito). */
 export const FONTS = ['sans', 'serif', 'mono', 'hand'] as const;
 export type FontKey = (typeof FONTS)[number];
+/** Where text sits in its figure or its box: across, then up and down. */
+export const ALIGNS = ['left', 'center', 'right'] as const;
+export type HAlign = (typeof ALIGNS)[number];
+export const VALIGNS = ['top', 'middle', 'bottom'] as const;
+export type VAlign = (typeof VALIGNS)[number];
 
 /** A line end bound to a shape: the point is (u, v) ∈ [0,1]² of that shape's box. */
 export interface Link {
@@ -106,6 +111,8 @@ export interface ElementBase {
    * their points already say which way they go.
    */
   rotation?: number;
+  /** Whole-element opacity, 0.1..1; absent is opaque. */
+  opacity?: number;
 }
 
 export interface StrokeElement extends ElementBase {
@@ -130,6 +137,9 @@ export interface ShapeElement extends ElementBase {
   fontSize?: number;
   /** Label typeface; `sans` when absent. */
   font?: FontKey;
+  /** The label's place in the figure; centre and middle when absent. */
+  align?: HAlign;
+  valign?: VAlign;
   /** A line's label: how far along its route it stands, 0..1; the middle when absent. */
   labelAt?: number;
   /** A polygon's corner count, `LIMITS.minSides`..`maxSides`; `DEFAULT_SIDES` when absent. */
@@ -146,6 +156,8 @@ export interface ShapeElement extends ElementBase {
    */
   bend?: number;
   dash?: Dash;
+  /** Enclosed shapes but the ellipse: corners rounded instead of sharp. */
+  rounded?: boolean;
   /**
    * Elbow only: the direction the line leaves its start / arrives at its end
    * along. Absent: the long axis — or, at an end bound to a side of a shape,
@@ -177,6 +189,8 @@ export interface TextElement extends ElementBase {
   font?: FontKey;
   /** Wrap width in board units; absent, each line is as long as it is typed. */
   width?: number;
+  /** Lines against the text's box; left when absent. */
+  align?: HAlign;
 }
 
 export interface ImageElement extends ElementBase {

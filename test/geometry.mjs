@@ -18,6 +18,11 @@ import {
   contentBounds,
   handlesOf,
   polygonPoints,
+  roundedPolygonPath,
+  labelPlacement,
+  textAnchor,
+  TEXT_LINE_HEIGHT,
+  cornerRadius,
   resizeElement,
   rotationFromDrag,
   shapeHit,
@@ -50,6 +55,7 @@ import { coveringFigure, editPatches, fillColorOf, fillOpacityOf, fillWith, pars
 import { decodeClip, encodeClip } from '../src/features/board/clip.ts';
 import { splitOps } from '../src/features/board/ops.ts';
 import { toSvg } from '../src/features/board/svg.ts';
+import { primaryOptions, subjectsOf } from '../src/features/board/tool-options.ts';
 
 const base = (id, z) => ({ id, createdBy: 'u', createdAt: 0, updatedAt: 0, z });
 const box = (id, x, y, w, h, z = 1) => ({
@@ -742,6 +748,44 @@ assert.equal((svg.match(/<polygon points="([^"]*)"/)[1].trim().split(' ')).lengt
 assert.match(svg, /stroke-dasharray=/, 'dashed line');
 assert.match(svg, /<path d="M 0 100 C/, 'the smoothed stroke');
 assert.equal(toSvg([]), null);
+{
+  // Progressive disclosure: only a tool's own primary options are up front.
+  const up = primaryOptions(subjectsOf('shape', 'rectangle', []));
+  assert.ok(up.has('fill') && up.has('size') && !up.has('corners') && !up.has('opacity'), 'rectangle: corners wait behind More');
+  assert.ok(primaryOptions(subjectsOf('pen', 'rectangle', [])).size <= 2, 'pen: colour and size');
+  const both = primaryOptions(subjectsOf('select', 'rectangle', [box('p', 0, 0, 5, 5), { ...base('q', 2), kind: 'text' }]));
+  assert.ok(both.has('fill') && both.has('align'), 'a mixed selection shows the union');
+  assert.equal(primaryOptions(subjectsOf('select', 'rectangle', [])).size, 0, 'nothing in hand, nothing up front');
+}
+{
+  // Alignment: a figure's label against its padded box, a text against its own box.
+  const step = 10 * TEXT_LINE_HEIGHT;
+  const R = box('al', 0, 0, 100, 60);
+  assert.deepEqual(labelPlacement(R, 10, 1), { x: 50, y: 30, align: 'center' }, 'centred by default');
+  assert.deepEqual(labelPlacement({ ...R, align: 'left', valign: 'top' }, 10, 1), { x: 6, y: 6 + step / 2, align: 'left' });
+  assert.equal(labelPlacement({ ...R, align: 'right', valign: 'bottom' }, 10, 2).x, 94);
+  assert.equal(labelPlacement({ ...R, valign: 'bottom' }, 10, 2).y, 54 - step / 2 - step, 'two lines end at the bottom padding');
+  assert.ok(labelPlacement({ ...R, shape: 'triangle', valign: 'top' }, 10, 1).y > 30, 'a triangle label keeps to its lower half');
+  assert.equal(labelPlacement({ ...R, shape: 'triangle' }, 10, 1).y, 30, 'unaligned: the old centre');
+  const T = { ...base('tx', 1), kind: 'text', at: { x: 10, y: 0 }, text: 'ab', color: '#000', fontSize: 10, width: 100 };
+  assert.deepEqual(textAnchor(T), { x: 10, align: 'left' });
+  assert.deepEqual(textAnchor({ ...T, align: 'center' }), { x: 60, align: 'center' });
+  assert.deepEqual(textAnchor({ ...T, align: 'right' }), { x: 110, align: 'right' });
+  assert.match(toSvg([{ ...R, text: 'hi', align: 'left' }]), /text-anchor="start"/);
+}
+{
+  // Rounded corners: one curve per vertex, finite even for a sliver or a point.
+  for (const [w, h] of [[100, 60], [3, 100], [0, 0]]) {
+    const d = roundedPolygonPath(polygonPoints({ x: 0, y: 0, width: w, height: h }, 5), cornerRadius(w, h));
+    assert.equal((d.match(/Q/g) || []).length, 5, 'a curve at each corner');
+    assert.ok(!/NaN|Infinity/.test(d), `finite at ${w}x${h}`);
+  }
+  assert.match(toSvg([{ ...box('rr', 0, 0, 100, 50), rounded: true }]), /rx="9"/, 'rounded rectangle');
+  assert.match(toSvg([{ ...box('rr', 0, 0, 100, 50) }]), /rx="0"/, 'sharp by default');
+  assert.match(toSvg([{ ...box('rp', 0, 0, 60, 60), shape: 'triangle', rounded: true }]), /<path d="M[^"]*Q/, 'rounded triangle');
+}
+assert.match(toSvg([{ ...box('o', 0, 0, 10, 10), opacity: 0.4 }]), /<g opacity="0.4">/, 'element opacity');
+assert.doesNotMatch(toSvg([box('o', 0, 0, 10, 10)]), /opacity/, 'opaque: no group');
 assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rect x="-24"/, 'transparent: no ground');
 
 // --- a board opens on its content; a reconnect leaves the camera alone -------
