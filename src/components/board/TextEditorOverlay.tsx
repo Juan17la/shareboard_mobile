@@ -10,7 +10,7 @@
  * is left behind. No confirm button: return or a tap outside is the finish.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Keyboard, Platform, Pressable, TextInput, View } from 'react-native';
 
 import { inkFor } from '@/constants/theme';
 import { useColors, useDark } from '@/features/session/store';
@@ -19,6 +19,7 @@ import {
   boxOf,
   isLineLike,
   labelLines,
+  labelPlacement,
   lineLabelCentre,
   LABEL_PAD,
   rotationOf,
@@ -26,9 +27,12 @@ import {
   TEXT_LINE_HEIGHT,
 } from '@/features/board/geometry';
 import { SHAPE_TEXT_SIZE, type ShapeElement, type TextElement } from '@/features/board/model';
-import { useBoardStore } from '@/features/board/store';
+import { useBoardStore, type Camera } from '@/features/board/store';
 
 import { FAMILIES } from './BoardFonts';
+
+/** Clear space kept between the text and the keyboard, in px. */
+const KEYBOARD_MARGIN = 16;
 
 export function TextEditorOverlay({
   element,
@@ -71,12 +75,16 @@ export function TextEditorOverlay({
   let box: { x: number; y: number; width: number; height: number };
   let paddingTop = 0;
   let paddingX = 0;
+  let textAlign: 'left' | 'center' | 'right' = draft.kind === 'text' ? (draft.align ?? 'left') : 'center';
   if (draft.kind === 'text') {
     const b = boxOf(draft);
     // Unwrapped text grows to the right as it is typed: leave the input room
     // so it never wraps a line the board does not.
     const width = draft.width ? draft.width * s : Math.max(b.width * s + fontSize * 2, 80);
-    box = { x: b.x * s + camera.x, y: b.y * s + camera.y, width, height: b.height * s };
+    // The extra room is split by the alignment, so a centred or right-aligned line stays under its caret.
+    const slack = draft.width ? 0 : width - b.width * s;
+    const lean = textAlign === 'right' ? 1 : textAlign === 'center' ? 0.5 : 0;
+    box = { x: b.x * s + camera.x - slack * lean, y: b.y * s + camera.y, width, height: b.height * s };
   } else if (isLineLike(draft)) {
     // A line's label is centred where it stands along the line (ShapeLabel).
     const lines = labelLines(draft, fontSize / s);
@@ -89,9 +97,66 @@ export function TextEditorOverlay({
     const b = shapeBounds(draft);
     const lines = labelLines(draft, fontSize / s).length;
     box = { x: b.x * s + camera.x, y: b.y * s + camera.y, width: b.width * s, height: b.height * s };
-    paddingTop = Math.max(0, (box.height - lines * step) / 2);
+    const at = labelPlacement(draft, fontSize / s, lines);
+    paddingTop = Math.max(0, (at.y - ((fontSize / s) * TEXT_LINE_HEIGHT) / 2) * s + camera.y - box.y);
+    textAlign = at.align;
     paddingX = LABEL_PAD * s;
   }
+  // Lift the board when the keyboard would cover the text: the text's bottom
+  // (overlay coordinates) is read through a ref so a tween in flight is not
+  // restarted by the camera moving under it.
+  const rootRef = useRef<View>(null);
+  const bottomRef = useRef(0);
+  const bottom = box.y + Math.max(box.height, step);
+  useEffect(() => {
+    bottomRef.current = bottom;
+  }, [bottom]);
+  const [keyboardTop, setKeyboardTop] = useState<number | null>(null);
+  const lifted = useRef<{ from: Camera; to: Camera } | null>(null);
+  const tween = useRef(0);
+  useEffect(() => {
+    const ios = Platform.OS === 'ios';
+    const shown = Keyboard.addListener(ios ? 'keyboardWillShow' : 'keyboardDidShow', (e) =>
+      setKeyboardTop(e.endCoordinates.screenY),
+    );
+    const hidden = Keyboard.addListener(ios ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardTop(null));
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, []);
+  const lineCount = draft.text?.split('\n').length ?? 1;
+  useEffect(() => {
+    if (keyboardTop === null) return;
+    // measureInWindow, not the layout: it is right whether or not the window was resized for the keyboard.
+    rootRef.current?.measureInWindow((_x, top) => {
+      const delta = bottomRef.current - (keyboardTop - top - KEYBOARD_MARGIN);
+      if (delta <= 0) return;
+      const { camera: now, setCamera } = useBoardStore.getState();
+      const from = now;
+      const to = { ...now, y: now.y - delta };
+      lifted.current = { from: lifted.current?.from ?? now, to };
+      const t0 = Date.now();
+      cancelAnimationFrame(tween.current);
+      const step = () => {
+        const k = Math.min(1, (Date.now() - t0) / 180);
+        setCamera({ ...to, y: from.y + (to.y - from.y) * (1 - (1 - k) * (1 - k)) });
+        if (k < 1) tween.current = requestAnimationFrame(step);
+      };
+      step();
+    });
+  }, [keyboardTop, lineCount]);
+  // Done typing: back to where the board was, unless the person moved it meanwhile.
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(tween.current);
+      const l = lifted.current;
+      const { camera: now, setCamera } = useBoardStore.getState();
+      if (l && now.x === l.to.x && now.y === l.to.y && now.scale === l.to.scale) setCamera(l.from);
+    },
+    [],
+  );
+
   const angle = rotationOf(element);
   const origin = boxOf(element);
   // The stored colour is the light-theme ink by default; flip it to the dark
@@ -102,7 +167,7 @@ export function TextEditorOverlay({
   const italic = element.kind === 'text' && !!element.italic;
 
   return (
-    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+    <View ref={rootRef} collapsable={false} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
       {/* Tapping anywhere else finishes the text rather than leaving a stray
           editor open behind the next stroke. */}
       <Pressable
@@ -136,7 +201,7 @@ export function TextEditorOverlay({
           padding: 0,
           paddingTop,
           paddingHorizontal: paddingX,
-          textAlign: element.kind === 'shape' ? 'center' : 'left',
+          textAlign,
           transform: angle ? [{ rotate: `${angle}rad` }] : undefined,
           transformOrigin: [
             (origin.x + origin.width / 2) * s + camera.x - box.x,
