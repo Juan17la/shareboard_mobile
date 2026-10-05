@@ -400,6 +400,8 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
           ))}
           {selShape ? (
             <>
+              {/* Three to a row: across, up and down, then the one-tap centre. */}
+              <View style={{ width: '100%', height: 0 }} />
               {V_ALIGNS.map((valign) => (
                 <MiniButton
                   key={valign}
@@ -416,6 +418,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Svg>
                 </MiniButton>
               ))}
+              <View style={{ width: '100%', height: 0 }} />
               <MiniButton
                 label={t.alignCentered}
                 active={cur.align === 'center' && cur.valign === 'middle'}
