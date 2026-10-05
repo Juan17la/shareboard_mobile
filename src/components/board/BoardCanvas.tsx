@@ -1090,6 +1090,7 @@ export function BoardCanvas({
                 stroke={dark ? inkFor(config.color, true) : config.color}
                 strokeWidth={config.width}
                 fill={liveFill}
+                rounded={config.rounded}
               />
             ) : null}
 
