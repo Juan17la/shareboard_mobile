@@ -821,7 +821,8 @@ export function followLinks(
   const byId = new Map(elements.map((el) => [el.id, el] as const));
   const out: { id: string; from?: Point; to?: Point }[] = [];
   for (const el of elements) {
-    if (el.kind !== 'shape' || !isLineLike(el)) continue;
+    // Only arrows bind; a plain line from an older board keeps its ends where they are.
+    if (el.kind !== 'shape' || el.shape !== 'arrow') continue;
     // Only the end that is bound to a moved shape changes: patching the other
     // one too would make an undo rewind wherever a collaborator had put it.
     const end = (link: Link | null | undefined) => {

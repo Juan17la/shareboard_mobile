@@ -651,6 +651,13 @@ assert.deepEqual(bendHandleOf({ ...step, shape: 'arrow', ...draggedElbow }), { x
   );
   s().undo();
   assert.equal(s().visibleElements().length, 0, 'one undo step');
+
+  // A closed figure carries the strip's stroke style too, and the cursor comes back with it selected.
+  s().setTool('shape');
+  const box = s().addShape('rectangle', { from: { x: 0, y: 0 }, to: { x: 50, y: 40 } });
+  assert.equal(s().elements[box].dash, 'dashed');
+  s().finishCreate([box]);
+  assert.deepEqual([s().tool, s().selectedIds], ['select', [box]]);
 }
 
 // --- text: whitespace-only is empty, so the element goes ---------------------
@@ -847,10 +854,12 @@ assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rec
   const aim = linkEndpoints([circle], { x: 100, y: 50 }, { x: 600, y: 50 }, 18);
   near2(aim.from, { x: 200, y: 50 });
   // Resize the shape: the bound end stays on the outline.
-  const bound = { ...base('L2', 2), kind: 'shape', shape: 'line', from: r.from, to: { x: 600, y: 600 }, stroke: '#000000', strokeWidth: 2, fill: null, fromLink: r.fromLink, toLink: null };
+  const bound = { ...base('L2', 2), kind: 'shape', shape: 'arrow', from: r.from, to: { x: 600, y: 600 }, stroke: '#000000', strokeWidth: 2, fill: null, fromLink: r.fromLink, toLink: null };
   const bigger = { ...circle, to: { x: 400, y: 300 } };
   const moved = followLinks([bigger, bound], ['C'])[0].from;
   on(moved, bigger, 'an end that followed a resized ellipse');
+  // A plain line from an older board no longer follows: only arrows bind.
+  assert.equal(followLinks([bigger, { ...bound, shape: 'line' }], ['C']).length, 0, 'a line stays where it is');
   function near2(a, b) { assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < 1e-6, `${JSON.stringify(a)} vs ${JSON.stringify(b)}`); }
 }
 
