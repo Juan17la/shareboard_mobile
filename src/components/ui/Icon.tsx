@@ -59,6 +59,7 @@ import {
   WarningIcon,
   XCircleIcon,
   XIcon,
+  WhatsappLogoIcon,
   type Icon as PhosphorIcon,
   type IconWeight,
 } from 'phosphor-react-native';
@@ -81,6 +82,7 @@ export type IconName =
   | 'lock'
   | 'lock-open'
   | 'share'
+  | 'whatsapp'
   | 'board'
   | 'people'
   | 'settings'
@@ -134,6 +136,7 @@ const GLYPHS: Record<IconName, [PhosphorIcon, IconWeight?]> = {
   lock: [LockSimpleIcon],
   'lock-open': [LockSimpleOpenIcon],
   share: [ShareNetworkIcon],
+  whatsapp: [WhatsappLogoIcon],
   board: [ChalkboardSimpleIcon],
   people: [UsersIcon],
   settings: [GearSixIcon],

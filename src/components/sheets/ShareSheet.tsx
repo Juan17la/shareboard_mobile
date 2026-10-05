@@ -7,7 +7,7 @@
  * pointing a camera at the first.
  */
 import * as Clipboard from 'expo-clipboard';
-import { Pressable, View } from 'react-native';
+import { Linking, Pressable, Share, View } from 'react-native';
 
 import { Radius } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
@@ -16,7 +16,7 @@ import { useBoardStore } from '@/features/board/store';
 import { formatShortCode } from '@/utils/short-code';
 
 import { GlassPanel } from '../ui/Glass';
-import { Icon } from '../ui/Icon';
+import { Icon, type IconName } from '../ui/Icon';
 import { QRCode } from '../ui/QRCode';
 import { SectionLabel, Sheet } from '../ui/Sheet';
 import { Txt } from '../ui/Text';
@@ -39,6 +39,16 @@ export function ShareSheet({
   const t = useT();
   const meta = useBoardStore((s) => s.meta);
   const code = meta?.shortCode ?? '';
+
+  const message = `${t.shareMessage} ${link}`;
+  // No canOpenURL: it needs the app's scheme declared natively (a new build);
+  // openURL rejects when nothing handles it, and the web link works everywhere.
+  const sendWhatsApp = () =>
+    Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`).catch(() =>
+      Linking.openURL(`https://wa.me/?text=${encodeURIComponent(message)}`),
+    );
+  // The system chooser: Telegram, Messenger, SMS, mail… without per-app code.
+  const sendMore = () => Share.share({ message });
 
   const copy = async (value: string, message: string) => {
     await Clipboard.setStringAsync(value);
@@ -102,6 +112,11 @@ export function ShareSheet({
         </GlassPanel>
 
         <View style={{ flexDirection: 'row', gap: 9 }}>
+          <ShortcutTile icon="whatsapp" label={t.shareWhatsApp} onPress={sendWhatsApp} />
+          <ShortcutTile icon="share" label={t.shareMore} onPress={sendMore} />
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 9 }}>
           <ShortcutTile icon="image" label={t.exportImage} onPress={onOpenExport} />
           <ShortcutTile icon="lock" label={t.permissions} onPress={onOpenPrivacy} />
         </View>
@@ -115,7 +130,7 @@ function ShortcutTile({
   label,
   onPress,
 }: {
-  icon: 'image' | 'lock';
+  icon: IconName;
   label: string;
   onPress: () => void;
 }) {
