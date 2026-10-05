@@ -90,6 +90,7 @@ import {
   ElementRenderer,
   LiveBoxShape,
   LiveStroke,
+  ERASING_ALPHA,
   HELD_ALPHA,
   LiveDotGrid,
   SelectionFrame,
@@ -113,9 +114,9 @@ type Ends = {
   toLink?: Link | null;
 };
 
-/** A line's ends bind to the shapes they land on; other shapes pass through. */
+/** An arrow's ends bind to the shapes they land on; a plain line never does. */
 function snapLine(shape: string, from: Point, to: Point): Ends {
-  if (shape !== 'line' && shape !== 'arrow') return { from, to };
+  if (shape !== 'arrow') return { from, to };
   const store = useBoardStore.getState();
   // Never to itself: the line being reshaped is not a target.
   const others = store.visibleElements().filter((el) => !store.selectedIds.includes(el.id));
@@ -179,7 +180,7 @@ const MAX_STROKE_POINTS = LIMITS.maxStrokePoints;
 /** How long a finger holds still with the cursor before the menu opens: paste on empty board, the element's actions on a figure. */
 const HOLD_MS = 500;
 /** How long a pen stroke's end is held before it is read as a figure (`recognizeSketch`). */
-const SKETCH_MS = 700;
+const SKETCH_MS = 500;
 /** Screen pixels a finger may wander and still count as held still. */
 const STILL_PX = 8;
 
@@ -243,12 +244,10 @@ export function BoardCanvas({
   // Sorted once per change to the elements, not once per finger move: the
   // drag preview below only patches the sorted list.
   const drawn = useMemo(() => visibleSorted(elements), [elements]);
-  // What the eraser has passed over is gone from the screen at once; it is
-  // deleted for real (one step) when the finger lifts.
-  const sorted = useMemo(
-    () => (liveErased.length ? drawn.filter((el) => !liveErased.includes(el.id)) : drawn),
-    [drawn, liveErased],
-  );
+  // What the eraser has passed over fades (`ERASING_ALPHA`) and is deleted for
+  // real, as one step, when the finger lifts.
+  const sorted = drawn;
+  const erasing = useMemo(() => new Set(liveErased), [liveErased]);
   const list = useMemo(() => {
     if (editingId && draft !== null) {
       return sorted.map((el) => (el.id === editingId ? ({ ...el, text: draft } as BoardElement) : el));
@@ -549,6 +548,7 @@ export function BoardCanvas({
         figure.patch = null;
         return;
       }
+      // The pencil stays in hand: many strokes in a row is what it is for.
       if (success && points.length >= 4) store().addStroke(simplify(points));
       if (!success) {
         pen.set([]);
@@ -738,10 +738,10 @@ export function BoardCanvas({
         // Measured in screen pixels, like web: a board-space threshold made a
         // small shape drawn while zoomed in read as a mis-tap and vanish
         // instead of landing selected.
-        // A new shape lands bare — no handles, no options — so the next one
-        // can be drawn straight away. A tap on it picks it (see `tap`).
+        // A new shape comes up selected with the cursor back, handles ready.
         if (Math.hypot(to.x - from.x, to.y - from.y) * store().camera.scale > 6) {
-          store().addShape(store().config.shape, { from, to });
+          const id = store().addShape(store().config.shape, { from, to });
+          if (id) store().finishCreate([id]);
         }
         // The preview stays until the canvas has the committed shape (a render
         // or two), unless a new one has begun by then and owns it.
@@ -753,7 +753,10 @@ export function BoardCanvas({
         );
       } else if (t === 'shape' && shape) {
         const dragged = Math.hypot(shape.to.x - shape.from.x, shape.to.y - shape.from.y);
-        if (dragged * store().camera.scale > 6) store().addShape(store().config.shape, shape);
+        if (dragged * store().camera.scale > 6) {
+          const id = store().addShape(store().config.shape, shape);
+          if (id) store().finishCreate([id]);
+        }
       }
       store().setLiveShape(null);
     };
@@ -1003,10 +1006,10 @@ export function BoardCanvas({
   ]);
 
   const editing = editingId ? elements[editingId] : null;
-  // Connection points show whenever a line or arrow could land on them.
+  // Connection points show whenever an arrow could land on them.
   const anchors =
-    (tool === 'shape' && (config.shape === 'line' || config.shape === 'arrow')) ||
-    (selectedShape && isLineLike(selectedShape));
+    (tool === 'shape' && config.shape === 'arrow') ||
+    (selectedShape && selectedShape.shape === 'arrow');
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }} onLayout={onLayout}>
@@ -1019,9 +1022,10 @@ export function BoardCanvas({
 
           <Group transform={transform}>
             {list.map((el) =>
-              held.has(el.id) ? (
-                // Someone else holds it: dimmed, framed in their colour below.
-                <Group key={el.id} opacity={HELD_ALPHA}>
+              held.has(el.id) || erasing.has(el.id) ? (
+                // Someone else holds it (dimmed, framed in their colour below),
+                // or the eraser is about to take it (fainter).
+                <Group key={el.id} opacity={erasing.has(el.id) ? ERASING_ALPHA : HELD_ALPHA}>
                   <ElementRenderer el={el} smooth={smooth} dark={dark} />
                 </Group>
               ) : (
@@ -1067,6 +1071,7 @@ export function BoardCanvas({
                   stroke: config.color,
                   strokeWidth: config.width,
                   fill: fillWith(config.fillColor ?? config.color, config.fillOpacity),
+                  dash: config.dash,
                   createdBy: 'local',
                   createdAt: 0,
                   updatedAt: 0,
@@ -1124,6 +1129,10 @@ export function BoardCanvas({
           element={editing}
           onDraft={setDraft}
           onClose={() => {
+            // A new text that kept its words comes up selected, with the cursor.
+            const { tool: t, elements: all, finishCreate } = useBoardStore.getState();
+            const done = all[editing.id];
+            if (t === 'text' && done?.kind === 'text' && !done.deleted && done.text) finishCreate([done.id]);
             setEditingId(null);
             setDraft(null);
           }}
