@@ -1,0 +1,56 @@
+Shareboard
+Web + Mobile
+1. After using any tool different from the hand and the cursosr the user should get selected the cursor back again. (figure -> draw -> confirms -> gets the cursor tool back again) and leave the object already selected to be modify (exceptions, hand, eraser, filler)
+2. There should be other kind of pencil the "geometric pencil" something that works to draw any kind of poligon or figure making striaght lines. Something like the draw to shape of exaclidraw but that works for circles, polygones of any kind and sides and arrows or line also show a preview with low opacity of what it's being drawed or detected. Leave the options as the selected pencil until the user decides otherwise (pencil --> draw to shape, draw to shape stays until, draw to shape --> pencil)
+3. The top header take a lot of space. Delete it's background and just leave the buttons and options in it. take off the glass style
+4. Reduce time to detect a figure around 200ms from the current timer.
+5. Make a small tutorial for all the new users, use the pencil, look at the options, etc.
+6. Make the borders of the selection to be dragable for the resize only horizontally or vertically depending on the side of the selection
+7. Make the text size to be 4 options, small, medium, large and extralarge
+8. Not show options of colors on the tools options just one box to select and see the current color
+9. Make the eraser to take off some opacity from the elements it's erasing so the user knows it's erasing them
+10. Change the name of the tool to something more representative like (colors, figures, font, size, borders, bold, italic, etc)
+11. When a line/arrow it's draw over an element(figure, text, image) then link it instantly, and if it ends on another element(figure, text, image) link it to both of them. If the user doesn't draw over at the begining but end the line/arrow over another element(figure, text, image) then leave the tail free but the head linked to the last element it was drew
+12  Make the detectiong of arrow on the normal pencil to be an circle so if the user draws an line with an small circle or something similar then make an arrow, so that it's easier for him.
+13. Simplify the options so they are not so overwhealming for the new user, don't show all the types of option at once.
+14. Change the filler icon for a bucket.
+15. Don't show the format jpg if the user selects transparent background.
+16. Show the export option outside the three dots for easier access only the icon.
+17. Add the option of rounded or not rounded bordes to the figures. default not rounded
+18. If the users enters to the app show him an off line boards, until he decides to share it (so, it works without internet too). the user will be always redirected to his off line board. It will only show him boards live if he hasn't been offline more than 5 hours.
+19. Add options to the figures and text to center text vertically or horizontally or both at the time to be at the right center.
+20. Add more points of connections to the figures, but only leave three points visible of connection per figure.
+21. Make trasnformation to be able on multiple elements selected. If there's some element that has not options of transaformation then just leave it like it.
+22. After accepting an result from the AI, take back the user to the whiteboard
+23. Add option of stroke types to the figures (dotted, dashed, solid)
+24. Add option of opacity to the figures
+25. Lines not longer connect to elements, only arrow contenct to elements
+
+Web
+1. Take off the paste with the middle button of the mouse.
+2. move tool bar to the right side and options to move it to the left side.
+3. Fix the transparency on the deployed version in vercel.
+4. Make the options to be like this. (taking the aditions of above in cosideration)
+- cursor (no options)
+- hand (no options)
+- pencil (thickness, color, draw to shape)
+- eraser (thickness)
+- shapes (rectangle, circle, triangle, polygon)
+    - Reactangle [background color, border color, thickness, corners{sharp, rounded}, stroke style, text aling{top, bottom, center, left, right, center, full centered}]
+    - Circle [background color, border{color, thicknes}, stroke style]
+    - Triangle [background color, border color, thickness, corners{sharp, rounded}, stroke style, sides]
+    - Polygon [background color, border color, thickness, corners{sharp, rounded}, stroke style]
+- Line (color, thickness, stroke style)
+- Arrow (color, stroke style, tail type {all tail options}, head type {all head options}, arros type{curved, straight, elbow}, text {show text options bellow})
+- Text (color, size{small, medium, large, extra large}, font{options fonts}, bold, italic, underline,text aling{left, right, center})
+NOthing else should shown there.
+[] --> to shown in a toolbar
+{} --> to shown in a dropdown menu
+5. Shown the keyboard shortcuts on the toolbar really small, just a letter like in excalidraw
+
+Mobile
+1. move the view of the user to put the text over where his keyboard shows up when he wants to write something.
+2. On the mobile header, make the setting to be in the three dots options to be at the start.
+3. Change the icon of the button share to something more similar to the one of social media.
+4. Make the button of share to have options by whatsapp or other apps of messaging.
+5. Take as reference the toobar of web but instead of using [] onlt use {} for dropdown menu options for the most big side of things so you save space. Base a little bit on the mobile responsive version of excalidraw for this, where they only leave the color option and the another button for setting that displays a general dropdown menu with all the options.
