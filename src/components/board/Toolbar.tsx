@@ -31,7 +31,6 @@ import {
   routePath,
   canRound,
 } from '@/features/board/geometry';
-import { primaryOptions, subjectsOf, type OptionId } from '@/features/board/tool-options';
 import {
   DASHES,
   FONTS,
@@ -155,8 +154,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const open = useBoardStore((s) => s.railOpen);
   const [picking, setPicking] = useState(false);
   const [filling, setFilling] = useState(false);
-  // "More" stays as it was left for the rest of the session (`moreMemo`).
-  const [moreOpen, setMoreOpen] = useState(moreMemo.open);
   /** The box whose options are open in the popover above the strip. */
   const [box, setBox] = useState<Box | null>(null);
   /** The dropdown's second page: the marker grid for one end of a line. */
@@ -224,24 +221,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     (tool !== 'select' || (selected.length > 0 && !selected.every((el) => el.kind === 'image')));
   // The cursor with nothing selected, and the hand, have nothing to offer: an
   // empty strip is noise, whatever asked for it.
-  // Which of them are up front for what is in hand; the rest sit behind "More".
-  const primary = primaryOptions(subjectsOf(tool, config.shape, selected));
-  const at = (id: OptionId, slot: 'main' | 'more') => (primary.has(id) ? 'main' : 'more') === slot;
-  const available: Record<OptionId, boolean> = {
-    kinds: false, // the kinds are up front for every shape, never behind More
-    color: false, // the colour button is always in the strip
-    size: showSizes,
-    fill: showFill,
-    dash: showDash,
-    opacity: showDash,
-    corners: showCorners,
-    sides: false, // a polygon's corners count sits with the kinds
-    ends: showLine,
-    route: showLine,
-    text: showLabelBox,
-    align: false, // inside the text sections
-  };
-  const hasMore = (Object.keys(available) as OptionId[]).some((id) => available[id] && !primary.has(id));
   const hasOptions = showSizes || showFill || showLine || showDash || showStyle || showLabelBox || showColor;
   // A selected shape can change kind within its family: box to box, line to
   // arrow. With the shapes tool in hand, the strip is where the kind is chosen.
@@ -457,10 +436,10 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     </View>
   );
 
-  /** The dropdown's sections for one slot: up front (`main`), or behind More. */
-  const sections = (slot: 'main' | 'more') => (
+  /** Every section the tool in hand offers. */
+  const sections = (
     <>
-                {showSizes && at('size', slot) ? (
+                {showSizes ? (
                   <Section title={t.size}>
                     <WidthSlider
                       value={cur.width}
@@ -473,7 +452,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
   
-                {showDash && at('dash', slot) ? (
+                {showDash ? (
                   <Section title={t.secStroke}>
                     {DASHES.map((dash) => (
                       <MiniButton
@@ -493,7 +472,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
 
-                {showDash && at('opacity', slot) ? (
+                {showDash ? (
                   <Section title={t.secOpacity}>
                     {OPACITIES.map((pct) => (
                       <MiniButton
@@ -513,7 +492,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
   
-                {showFill && at('fill', slot) ? (
+                {showFill ? (
                   <Section title={t.fillColor}>
                     <MiniButton
                       label={t.noFill}
@@ -544,7 +523,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
   
-                {showCorners && at('corners', slot) ? (
+                {showCorners ? (
                   <Section title={t.secCorners}>
                     {([false, true] as const).map((rounded) => (
                       <MiniButton
@@ -564,7 +543,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
 
-                {showLine && at('route', slot) ? (
+                {showLine ? (
                   <Section title={t.secRoute}>
                     {ROUTES.map((route) => (
                       <MiniButton
@@ -582,7 +561,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
   
-                {showLine && at('ends', slot) ? (
+                {showLine ? (
                   <Section title={t.secEnds}>
                     {(['headStart', 'headEnd'] as const).map((end) => (
                       <MiniButton
@@ -605,7 +584,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
   
-                {showLabelBox && at('text', slot) ? textSections : null}
+                {showLabelBox ? textSections : null}
     </>
   );
 
@@ -733,24 +712,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </>
                 ) : (
                   <>
-                {sections('main')}
-                {hasMore ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: moreOpen }}
-                    onPress={() => {
-                      nudge();
-                      moreMemo.open = !moreOpen;
-                      setMoreOpen(!moreOpen);
-                    }}
-                    style={{ alignSelf: 'center', paddingHorizontal: 10, paddingVertical: 6 }}
-                  >
-                    <Txt weight="extrabold" size={11} tone="secondary">
-                      {moreOpen ? t.optionsLess : t.optionsMore}
-                    </Txt>
-                  </Pressable>
-                ) : null}
-                {hasMore && moreOpen ? sections('more') : null}
+                {sections}
                   </>
                 )}
               </ScrollView>
@@ -931,9 +893,6 @@ const H_ALIGNS = ['left', 'center', 'right'] as const;
 const V_ALIGNS = ['top', 'middle', 'bottom'] as const;
 const H_ALIGN_LABEL = { left: 'alignLeft', center: 'alignCenter', right: 'alignRight' } as const;
 const V_ALIGN_LABEL = { top: 'alignTop', middle: 'alignMiddle', bottom: 'alignBottom' } as const;
-
-/** Whether "More options" was left open, kept across the toolbar's remounts. */
-const moreMemo = { open: false };
 
 /** The stops of the figure opacity control, in percent. */
 const OPACITIES = [25, 50, 75, 100];
