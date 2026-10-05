@@ -2,23 +2,16 @@
  * The board's header: who you are looking at, how to get others in, and the
  * two buttons everything else hangs off — the menu and the settings.
  *
- * It floats over the canvas behind a blur with a fade to transparent rather
- * than sitting in a bar above it, so the board really does run edge to edge —
- * "enfocada en la pizarra y no en la interfaz" (docs/01). Everything in it is a
+ * It floats over the canvas with nothing behind the row — no bar, no glass, no
+ * fade — only each button on its own small solid chip, so the board really
+ * does run edge to edge — "enfocada en la pizarra y no en la interfaz"
+ * (docs/01). Everything in it is a
  * shortcut into a sheet, except the code chip, which the design makes directly
  * tappable to copy because that is the single most repeated action in a class.
  */
 import { useEffect, useState } from 'react';
-import {
-  Animated,
-  Easing,
-  Pressable,
-  View,
-  useWindowDimensions,
-  type LayoutChangeEvent,
-} from 'react-native';
+import { Animated, Easing, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Defs, LinearGradient, Rect, Stop, Svg } from 'react-native-svg';
 
 import { Radius, StatusColors } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
@@ -28,7 +21,6 @@ import { formatShortCode } from '@/utils/short-code';
 
 import { IconButton } from '../ui/Button';
 import { Avatar, AvatarOverflow } from '../ui/Avatar';
-import { GlassBlur } from '../ui/Glass';
 import { Icon } from '../ui/Icon';
 import { Txt } from '../ui/Text';
 import { tip } from '../ui/Toast';
@@ -71,7 +63,9 @@ function PresenceDot({ color, animated }: { color: string; animated: boolean }) 
         backgroundColor: color,
         opacity: animated ? pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.9] }) : 1,
         transform: [
-          { scale: animated ? pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.35] }) : 1 },
+          {
+            scale: animated ? pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.35] }) : 1,
+          },
         ],
       }}
     />
@@ -86,7 +80,7 @@ export function BoardHeader({
   onOpenMenu,
   onOpenPrivacy,
   onOpenShare,
-  onOpenSettings,
+  onOpenExport,
 }: {
   landscape: boolean;
   codeCopied: boolean;
@@ -95,7 +89,7 @@ export function BoardHeader({
   onOpenMenu: () => void;
   onOpenPrivacy: () => void;
   onOpenShare: () => void;
-  onOpenSettings: () => void;
+  onOpenExport: () => void;
 }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
@@ -134,52 +128,65 @@ export function BoardHeader({
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: c.border,
-    backgroundColor: c.glassTintSolid,
+    backgroundColor: c.surface,
   } as const;
 
-  // Everything you can *do* with the board, as one strip: the menu, the code
-  // (tap to copy), who may edit, share. In portrait it is the second row; in
-  // landscape there is room for it beside the title, so the header is one row.
-  const actions = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+  // The header is two clusters: on the left the board (its name, the menu
+  // and export), on the right who is here and who may edit (people,
+  // permissions, the code to copy) and share. In portrait each is a row, the name and the
+  // people on top; in landscape there is room for all of it on one row.
+  const row = { flexDirection: 'row', alignItems: 'center', gap: 6 } as const;
+  const left = (
+    <View style={{ ...row, flexShrink: 1 }}>
       <IconButton icon="more" label={t.boardMenu} onPress={onOpenMenu} size={30} iconSize={17} />
       <IconButton
-        icon="settings"
-        label={t.sheetSettings}
-        onPress={onOpenSettings}
+        icon="download"
+        label={t.exportImage}
+        onPress={onOpenExport}
         size={30}
         iconSize={16}
       />
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${t.code} ${meta?.shortCode ?? ''}`}
-        onPress={onCopyCode}
-        onLongPress={() => tip(t.code)}
-        disabled={!meta}
-        style={[
-          chip,
-          {
-            gap: 6,
-            borderColor: codeCopied ? 'transparent' : c.border,
-            backgroundColor: codeCopied ? 'rgba(15,158,142,0.14)' : c.glassTintSolid,
-          },
-        ]}
-      >
-        <Icon
-          name={codeCopied ? 'check' : 'copy'}
-          size={14}
-          color={codeCopied ? '#0B7F72' : c.text}
-        />
-        <Txt
-          weight="extrabold"
-          size={13}
-          tracking={1}
-          color={codeCopied ? '#0B7F72' : c.text}
-        >
-          {meta ? formatShortCode(meta.shortCode) : '———·———'}
-        </Txt>
-      </Pressable>
+    </View>
+  );
+  const people = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t.connectedPeople}
+      onPress={onOpenPeople}
+      onLongPress={() => tip(participants.map((p) => p.nickname).join(', ') || t.connectedPeople)}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 0,
+        padding: 3,
+        borderRadius: Radius.pill,
+        borderWidth: 1,
+        borderColor: c.border,
+        backgroundColor: c.surface,
+      }}
+    >
+      {shown.length === 0 ? (
+        <View style={{ width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="people" size={18} color={c.textSecondary} />
+        </View>
+      ) : (
+        shown.map((p, i) => (
+          <Avatar
+            key={p.userId}
+            name={p.nickname}
+            color={p.color}
+            avatar={p.avatar}
+            size={26}
+            overlap={i > 0}
+          />
+        ))
+      )}
+      {overflow > 0 ? <AvatarOverflow count={overflow} /> : null}
+    </Pressable>
+  );
+  const right = (
+    <View style={{ ...row, justifyContent: 'flex-end' }}>
+      {landscape ? people : null}
 
       <Pressable
         accessibilityRole="button"
@@ -196,6 +203,31 @@ export function BoardHeader({
             {t.privacyShort}
           </Txt>
         ) : null}
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${t.code} ${meta?.shortCode ?? ''}`}
+        onPress={onCopyCode}
+        onLongPress={() => tip(t.code)}
+        disabled={!meta}
+        style={[
+          chip,
+          {
+            gap: 6,
+            borderColor: codeCopied ? 'transparent' : c.border,
+            backgroundColor: codeCopied ? 'rgba(15,158,142,0.14)' : c.surface,
+          },
+        ]}
+      >
+        <Icon
+          name={codeCopied ? 'check' : 'copy'}
+          size={14}
+          color={codeCopied ? '#0B7F72' : c.text}
+        />
+        <Txt weight="extrabold" size={13} tracking={1} color={codeCopied ? '#0B7F72' : c.text}>
+          {meta ? formatShortCode(meta.shortCode) : '———·———'}
+        </Txt>
       </Pressable>
 
       <Pressable
@@ -222,10 +254,46 @@ export function BoardHeader({
         ]}
       >
         <Icon name="share" size={15} color="#FFFFFF" />
-        <Txt weight="extrabold" size={12} tone="inverse" numberOfLines={1} style={{ flexShrink: 1 }}>
+        <Txt
+          weight="extrabold"
+          size={12}
+          tone="inverse"
+          numberOfLines={1}
+          style={{ flexShrink: 1 }}
+        >
           {t.share}
         </Txt>
       </Pressable>
+    </View>
+  );
+  const titleEl = (
+    <View
+      style={{
+        flexShrink: 1,
+        minWidth: 0,
+        gap: 1,
+        paddingHorizontal: 2,
+      }}
+    >
+      <Txt weight="extrabold" size={15} leading={1.2} tracking={-0.2} numberOfLines={1}>
+        {meta?.name ?? t.appName}
+      </Txt>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+        <PresenceDot color={statusColor} animated={online} />
+        <Txt weight="semibold" size={11} tone="secondary">
+          {statusLabel}
+        </Txt>
+        {!canEdit && meta ? (
+          <>
+            <Txt weight="semibold" size={11} tone="tertiary">
+              ·
+            </Txt>
+            <Txt weight="bold" size={11} tone="tertiary">
+              {t.viewOnly}
+            </Txt>
+          </>
+        ) : null}
+      </View>
     </View>
   );
 
@@ -237,130 +305,33 @@ export function BoardHeader({
         top: 0,
         left: 0,
         right: 0,
-        paddingTop: insets.top + 6,
-        paddingBottom: landscape ? 4 : 6,
+        paddingTop: insets.top + 4,
+        paddingBottom: landscape ? 2 : 4,
         paddingLeft: Math.max(insets.left, landscape ? 26 : 12),
-        // Flush with the tool rail's right edge (ToolRail mirrors this). The
-        // rail starts below the header (`railTop`), so nothing has to dodge it.
         paddingRight: Math.max(insets.right, landscape ? 16 : 12),
         gap: 6,
       }}
     >
-      {/* Who and where: the board, (the actions, in landscape) and who else is here. */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-          <Txt weight="extrabold" size={15} leading={1.2} tracking={-0.2} numberOfLines={1}>
-            {meta?.name ?? t.appName}
-          </Txt>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <PresenceDot color={statusColor} animated={online} />
-            <Txt weight="semibold" size={11} tone="secondary">
-              {statusLabel}
-            </Txt>
-            {!canEdit && meta ? (
-              <>
-                <Txt weight="semibold" size={11} tone="tertiary">
-                  ·
-                </Txt>
-                <Txt weight="bold" size={11} tone="tertiary">
-                  {t.viewOnly}
-                </Txt>
-              </>
-            ) : null}
-          </View>
+      {landscape ? (
+        <View style={{ ...row, gap: 8 }}>
+          {titleEl}
+          {left}
+          <View style={{ flex: 1 }} />
+          {right}
         </View>
-
-        {/* The strip keeps its natural width; a long board name is what gives
-            way (one line, ellipsised) rather than the controls. */}
-        {landscape ? <View style={{ flexShrink: 0 }}>{actions}</View> : null}
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t.connectedPeople}
-          onPress={onOpenPeople}
-          onLongPress={() => tip(participants.map((p) => p.nickname).join(', ') || t.connectedPeople)}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            flexShrink: 0,
-            padding: 3,
-            borderRadius: Radius.pill,
-            borderWidth: 1,
-            borderColor: c.border,
-            backgroundColor: c.glassTintSolid,
-          }}
-        >
-          {shown.length === 0 ? (
-            <View style={{ width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="people" size={18} color={c.textSecondary} />
-            </View>
-          ) : (
-            shown.map((p, i) => (
-              <Avatar
-                key={p.userId}
-                name={p.nickname}
-                color={p.color}
-                avatar={p.avatar}
-                size={26}
-                overlap={i > 0}
-              />
-            ))
-          )}
-          {overflow > 0 ? <AvatarOverflow count={overflow} /> : null}
-        </Pressable>
-      </View>
-
-      {landscape ? null : actions}
-    </View>
-  );
-}
-
-/**
- * The frosted white-to-transparent wash the header sits on.
- *
- * The design's header is glass: a blur over the board with a gradient fading
- * to nothing, rather than a panel with a hairline — an edge across the top of
- * an infinite canvas would look like a bar. The blur is kept gentler than the
- * panels' so the line where it stops is soft. It is separate from the header
- * so it can be non-interactive: it covers the top of the board, and a
- * pointer-catching layer there would eat the first stroke of anyone drawing
- * near the top.
- *
- * The gradient is drawn at an explicit, measured width rather than `100%`:
- * on Android, react-native-svg keeps the size it resolved at first layout
- * when only the layout changes, so after a rotation the wash stopped at the
- * portrait width and the header showed a hard vertical seam. Numeric props
- * change with the width, which makes the native view redraw.
- */
-export function HeaderScrim({ height }: { height: number }) {
-  // The window width is only the first-frame guess until `onLayout` reports.
-  const window = useWindowDimensions();
-  const c = useColors();
-  const [measured, setMeasured] = useState<number | null>(null);
-  const width = measured ?? window.width;
-
-  const onLayout = (e: LayoutChangeEvent) => {
-    const w = e.nativeEvent.layout.width;
-    setMeasured((prev) => (prev === w ? prev : w));
-  };
-
-  return (
-    <View
-      pointerEvents="none"
-      onLayout={onLayout}
-      style={{ position: 'absolute', top: 0, left: 0, right: 0, height, overflow: 'hidden' }}
-    >
-      <GlassBlur intensity={28} />
-      <Svg width={width} height={height}>
-        <Defs>
-          <LinearGradient id="headerFade" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={c.background} stopOpacity={0.92} />
-            <Stop offset="0.62" stopColor={c.background} stopOpacity={0.72} />
-            <Stop offset="1" stopColor={c.background} stopOpacity={0} />
-          </LinearGradient>
-        </Defs>
-        <Rect x={0} y={0} width={width} height={height} fill="url(#headerFade)" />
-      </Svg>
+      ) : (
+        <>
+          <View style={{ ...row, gap: 8 }}>
+            {titleEl}
+            <View style={{ flex: 1 }} />
+            {people}
+          </View>
+          <View style={{ ...row, gap: 8, justifyContent: 'space-between' }}>
+            {left}
+            {right}
+          </View>
+        </>
+      )}
     </View>
   );
 }

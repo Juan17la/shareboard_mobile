@@ -23,7 +23,7 @@ export function MenuSheet({
   onNew,
   onOpenBoards,
   onOpenJoin,
-  onOpenExport,
+  onOpenSettings,
   onOpenImport,
   onOpenPrivacy,
   onOpenPeople,
@@ -34,7 +34,7 @@ export function MenuSheet({
   onNew: () => void;
   onOpenBoards: () => void;
   onOpenJoin: () => void;
-  onOpenExport: () => void;
+  onOpenSettings: () => void;
   onOpenImport: () => void;
   onOpenPrivacy: () => void;
   onOpenPeople: () => void;
@@ -46,11 +46,11 @@ export function MenuSheet({
 
   type Row = { icon: IconName; label: string; onPress: () => void };
   const rows: Row[] = [
+      { icon: 'settings', label: t.sheetSettings, onPress: onOpenSettings },
       { icon: 'plus', label: t.newWhiteboard, onPress: onNew },
       { icon: 'board', label: t.myWhiteboards, onPress: onOpenBoards },
       { icon: 'link', label: t.joinWhiteboard, onPress: onOpenJoin },
       { icon: 'download', label: t.importBoard, onPress: onOpenImport },
-      { icon: 'image', label: t.exportImage, onPress: onOpenExport },
       { icon: 'lock', label: t.whoEdits, onPress: onOpenPrivacy },
       { icon: 'people', label: t.sheetPeople, onPress: onOpenPeople },
       ...(canEdit ? [{ icon: 'sparkle' as const, label: t.sheetAi, onPress: onOpenAi }] : []),
