@@ -104,7 +104,8 @@ function fontAttrs(font: FontKey | undefined, size: number, bold: boolean, itali
 
 function shapeSvg(el: ShapeElement, ground: string): string {
   const { x, y, width: w, height: h } = shapeBounds(el);
-  const paint = `fill="${el.fill ?? 'none'}" stroke="${el.stroke}" stroke-width="${el.strokeWidth}" stroke-linejoin="round"`;
+  const outline = dashIntervals(el.dash, el.strokeWidth);
+  const paint = `fill="${el.fill ?? 'none'}" stroke="${el.stroke}" stroke-width="${el.strokeWidth}" stroke-linejoin="round"${outline ? ` stroke-linecap="round" stroke-dasharray="${outline.join(' ')}"` : ''}`;
   if (el.shape === 'rectangle') {
     const rx = Math.max(0, Math.min(8, w / 4, h / 4));
     return `<rect x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}" rx="${r(rx)}" ${paint}/>`;
