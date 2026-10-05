@@ -9,6 +9,18 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ### Added
 
+- Opacity for figures (25 / 50 / 75 / 100 %): the fill, outline and label fade
+  together, in the canvas and in the SVG export. Older boards stay opaque.
+- Rounded or sharp corners for rectangles, triangles and polygons (sharp by
+  default, so rectangles drawn before this look sharper than they did).
+- Text alignment: left / centre / right for text, and left / centre / right plus
+  top / middle / bottom (and a one-tap "fully centred") for a figure's label.
+- The options strip shows only a tool's main options; the rest are behind
+  "More options".
+- While typing, the board lifts so the text stays above the keyboard, and
+  returns when you finish.
+- Share sheet: a WhatsApp button (falls back to wa.me) and a "More…" button
+  that opens the system share sheet.
 - Four text sizes (small, medium, large, extra large) replace the +/- stepper;
   older boards keep their size and the nearest one is lit.
 - An export button in the header, so exporting is one tap instead of a trip
