@@ -8,20 +8,20 @@
  * What is not a tool (colour, stroke size, fill, font size, bold/italic) lives
  * in an options strip above the bar that only shows the options belonging to
  * the tool in hand. Picking a tool opens it; tapping the tool you already hold
- * toggles it; the colour swatch toggles it too. It closes itself the moment a
+ * toggles it. It closes itself the moment a
  * finger lands on the canvas and comes back when a drag ends on a selection
  * (`railOpen` in the store).
  *
  * Nothing scrolls: in portrait the tools sit in two rows (tools, then shapes)
  * and the options wrap, so everything is visible at once on a narrow phone.
  */
-import { useState } from 'react';
-import { Pressable, View, useWindowDimensions } from 'react-native';
+import { createContext, useContext, useState } from 'react';
+import { Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Path as SvgPath, Rect, Svg } from 'react-native-svg';
 import { useShallow } from 'zustand/shallow';
 
-import { DrawingPalette, StrokeSizes, inkFor } from '@/constants/theme';
+import { StrokeSizes, inkFor } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
 import {
   dashIntervals,
@@ -37,6 +37,8 @@ import {
   MARKERS,
   ROUTES,
   SHAPE_TEXT_SIZE,
+  TEXT_SIZES,
+  nearestTextSize,
   isFillable,
   type BoardElement,
   type Dash,
@@ -56,6 +58,7 @@ import { tick } from '@/utils/haptics';
 
 import { StepperButton } from '../ui/Button';
 import { ColorPickerSheet } from '../ui/ColorPickerSheet';
+import { ColorSwatch } from '../ui/ColorSwatch';
 import { FillSheet } from './FillSheet';
 import { GlassPanel } from '../ui/Glass';
 import { Icon, type IconName } from '../ui/Icon';
@@ -87,7 +90,7 @@ interface ToolEntry {
 }
 
 /** The popovers the strip's boxes open. */
-type Box = 'kind' | 'color' | 'text' | 'ends';
+type Box = 'settings' | 'kind';
 
 const FONT_LABELS = {
   sans: 'fontSans',
@@ -145,16 +148,17 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const canEdit = useBoardStore((s) => s.canEditNow());
   const haptics = useSessionStore((s) => s.settings.haptics);
   const dark = useDark();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
 
   const open = useBoardStore((s) => s.railOpen);
-  const setOpen = useBoardStore((s) => s.setRailOpen);
   const [picking, setPicking] = useState(false);
   const [filling, setFilling] = useState(false);
   /** The box whose options are open in the popover above the strip. */
   const [box, setBox] = useState<Box | null>(null);
-  /** Which end of a line the marker grid is choosing for. */
-  const [endSide, setEndSide] = useState<'headStart' | 'headEnd'>('headEnd');
+  /** The dropdown's second page: the marker grid for one end of a line. */
+  const [endsPage, setEndsPage] = useState<'headStart' | 'headEnd' | null>(null);
+  /** How tall the strip and tool bar are, so the dropdown can sit right above them. */
+  const [lowerHeight, setLowerHeight] = useState(120);
   // The strip closing (a finger on the canvas) takes its popover with it.
   if (!open && box) setBox(null);
 
@@ -200,20 +204,21 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     selShape;
   const showFill = (shapeTool && isFillable(config.shape)) || selBox;
   const showLine = lineTool || selLine;
+  const showDash = shapeTool || selShape;
   const showSides =
     (shapeTool && config.shape === 'polygon') ||
     has((el) => el.kind === 'shape' && el.shape === 'polygon');
   // Text and its style sit in the strip itself; a shape's label (size, font)
   // folds into one "Aa" box, since most shapes never carry one.
   const showStyle = tool === 'text' || selText;
-  const showLabelBox = selShape && !showStyle;
+  const showLabelBox = selShape || showStyle;
   const showColor =
     tool !== 'hand' &&
     tool !== 'eraser' &&
     (tool !== 'select' || (selected.length > 0 && !selected.every((el) => el.kind === 'image')));
   // The cursor with nothing selected, and the hand, have nothing to offer: an
   // empty strip is noise, whatever asked for it.
-  const hasOptions = showSizes || showFill || showLine || showStyle || showLabelBox || showColor;
+  const hasOptions = showSizes || showFill || showLine || showDash || showStyle || showLabelBox || showColor;
   // A selected shape can change kind within its family: box to box, line to
   // arrow. With the shapes tool in hand, the strip is where the kind is chosen.
   const kinds: ShapeKind[] = selLine
@@ -223,6 +228,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
       : shapeTool
         ? SHAPES.map((e) => e.shape!)
         : [];
+  const hasSettings = showSizes || showDash || showFill || showLine || showLabelBox;
   const pickKind = (kind: ShapeKind) => {
     nudge();
     if (selected.length) setConfig({ shape: kind });
@@ -275,9 +281,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
         el.kind === 'shape' && isLineLike(el) ? (el.route ?? 'straight') : undefined,
       ) ?? config.route,
     shape: first((el) => (el.kind === 'shape' ? el.shape : undefined)) ?? config.shape,
-    dash:
-      first((el) => (el.kind === 'shape' && isLineLike(el) ? (el.dash ?? 'solid') : undefined)) ??
-      config.dash,
+    dash: first((el) => (el.kind === 'shape' ? (el.dash ?? 'solid') : undefined)) ?? config.dash,
   };
   const fontSize = cur.fontSize;
   // The board ink flips on the dark theme (`inkFor`); the swatches follow it.
@@ -295,190 +299,105 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     dotted: 'dashDotted',
   };
 
-  // The row is seven tools, a hairline and the swatch: nine children, eight
-  // gaps, inside the panel's padding and border and the screen's own gutter.
+  // The row is seven tools: seven children, six gaps, inside the panel's padding and border and the screen's own gutter.
   // On a narrow phone the buttons shrink so the row fits instead of clipping.
   const gap = landscape ? 3 : 4;
-  const chrome = insets.left + insets.right + 16 + 2 * (landscape ? 5 : 6) + 2 + 9 + 8 * gap;
-  const buttonSize = Math.min(landscape ? 34 : 44, Math.floor((width - chrome) / 8));
+  const chrome = insets.left + insets.right + 16 + 2 * (landscape ? 5 : 6) + 2 + 6 * gap;
+  const buttonSize = Math.min(landscape ? 34 : 44, Math.floor((width - chrome) / 7));
   const buttonRadius = buttonSize < 40 ? 12 : 14;
   const rows = [TOOLS];
 
   const toggle = (next: Box) => {
     nudge();
+    setEndsPage(null);
     setBox(box === next ? null : next);
   };
-  /** A shape's colour is its border; everything else is painted in it. */
-  const borderOnly = shapeTool || selShape;
-  /** Size, typeface and (for text itself) bold and italic — in the strip for text, in a popover for a shape's label. */
-  const textControls = (
-    <>
-      <StepperButton
-        icon="minus"
-        label={t.smaller}
-        onPress={() => {
-          nudge();
-          setFontSize(Math.max(LIMITS.minFontSize, fontSize - 4));
-        }}
-      />
-      <Txt weight="extrabold" size={11} mono style={{ width: 38, textAlign: 'center' }}>
-        {fontSize}px
-      </Txt>
-      <StepperButton
-        icon="plus"
-        label={t.bigger}
-        onPress={() => {
-          nudge();
-          setFontSize(Math.min(LIMITS.maxFontSize, fontSize + 4));
-        }}
-      />
-      <MiniButton
-        label={t[FONT_LABELS[cur.font]]}
-        active={false}
-        onPress={() => {
-          nudge();
-          setConfig({ font: cycle(FONTS, cur.font) });
-        }}
-      >
-        <Txt size={15} style={{ fontFamily: FAMILIES[cur.font][0] }}>
-          Aa
-        </Txt>
-      </MiniButton>
-      {showStyle ? (
+  /** Size, typeface and (for text itself) bold and italic, each under its own subtitle. */
+  const textSections = (
+    <View style={{ gap: 10 }}>
+      <Section title={t.secTextSize}>
+      {TEXT_SIZES.map((size) => (
         <MiniButton
-          label={`${t.bold} / ${t.italic}`}
-          active={cur.bold || cur.italic}
+          key={size.key}
+          glyph={size.glyph}
+          glyphWeight="extrabold"
+          label={t[SIZE_LABELS[size.key]]}
+          active={nearestTextSize(fontSize).key === size.key}
+          wide
           onPress={() => {
             nudge();
-            // Plain, bold, italic, bold italic: one box, four steps.
-            const next = ((cur.bold ? 1 : 0) + (cur.italic ? 2 : 0) + 1) % 4;
-            setConfig({ bold: !!(next & 1), italic: !!(next & 2) });
-          }}
-        >
-          <Txt
-            size={15}
-            weight={cur.bold ? 'extrabold' : 'bold'}
-            italic={cur.italic}
-            color={cur.bold || cur.italic ? '#FFFFFF' : undefined}
-          >
-            {cur.bold && !cur.italic ? 'B' : cur.italic && !cur.bold ? 'I' : cur.bold ? 'BI' : 'B/I'}
-          </Txt>
-        </MiniButton>
-      ) : null}
-    </>
-  );
-
-  /* The swatch doubles as the options toggle: it is both the current colour
-     and a handle for the strip that changes it. Sits on the first row. */
-  const swatch = (
-    <>
-      <View
-        style={{
-          width: 1,
-          height: 24,
-          marginHorizontal: 4,
-          backgroundColor: c.border,
-        }}
-      />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={t.color}
-        accessibilityState={{ expanded: open }}
-        onPress={() => {
-          nudge();
-          setOpen(!open);
-        }}
-        onLongPress={() => tip(t.color)}
-        style={{
-          width: buttonSize,
-          height: buttonSize,
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: buttonRadius,
-          borderWidth: 1,
-          borderColor: c.border,
-          backgroundColor: c.glassTintSolid,
-        }}
-      >
-        <View
-          style={{
-            width: buttonSize / 2,
-            height: buttonSize / 2,
-            borderRadius: 7,
-            backgroundColor: inkFor(config.color, dark),
-            borderWidth: 2,
-            borderColor: '#FFFFFF',
+            setFontSize(size.px);
           }}
         />
-      </Pressable>
-    </>
+      ))}
+      </Section>
+      <Section title={t.secFont}>
+        {FONTS.map((font) => (
+          <MiniButton
+            key={font}
+            label={t[FONT_LABELS[font]]}
+            active={cur.font === font}
+            onPress={() => {
+              nudge();
+              setConfig({ font });
+            }}
+          >
+            <Txt size={15} color={cur.font === font ? '#FFFFFF' : c.text} style={{ fontFamily: FAMILIES[font][0] }}>
+              Aa
+            </Txt>
+          </MiniButton>
+        ))}
+      </Section>
+      {showStyle ? (
+        <Section title={t.secStyle}>
+          <MiniButton
+            glyph="B"
+            glyphWeight="extrabold"
+            label={t.bold}
+            active={cur.bold}
+            onPress={() => {
+              nudge();
+              setConfig({ bold: !cur.bold });
+            }}
+          />
+          <MiniButton
+            glyph="I"
+            glyphItalic
+            label={t.italic}
+            active={cur.italic}
+            onPress={() => {
+              nudge();
+              setConfig({ italic: !cur.italic });
+            }}
+          />
+        </Section>
+      ) : null}
+    </View>
   );
+
+  const bottomGap = Math.max(insets.bottom, landscape ? 10 : 16);
+  // Room for the dropdown: what is left between the header and the strip above the tool bar.
+  const popMax = Math.max(120, height - bottomGap - lowerHeight - 8 - (insets.top + (landscape ? 50 : 92)) - 8);
 
   return (
     <>
-      <View
-        pointerEvents="box-none"
-        style={{
-          position: 'absolute',
-          left: insets.left,
-          right: insets.right,
-          bottom: Math.max(insets.bottom, landscape ? 10 : 16),
-          alignItems: 'center',
-          gap: 8,
-          paddingHorizontal: 8,
-        }}
-      >
-        {open && hasOptions && box ? (
-          <GlassPanel level="panel" radius={16} style={[panelShadow, { maxWidth: '100%' }]}>
-            <View style={popoverStyle}>
-              {box === 'color' ? (
-                <>
-                  {DrawingPalette.map((swatch) => {
-                    const active = cur.color.toUpperCase() === swatch.toUpperCase();
-                    return (
-                      <Pressable
-                        key={swatch}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${t.color} ${swatch}`}
-                        accessibilityState={{ selected: active }}
-                        onPress={() => {
-                          nudge();
-                          setConfig({ color: swatch });
-                          setBox(null);
-                        }}
-                        style={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: 14,
-                          backgroundColor: inkFor(swatch, dark),
-                          borderWidth: 2,
-                          borderColor: active ? c.accent : c.background,
-                        }}
-                      />
-                    );
-                  })}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={t.custom}
-                    onPress={() => setPicking(true)}
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 14,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderWidth: 1,
-                      borderStyle: 'dashed',
-                      borderColor: c.borderDashed,
-                    }}
-                  >
-                    <Icon name="plus" size={14} color={c.textSecondary} />
-                  </Pressable>
-                </>
-              ) : null}
-
-              {box === 'kind' && kinds.length ? (
-                <>
+      {open && hasOptions && box === 'kind' && kinds.length ? (
+        // The figure's own, smaller dropdown: just the kinds (and the corners of a polygon).
+        <View
+          pointerEvents="box-none"
+          style={{
+            position: 'absolute',
+            left: insets.left,
+            right: insets.right,
+            bottom: bottomGap + lowerHeight + 8,
+            alignItems: 'flex-start',
+            paddingHorizontal: 8,
+          }}
+        >
+          <GlassPanel level="panel" radius={14} style={panelShadow}>
+            <Dense.Provider value>
+              <View style={{ gap: 6, padding: 6, alignItems: 'flex-start' }}>
+                <View style={{ flexDirection: 'row', gap: 5 }}>
                   {kinds.map((kind) => (
                     <MiniButton
                       key={kind}
@@ -489,56 +408,65 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                       <Icon name={kind} size={18} color={cur.shape === kind ? '#FFFFFF' : c.text} />
                     </MiniButton>
                   ))}
-                  {showSides ? (
-                    <>
-                      <Divider />
-                      <StepperButton
-                        icon="minus"
-                        label={t.fewerSides}
-                        onPress={() => {
-                          nudge();
-                          setConfig({ sides: Math.max(LIMITS.minSides, cur.sides - 1) });
-                        }}
-                      />
-                      <Txt weight="extrabold" size={11} mono style={{ width: 52, textAlign: 'center' }}>
-                        {cur.sides} {t.sides}
-                      </Txt>
-                      <StepperButton
-                        icon="plus"
-                        label={t.moreSides}
-                        onPress={() => {
-                          nudge();
-                          setConfig({ sides: Math.min(LIMITS.maxSides, cur.sides + 1) });
-                        }}
-                      />
-                    </>
-                  ) : null}
-                </>
-              ) : null}
+                </View>
+                {showSides ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <StepperButton
+                      icon="minus"
+                      label={t.fewerSides}
+                      onPress={() => {
+                        nudge();
+                        setConfig({ sides: Math.max(LIMITS.minSides, cur.sides - 1) });
+                      }}
+                    />
+                    <Txt weight="extrabold" size={11} mono style={{ width: 52, textAlign: 'center' }}>
+                      {cur.sides} {t.sides}
+                    </Txt>
+                    <StepperButton
+                      icon="plus"
+                      label={t.moreSides}
+                      onPress={() => {
+                        nudge();
+                        setConfig({ sides: Math.min(LIMITS.maxSides, cur.sides + 1) });
+                      }}
+                    />
+                  </View>
+                ) : null}
+              </View>
+            </Dense.Provider>
+          </GlassPanel>
+        </View>
+      ) : null}
 
-              {box === 'text' ? textControls : null}
-
-              {box === 'ends' && showLine ? (
-                <View style={{ gap: 6 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
-                    {(['headStart', 'headEnd'] as const).map((end) => (
-                      <MiniButton
-                        key={end}
-                        wide
-                        label={t[end]}
-                        active={endSide === end}
-                        onPress={() => setEndSide(end)}
-                      >
-                        <MarkerIcon
-                          kind={cur[end]}
-                          end={end === 'headEnd'}
-                          color={endSide === end ? '#FFFFFF' : c.text}
-                        />
-                        <Txt weight="bold" size={10} color={endSide === end ? '#FFFFFF' : c.textSecondary} style={{ marginLeft: 4 }}>
-                          {t[end]}
-                        </Txt>
-                      </MiniButton>
-                    ))}
+      {open && hasOptions && box === 'settings' ? (
+        // Its own layer, sitting on top of the strip and tool bar: it can grow
+        // and scroll but never moves them.
+        <View
+          pointerEvents="box-none"
+          style={{
+            position: 'absolute',
+            left: insets.left,
+            right: insets.right,
+            bottom: bottomGap + lowerHeight + 8,
+            alignItems: 'flex-start',
+            paddingHorizontal: 8,
+          }}
+        >
+          <GlassPanel level="panel" radius={16} style={panelShadow}>
+              <ScrollView
+                style={{ maxHeight: popMax }}
+                contentContainerStyle={{ gap: 10, width: 221, padding: 8 }}
+                showsVerticalScrollIndicator={false}
+              >
+                {endsPage && showLine ? (
+                  <>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <MiniButton label={t.back} active={false} onPress={() => setEndsPage(null)}>
+                      <Icon name="back" size={16} color={c.text} />
+                    </MiniButton>
+                    <Txt weight="extrabold" size={11} tone="secondary">
+                      {`${t.secEnds} · ${t[endsPage!]}`}
+                    </Txt>
                   </View>
                   {(
                     [
@@ -547,39 +475,159 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                       ['markersCardinality', MARKERS.cardinality],
                     ] as const
                   ).map(([labelKey, markers]) => (
-                    <View key={labelKey} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Txt weight="bold" size={10} color={c.textSecondary} style={{ width: 62 }}>
-                        {t[labelKey]}
-                      </Txt>
+                    <Section key={labelKey} title={t[labelKey]}>
                       {markers.map((kind) => (
                         <MiniButton
                           key={kind}
-                          compact
                           label={kind}
-                          active={cur[endSide] === kind}
+                          active={cur[endsPage!] === kind}
                           onPress={() => {
                             nudge();
-                            setConfig({ [endSide]: kind });
+                            setConfig({ [endsPage!]: kind });
+                            setEndsPage(null);
                           }}
                         >
                           <MarkerIcon
                             kind={kind}
-                            end={endSide === 'headEnd'}
-                            color={cur[endSide] === kind ? '#FFFFFF' : c.text}
+                            end={endsPage === 'headEnd'}
+                            color={cur[endsPage!] === kind ? '#FFFFFF' : c.text}
                           />
                         </MiniButton>
                       ))}
-                    </View>
+                    </Section>
                   ))}
-                </View>
-              ) : null}
-            </View>
-          </GlassPanel>
-        ) : null}
+                  </>
+                ) : (
+                  <>
+                {showSizes ? (
+                  <Section title={t.size}>
+                    <WidthSlider
+                      value={cur.width}
+                      label={t.size}
+                      onChange={(width) => {
+                        nudge();
+                        setConfig({ width });
+                      }}
+                    />
+                  </Section>
+                ) : null}
+  
+                {showDash ? (
+                  <Section title={t.secStroke}>
+                    {DASHES.map((dash) => (
+                      <MiniButton
+                        key={dash}
+                        label={t[dashLabel[dash]]}
+                        active={cur.dash === dash}
+                        onPress={() => {
+                          nudge();
+                          setConfig({ dash });
+                        }}
+                      >
+                        <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={cur.dash === dash ? '#FFFFFF' : c.text} strokeWidth={2.2} strokeLinecap="round">
+                          <SvgPath d="M3 12H21" strokeDasharray={dashIntervals(dash, 2.2)?.join(' ')} />
+                        </Svg>
+                      </MiniButton>
+                    ))}
+                  </Section>
+                ) : null}
+  
+                {showFill ? (
+                  <Section title={t.fillColor}>
+                    <MiniButton
+                      label={t.noFill}
+                      active={cur.fillOpacity === 0}
+                      onPress={() => {
+                        nudge();
+                        setConfig({ fillOpacity: 0 });
+                      }}
+                    >
+                      <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={cur.fillOpacity === 0 ? '#FFFFFF' : c.text} strokeWidth={2} strokeLinecap="round">
+                        <Rect x={4} y={4} width={16} height={16} rx={3} />
+                        <SvgPath d="M4 20L20 4" />
+                      </Svg>
+                    </MiniButton>
+                    {[25, 50, 75, 100].map((pct) => (
+                      <MiniButton
+                        key={pct}
+                        wide
+                        glyph={`${pct}%`}
+                        label={`${t.opacity} ${pct}%`}
+                        active={cur.fillOpacity === pct}
+                        onPress={() => {
+                          nudge();
+                          setConfig({ fillOpacity: pct });
+                        }}
+                      />
+                    ))}
+                  </Section>
+                ) : null}
+  
+                {showLine ? (
+                  <Section title={t.secRoute}>
+                    {ROUTES.map((route) => (
+                      <MiniButton
+                        key={route}
+                        label={t[routeLabel[route]]}
+                        active={cur.route === route}
+                        onPress={() => {
+                          nudge();
+                          setConfig({ route });
+                        }}
+                      >
+                        <LineGlyph d={routePath({ from: { x: 4, y: 19 }, to: { x: 20, y: 5 }, route })} on={cur.route === route} />
+                      </MiniButton>
+                    ))}
+                  </Section>
+                ) : null}
+  
+                {showLine ? (
+                  <Section title={t.secEnds}>
+                    {(['headStart', 'headEnd'] as const).map((end) => (
+                      <MiniButton
+                        key={end}
+                        wide
+                        label={t[end]}
+                        active={false}
+                        onPress={() => {
+                          nudge();
+                          setEndsPage(end);
+                        }}
+                      >
+                        <MarkerIcon kind={cur[end]} end={end === 'headEnd'} color={c.text} small />
+                        <Txt weight="bold" size={10} color={c.textSecondary} style={{ marginLeft: 4 }}>
+                          {t[end]}
+                        </Txt>
+                        <Icon name="chevron" size={11} color={c.textSecondary} />
+                      </MiniButton>
+                    ))}
+                  </Section>
+                ) : null}
+  
+                {showLabelBox ? textSections : null}
+                  </>
+                )}
+              </ScrollView>
+            </GlassPanel>
+        </View>
+      ) : null}
 
+      <View
+        pointerEvents="box-none"
+        onLayout={(e) => setLowerHeight(e.nativeEvent.layout.height)}
+        style={{
+          position: 'absolute',
+          left: insets.left,
+          right: insets.right,
+          bottom: bottomGap,
+          alignItems: 'center',
+          gap: 8,
+          paddingHorizontal: 8,
+        }}
+      >
         {open && hasOptions ? (
-          <GlassPanel level="panel" radius={16} style={[panelShadow, { maxWidth: '100%' }]}>
-            <View style={stripStyle}>
+          <GlassPanel level="panel" radius={16} style={[panelShadow, { alignSelf: 'flex-start', maxWidth: '100%' }]}>
+            <View style={{ ...stripStyle, justifyContent: 'flex-start' }}>
               {kinds.length ? (
                 <MiniButton
                   label={t[SHAPES.find((e) => e.shape === cur.shape)?.labelKey ?? 'shapes']}
@@ -590,90 +638,39 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                 </MiniButton>
               ) : null}
 
-              {showColor ? (
-                <MiniButton label={t.color} active={box === 'color'} onPress={() => toggle('color')}>
-                  {/* A shape's colour is its border: drawn as a ring, so it
-                      reads differently from the fill's solid swatch. */}
-                  <View
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 9,
-                      backgroundColor: borderOnly ? 'transparent' : ink,
-                      borderWidth: borderOnly ? 4 : 2,
-                      borderColor: borderOnly ? ink : '#FFFFFF',
-                    }}
-                  />
+              {showColor || showFill ? (
+                <MiniButton
+                  label={showFill ? `${t.fillColor} ${cur.fillOpacity}%` : t.color}
+                  active={showFill ? filling : picking}
+                  onPress={() => {
+                    nudge();
+                    if (showFill) setFilling(true);
+                    else setPicking(true);
+                  }}
+                >
+                  <ColorSwatch color={showFill ? (fillWith(fillInk, cur.fillOpacity) ?? 'transparent') : ink} />
                 </MiniButton>
               ) : null}
 
               {showFill ? (
-                <MiniButton label={`${t.fill} ${cur.fillOpacity}%`} active={filling} onPress={() => { nudge(); setFilling(true); }}>
-                  {/* The fill itself: its colour at its opacity, outlined. */}
-                  <View
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 5,
-                      borderWidth: 1.5,
-                      borderColor: c.borderStrong,
-                      backgroundColor: fillWith(fillInk, cur.fillOpacity) ?? 'transparent',
-                    }}
-                  />
-                </MiniButton>
-              ) : null}
-
-              {showSizes ? (
                 <MiniButton
-                  label={`${t.size} ${cur.width}`}
-                  active={false}
+                  label={t.strokeColor}
+                  active={picking}
                   onPress={() => {
                     nudge();
-                    setConfig({ width: cycle(StrokeSizes, cur.width) });
+                    setPicking(true);
                   }}
                 >
-                  <WidthGlyph width={cur.width} />
+                  {/* A shape's border: drawn as a ring, so it reads differently from the fill's solid swatch. */}
+                  <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 4, borderColor: ink }} />
                 </MiniButton>
               ) : null}
 
-              {showLine ? (
-                <>
-                  <MiniButton
-                    wide
-                    label={`${t.headStart} / ${t.headEnd}`}
-                    active={box === 'ends'}
-                    onPress={() => toggle('ends')}
-                  >
-                    <MarkerIcon kind={cur.headStart} end={false} color={box === 'ends' ? '#FFFFFF' : c.text} small />
-                    <MarkerIcon kind={cur.headEnd} end color={box === 'ends' ? '#FFFFFF' : c.text} small />
-                  </MiniButton>
-                  <MiniButton label={t[dashLabel[cur.dash]]} active={false} onPress={() => { nudge(); setConfig({ dash: cycle(DASHES, cur.dash) }); }}>
-                    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={c.text} strokeWidth={2.2} strokeLinecap="round">
-                      <SvgPath d="M3 12H21" strokeDasharray={dashIntervals(cur.dash, 2.2)?.join(' ')} />
-                    </Svg>
-                  </MiniButton>
-                  <MiniButton
-                    label={t[routeLabel[cur.route]]}
-                    active={false}
-                    onPress={() => {
-                      nudge();
-                      setConfig({ route: cycle(ROUTES, cur.route) });
-                    }}
-                  >
-                    <LineGlyph d={routePath({ from: { x: 4, y: 19 }, to: { x: 20, y: 5 }, route: cur.route })} on={false} />
-                  </MiniButton>
-                </>
-              ) : null}
-
-              {showLabelBox ? (
-                <MiniButton label={t.text} active={box === 'text'} onPress={() => toggle('text')}>
-                  <Txt size={14} weight="bold" color={box === 'text' ? '#FFFFFF' : c.text} style={{ fontFamily: FAMILIES[cur.font][0] }}>
-                    Aa
-                  </Txt>
+              {hasSettings ? (
+                <MiniButton label={t.sheetSettings} active={box === 'settings'} onPress={() => toggle('settings')}>
+                  <Icon name="options" size={18} color={box === 'settings' ? '#FFFFFF' : c.text} />
                 </MiniButton>
               ) : null}
-
-              {showStyle ? textControls : null}
             </View>
           </GlassPanel>
         ) : null}
@@ -709,7 +706,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                     onPress={() => pick(entry)}
                   />
                 ))}
-                {i === 0 ? swatch : null}
               </View>
             ))}
           </View>
@@ -750,11 +746,6 @@ const panelShadow = {
   elevation: 10,
 } as const;
 
-/** The value after `current` in `list`, wrapping; the first when `current` is not in it. */
-function cycle<T>(list: readonly T[], current: T): T {
-  return list[(list.indexOf(current) + 1) % list.length];
-}
-
 /** The strip: boxes in a row that wraps, so a line's options take two rows rather than scroll. */
 const stripStyle = {
   flexDirection: 'row',
@@ -766,36 +757,79 @@ const stripStyle = {
   paddingVertical: 6,
 } as const;
 
-/** What a box opens: the same wrap, a little tighter to the strip it hangs from. */
-const popoverStyle = { ...stripStyle, paddingVertical: 8 } as const;
-
-/**
- * Stroke width, as design tools draw it: four bars, each thicker than the last,
- * one per size. The bar for the width in use is solid, the rest are faded — so
- * the icon says "thickness" and shows which one is set.
- */
-function WidthGlyph({ width }: { width: number }) {
-  const c = useColors();
-  const bars = [
-    { y: 1, h: 1.2 },
-    { y: 5, h: 2.4 },
-    { y: 10, h: 3.8 },
-    { y: 15.5, h: 5.5 },
-  ];
-  // The nearest size, for a selected figure drawn at a width the buttons never set.
-  const now = StrokeSizes.reduce((best, size, i) => (Math.abs(size - width) < Math.abs(StrokeSizes[best] - width) ? i : best), 0);
+/** A cluster of popover options under a small subtitle saying what it is. */
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <Svg width={20} height={22} viewBox="0 0 20 22">
-      {bars.map((bar, i) => (
-        <Rect key={i} x={1} y={bar.y} width={18} height={bar.h} rx={bar.h / 2} fill={c.text} opacity={i === now ? 1 : 0.3} />
-      ))}
-    </Svg>
+    <Dense.Provider value>
+    <View style={{ gap: 4 }}>
+      <Txt weight="extrabold" size={10} tracking={0.8} tone="secondary">
+        {title.toUpperCase()}
+      </Txt>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5 }}>{children}</View>
+    </View>
+    </Dense.Provider>
   );
 }
 
-function Divider() {
+/** Inside the dropdown the buttons are 30px, so six fit a row of the narrow panel. */
+const Dense = createContext(false);
+
+/**
+ * Stroke width as a slider with one stop per size: a track with four dots drawn
+ * at their widths; a tap or a drag along it snaps to the nearest stop.
+ */
+function WidthSlider({ value, label, onChange }: { value: number; label: string; onChange: (width: number) => void }) {
   const c = useColors();
-  return <View style={{ width: 1, height: 22, backgroundColor: c.border }} />;
+  const [trackWidth, setTrackWidth] = useState(0);
+  const last = StrokeSizes.length - 1;
+  const index = StrokeSizes.reduce((best, size, i) => (Math.abs(size - value) < Math.abs(StrokeSizes[best] - value) ? i : best), 0);
+  const at = (x: number) => {
+    if (!trackWidth) return;
+    const next = Math.max(0, Math.min(last, Math.round((x / trackWidth) * last)));
+    if (next !== index) onChange(StrokeSizes[next]);
+  };
+  return (
+    <View
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel={`${label} ${StrokeSizes[index]}`}
+      accessibilityValue={{ min: 0, max: last, now: index }}
+      accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+      onAccessibilityAction={(e) => {
+        const next = Math.max(0, Math.min(last, index + (e.nativeEvent.actionName === 'increment' ? 1 : -1)));
+        if (next !== index) onChange(StrokeSizes[next]);
+      }}
+      onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+      onResponderGrant={(e) => at(e.nativeEvent.locationX)}
+      onResponderMove={(e) => at(e.nativeEvent.locationX)}
+      style={{ width: 128, height: 28, justifyContent: 'center' }}
+    >
+      <View style={{ position: 'absolute', left: 8, right: 8, height: 3, borderRadius: 2, backgroundColor: c.borderStrong }} />
+      <View
+        pointerEvents="none"
+        style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 2 }}
+      >
+        {StrokeSizes.map((size, i) => {
+          const d = Math.min(16, size + 7);
+          return (
+            <View
+              key={size}
+              style={{
+                width: d,
+                height: d,
+                borderRadius: d / 2,
+                backgroundColor: i <= index ? c.accent : c.surface,
+                borderWidth: 1.5,
+                borderColor: i <= index ? c.accent : c.borderStrong,
+              }}
+            />
+          );
+        })}
+      </View>
+    </View>
+  );
 }
 
 /** A route or an elbow's axes drawn as a short stroke, 20px. */
@@ -884,6 +918,13 @@ function MarkerIcon({ kind, end, color, small }: { kind: Marker; end: boolean; c
   );
 }
 
+const SIZE_LABELS = {
+  small: 'textSmall',
+  medium: 'textMedium',
+  large: 'textLarge',
+  xlarge: 'textXLarge',
+} as const;
+
 function MiniButton({
   glyph,
   glyphWeight = 'bold',
@@ -909,6 +950,7 @@ function MiniButton({
   children?: React.ReactNode;
 }) {
   const c = useColors();
+  const dense = useContext(Dense);
   return (
     <Pressable
       accessibilityRole="button"
@@ -917,8 +959,8 @@ function MiniButton({
       onPress={onPress}
       onLongPress={() => tip(label)}
       style={{
-        ...(wide ? { minWidth: 34, paddingHorizontal: 6 } : { width: compact ? 30 : 34 }),
-        height: 34,
+        ...(wide ? { minWidth: dense ? 30 : 34, paddingHorizontal: dense ? 5 : 6 } : { width: compact || dense ? 30 : 34 }),
+        height: dense ? 30 : 34,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
