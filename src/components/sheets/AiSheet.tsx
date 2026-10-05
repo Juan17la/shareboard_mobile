@@ -54,7 +54,10 @@ export function AiSheet({ open, onClose }: { open: boolean; onClose: () => void 
 
   const decide = (msg: Message, accept: boolean) => {
     const els = msg.elements ?? [];
-    if (accept) addElements(els);
+    if (accept) {
+      addElements(els);
+      onClose(); // back to the board to see (and edit) what was added
+    }
     const note = accept ? fill(t.aiAdded, { N: els.length }) : t.aiDiscarded;
     setLog((l) =>
       l.map((m) =>
