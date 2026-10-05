@@ -67,6 +67,22 @@ export function isFillable(shape: ShapeKind): boolean {
 /** Default size of a label inside a shape. Smaller than the text tool's: it has to fit. */
 export const SHAPE_TEXT_SIZE = 18;
 
+/**
+ * The four text sizes the UI offers. `fontSize` stays a plain number on the
+ * wire, so older boards (any size) still load; the buttons light the nearest.
+ */
+export const TEXT_SIZES = [
+  { key: 'small', px: 18, glyph: 'S' },
+  { key: 'medium', px: 28, glyph: 'M' },
+  { key: 'large', px: 44, glyph: 'L' },
+  { key: 'xlarge', px: 72, glyph: 'XL' },
+] as const;
+
+/** The preset whose size is closest to `px`. */
+export function nearestTextSize(px: number): (typeof TEXT_SIZES)[number] {
+  return TEXT_SIZES.reduce((a, b) => (Math.abs(b.px - px) < Math.abs(a.px - px) ? b : a));
+}
+
 /** Corners of a new polygon. */
 export const DEFAULT_SIDES = 5;
 
