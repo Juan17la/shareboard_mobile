@@ -7,6 +7,39 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Four text sizes (small, medium, large, extra large) replace the +/- stepper;
+  older boards keep their size and the nearest one is lit.
+- An export button in the header, so exporting is one tap instead of a trip
+  through the menu.
+- A stroke style (solid, dashed, dotted) for every figure, not only lines and
+  arrows; it shows in the canvas and in SVG/PNG export.
+
+### Changed
+
+- Settings is the first entry of the three-dots menu; its header button is gone.
+- The share button uses the familiar three-connected-dots icon.
+- The fill tool's icon is a paint bucket.
+- The pencil reads a held stroke as a figure after 500 ms instead of 700 ms.
+- Choosing a transparent background hides the JPG format instead of greying the
+  switch.
+- Accepting an AI drawing closes the assistant and shows the board.
+- Plain lines no longer bind to shapes; only arrows do. Lines from older boards
+  stay where they are.
+- Clearer labels: arrow type, tail, head and background.
+- The header has no background or glass any more: each button sits on its own
+  small solid chip over the board.
+- The options strip is at most three buttons on the left: Color, Border and
+  Settings (a dropdown with width, stroke style, shape, background, line and
+  text options). The colour box opens the picker directly (which now also
+  has the quick palette); the fill box shows its opacity over a checkerboard.
+- The eraser fades what it passes over until you lift, instead of hiding it.
+- After drawing a figure or a text, the cursor comes back with the new element
+  selected. The pencil, hand, eraser and fill stay in hand.
+- Stroke width is a four-stop slider; option groups carry a small subtitle, and
+  a button next to the background colour removes the background.
+
 ## [1.3.1-beta] - 2026-10-01
 
 ### Fixed

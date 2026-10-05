@@ -27,10 +27,9 @@ import {
   CursorIcon,
   DotsThreeIcon,
   DownloadSimpleIcon,
-  DropIcon,
   EraserIcon,
-  ExportIcon,
   GearSixIcon,
+  SlidersHorizontalIcon,
   HandIcon,
   HexagonIcon,
   ImageIcon,
@@ -41,12 +40,14 @@ import {
   MagnifyingGlassIcon,
   MinusIcon,
   MoonIcon,
+  PaintBucketIcon,
   PencilSimpleIcon,
   PencilSimpleLineIcon,
   PlusIcon,
   RectangleIcon,
   ScissorsIcon,
   SelectionSlashIcon,
+  ShareNetworkIcon,
   ShapesIcon,
   SparkleIcon,
   SunIcon,
@@ -83,6 +84,7 @@ export type IconName =
   | 'board'
   | 'people'
   | 'settings'
+  | 'options'
   | 'image'
   | 'download'
   | 'upload'
@@ -131,10 +133,11 @@ const GLYPHS: Record<IconName, [PhosphorIcon, IconWeight?]> = {
   search: [MagnifyingGlassIcon],
   lock: [LockSimpleIcon],
   'lock-open': [LockSimpleOpenIcon],
-  share: [ExportIcon],
+  share: [ShareNetworkIcon],
   board: [ChalkboardSimpleIcon],
   people: [UsersIcon],
   settings: [GearSixIcon],
+  options: [SlidersHorizontalIcon],
   image: [ImageIcon],
   download: [DownloadSimpleIcon],
   upload: [UploadSimpleIcon],
@@ -146,7 +149,7 @@ const GLYPHS: Record<IconName, [PhosphorIcon, IconWeight?]> = {
   eraser: [EraserIcon],
   shapes: [ShapesIcon],
   text: [TextTIcon],
-  fill: [DropIcon],
+  fill: [PaintBucketIcon],
   rectangle: [RectangleIcon],
   ellipse: [CircleIcon],
   triangle: [TriangleIcon],
