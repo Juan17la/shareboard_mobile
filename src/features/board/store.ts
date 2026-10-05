@@ -321,6 +321,12 @@ interface BoardState {
 
   setTool(tool: ToolType): void;
   /**
+   * What a drawing tool does when its gesture is done: the cursor comes back
+   * with the new elements selected, ready to be restyled. Not for the hand, the
+   * eraser or the fill, which stay in hand.
+   */
+  finishCreate(ids: ElementId[]): void;
+  /**
    * What a toolbar button does: drops the selection, picks the tool (and shape
    * kind), resets a line's heads to the kind's default and opens the options
    * strip. Picking the tool already in hand toggles the strip.
@@ -344,7 +350,7 @@ interface BoardState {
   /** Turns the drag into ops: one per element touched, all in one undo step. */
   commitEdit(edit: LiveEdit): void;
 
-  addStroke(points: number[]): void;
+  addStroke(points: number[]): ElementId | null;
   /** Draws a recognised sketch as its figure, in the pen's ink (`sketchElement`). */
   addSketch(sketch: Sketch): ElementId | null;
   /**
@@ -722,6 +728,11 @@ export const useBoardStore = create<BoardState>((set, get) => {
       if (next) set({ cursors: next });
     },
 
+    finishCreate(ids) {
+      if (!ids.length) return;
+      set({ tool: 'select', selectedIds: ids, railOpen: true });
+    },
+
     pickTool(tool, shape) {
       const s = get();
       if (s.tool === tool && (!shape || s.config.shape === shape)) {
@@ -988,7 +999,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     // and then rejected by the server a moment later.
 
     addStroke(points) {
-      if (!get().canEditNow() || points.length < 4) return;
+      if (!get().canEditNow() || points.length < 4) return null;
       const { config } = get();
       const el: StrokeElement = {
         ...baseFields(),
@@ -999,6 +1010,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         width: clampWidth(config.width),
       };
       commitLocal([{ t: 'add', el }]);
+      return el.id;
     },
 
     addSketch(sketch) {
@@ -1033,12 +1045,12 @@ export const useBoardStore = create<BoardState>((set, get) => {
         strokeWidth: clampWidth(config.width),
         fill: isFillable(shape) ? fillWith(config.fillColor ?? config.color, config.fillOpacity) : null,
         ...(shape === 'polygon' ? { sides: config.sides } : null),
+        dash: config.dash,
         ...(shape === 'line' || shape === 'arrow'
           ? {
               headStart: config.headStart,
               headEnd: config.headEnd,
               route: config.route,
-              dash: config.dash,
               ...(config.startAxis ? { startAxis: config.startAxis } : null),
               ...(config.endAxis ? { endAxis: config.endAxis } : null),
               fromLink: ends.fromLink ?? null,

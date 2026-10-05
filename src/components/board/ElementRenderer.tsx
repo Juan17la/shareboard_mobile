@@ -183,6 +183,8 @@ export const HANDLE_SIZE = 12;
 
 /** How opaque an element someone else holds is painted. */
 export const HELD_ALPHA = 0.45;
+/** What the eraser is about to take: faint enough to read as going, visible enough to see what. */
+export const ERASING_ALPHA = 0.25;
 
 /** A dashed box round board-space bounds, 4 screen px outside them: the frame, and the marquee. */
 export function DashedBox({
@@ -354,6 +356,9 @@ function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
   const y = Math.min(el.from.y, el.to.y);
   const w = Math.abs(el.to.x - el.from.x);
   const h = Math.abs(el.to.y - el.from.y);
+  // Closed shapes dash their outline; the line below does it for its own route.
+  const outline = dashIntervals(el.dash, el.strokeWidth);
+  const dashed = outline ? <DashPathEffect intervals={outline} /> : null;
 
   if (el.shape === 'rectangle') {
     // The design's rectangles are softly rounded, capped so a thin sliver does
@@ -371,7 +376,10 @@ function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
           color={el.stroke}
           style="stroke"
           strokeWidth={el.strokeWidth}
-        />
+          strokeCap="round"
+        >
+          {dashed}
+        </RoundedRect>
       </Group>
     );
   }
@@ -388,7 +396,10 @@ function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
           color={el.stroke}
           style="stroke"
           strokeWidth={el.strokeWidth}
-        />
+          strokeCap="round"
+        >
+          {dashed}
+        </Oval>
       </Group>
     );
   }
@@ -465,6 +476,7 @@ function PolygonView({
   h: number;
 }) {
   const { shape, sides } = el;
+  const outline = dashIntervals(el.dash, el.strokeWidth);
   const path = useMemo(() => {
     const pts =
       shape === 'triangle'
@@ -481,7 +493,9 @@ function PolygonView({
   return (
     <Group>
       {el.fill ? <Path path={path} color={el.fill} /> : null}
-      <Path path={path} color={el.stroke} style="stroke" strokeWidth={el.strokeWidth} strokeJoin="round" />
+      <Path path={path} color={el.stroke} style="stroke" strokeWidth={el.strokeWidth} strokeJoin="round" strokeCap="round">
+        {outline ? <DashPathEffect intervals={outline} /> : null}
+      </Path>
     </Group>
   );
 }
