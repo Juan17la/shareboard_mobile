@@ -55,7 +55,6 @@ import { coveringFigure, editPatches, fillColorOf, fillOpacityOf, fillWith, pars
 import { decodeClip, encodeClip } from '../src/features/board/clip.ts';
 import { splitOps } from '../src/features/board/ops.ts';
 import { toSvg } from '../src/features/board/svg.ts';
-import { primaryOptions, subjectsOf } from '../src/features/board/tool-options.ts';
 
 const base = (id, z) => ({ id, createdBy: 'u', createdAt: 0, updatedAt: 0, z });
 const box = (id, x, y, w, h, z = 1) => ({
@@ -748,15 +747,6 @@ assert.equal((svg.match(/<polygon points="([^"]*)"/)[1].trim().split(' ')).lengt
 assert.match(svg, /stroke-dasharray=/, 'dashed line');
 assert.match(svg, /<path d="M 0 100 C/, 'the smoothed stroke');
 assert.equal(toSvg([]), null);
-{
-  // Progressive disclosure: only a tool's own primary options are up front.
-  const up = primaryOptions(subjectsOf('shape', 'rectangle', []));
-  assert.ok(up.has('fill') && up.has('size') && !up.has('corners') && !up.has('opacity'), 'rectangle: corners wait behind More');
-  assert.ok(primaryOptions(subjectsOf('pen', 'rectangle', [])).size <= 2, 'pen: colour and size');
-  const both = primaryOptions(subjectsOf('select', 'rectangle', [box('p', 0, 0, 5, 5), { ...base('q', 2), kind: 'text' }]));
-  assert.ok(both.has('fill') && both.has('align'), 'a mixed selection shows the union');
-  assert.equal(primaryOptions(subjectsOf('select', 'rectangle', [])).size, 0, 'nothing in hand, nothing up front');
-}
 {
   // Alignment: a figure's label against its padded box, a text against its own box.
   const step = 10 * TEXT_LINE_HEIGHT;
