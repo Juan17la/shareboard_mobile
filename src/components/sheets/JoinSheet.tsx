@@ -60,7 +60,7 @@ export function JoinSheet({
       const boardId = await lookup;
       setCode('');
       onClose();
-      router.replace({ pathname: '/board/[id]', params: { id: boardId } });
+      router.setParams({ id: boardId });
     } catch (error) {
       setCode('');
       toast(error instanceof Error ? error.message : t.errJoin);
@@ -147,6 +147,14 @@ export function JoinSheet({
         <Txt size={11} leading={1.4} tone="secondary">
           {t.joinCodeHint}
         </Txt>
+        <Button
+          label={t.enter}
+          icon="arrow"
+          loading={busy}
+          disabled={code.length < SHORT_CODE_LENGTH}
+          fullWidth
+          onPress={() => void join(code)}
+        />
       </View>
     </Sheet>
   );
