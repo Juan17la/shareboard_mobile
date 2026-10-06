@@ -1,7 +1,8 @@
 /**
- * `/`: there is no home screen. The app opens on the whiteboard the user was
- * last at; with none (a first launch, or every remembered one gone) it makes a
- * blank one and opens that — so there is always something to draw on at once.
+ * `/`: there is no home screen. The app always opens on this device's offline
+ * board (docs/plans/34), made on first launch — it needs no network, so there
+ * is always something to draw on at once. Only if the device cannot store it
+ * does it fall back to the whiteboard the user was last at, or a new live one.
  *
  * Everything a home screen used to offer (a new board, an old one, a code, a
  * file, the settings) is a button on the whiteboard itself.
@@ -16,6 +17,7 @@ import { Txt } from '@/components/ui/Text';
 import { useT } from '@/features/i18n/store';
 import { useColors, useSessionStore } from '@/features/session/store';
 import { createBoard } from '@/services/api/boards';
+import { ensureLocal } from '@/features/board/local';
 
 export default function Start() {
   const c = useColors();
@@ -24,30 +26,41 @@ export default function Start() {
   const [failed, setFailed] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const newName = t.newBoardName;
+  const localName = t.localBoardName;
   const failMessage = t.errCreate;
 
   useEffect(() => {
     if (!hydrated) return;
-    const { recent, userId } = useSessionStore.getState();
-    // The last one opened; if it turns out to be gone the board screen lets go
-    // of it and comes back here for the next.
-    if (recent[0]) {
-      router.replace({ pathname: '/board/[id]', params: { id: recent[0].id } });
-      return;
-    }
     let cancelled = false;
-    createBoard({ name: newName, access: 'public', editPolicy: 'everyone', creatorId: userId }).then(
-      (meta) => {
-        if (!cancelled) router.replace({ pathname: '/board/[id]', params: { id: meta.id } });
+    const live = () => {
+      const { recent, userId } = useSessionStore.getState();
+      // The last one opened; if it turns out to be gone the board screen lets go
+      // of it and comes back here for the next.
+      if (recent[0]) {
+        router.replace({ pathname: '/board/[id]', params: { id: recent[0].id } });
+        return;
+      }
+      createBoard({ name: newName, access: 'public', editPolicy: 'everyone', creatorId: userId }).then(
+        (meta) => {
+          if (!cancelled) router.replace({ pathname: '/board/[id]', params: { id: meta.id } });
+        },
+        (error) => {
+          if (!cancelled) setFailed(error instanceof Error ? error.message : failMessage);
+        },
+      );
+    };
+    ensureLocal(localName).then(
+      (board) => {
+        if (!cancelled) router.replace({ pathname: '/board/[id]', params: { id: board.id } });
       },
-      (error) => {
-        if (!cancelled) setFailed(error instanceof Error ? error.message : failMessage);
+      () => {
+        if (!cancelled) live();
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [hydrated, attempt, newName, failMessage]);
+  }, [hydrated, attempt, newName, localName, failMessage]);
 
   if (failed) {
     return (

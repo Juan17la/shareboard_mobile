@@ -38,6 +38,9 @@ export function BottomControls({ top, onOpenAi }: { top: number; onOpenAi: () =>
   const zoomBy = useBoardStore((s) => s.zoomBy);
   const homeCamera = useBoardStore((s) => s.homeCamera);
   const undo = useBoardStore((s) => s.undo);
+  // AI runs on the server: a live board that lost its connection says so instead of failing.
+  // (The offline board can't tell without asking; the AI sheet says it if the request fails.)
+  const aiReady = useBoardStore((s) => s.connection === 'online' || s.connection === 'local');
   const redo = useBoardStore((s) => s.redo);
   const undoDepth = useBoardStore((s) => s.undoStack.length);
   const redoDepth = useBoardStore((s) => s.redoStack.length);
@@ -96,7 +99,7 @@ export function BottomControls({ top, onOpenAi }: { top: number; onOpenAi: () =>
               <ControlButton icon="undo" label={t.undo} enabled={undoDepth > 0} onPress={run(undo)} />
               <ControlButton icon="redo" label={t.redo} enabled={redoDepth > 0} onPress={run(redo)} />
               <View style={{ width: 1, height: 20, marginHorizontal: 4, backgroundColor: c.border }} />
-              <ControlButton icon="sparkle" label={t.sheetAi} enabled accent onPress={run(onOpenAi)} />
+              <ControlButton icon="sparkle" label={aiReady ? t.sheetAi : t.aiOffline} enabled={aiReady} accent onPress={run(onOpenAi)} />
             </>
           ) : null}
         </View>

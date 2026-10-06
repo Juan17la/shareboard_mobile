@@ -19,7 +19,8 @@ import { useBoardStore } from '@/features/board/store';
 import { useColors, useSessionStore } from '@/features/session/store';
 import { contentBounds } from '@/features/board/geometry';
 import type { BoardElement } from '@/features/board/model';
-import { drawWithAi } from '@/services/api/boards';
+import { drawWithAi, drawWithAiLocal } from '@/services/api/boards';
+import { ApiError } from '@/services/api/client';
 
 import { ElementRenderer } from '../board/ElementRenderer';
 
@@ -81,10 +82,13 @@ export function AiSheet({ open, onClose }: { open: boolean; onClose: () => void 
     setPrompt('');
     setBusy(true);
     try {
-      const res = await drawWithAi(meta.id, text, at, auth);
+      const res =
+        useBoardStore.getState().connection === 'local'
+          ? await drawWithAiLocal(text, at, userId)
+          : await drawWithAi(meta.id, text, at, auth);
       push({ from: 'ai', text: res.reply, elements: res.elements.length ? res.elements : undefined });
     } catch (err) {
-      push({ from: 'error', text: messageOf(err) });
+      push({ from: 'error', text: err instanceof ApiError && err.code === 'NETWORK' ? t.aiOffline : messageOf(err) });
     }
     setBusy(false);
   }
