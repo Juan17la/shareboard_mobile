@@ -25,6 +25,7 @@ import { useBoardMirror } from '@/components/board/BoardMirror';
 import { BottomControls } from '@/components/board/BottomControls';
 import { PERF_HUD, PerfHud } from '@/components/board/PerfHud';
 import { Toolbar } from '@/components/board/Toolbar';
+import { Tutorial } from '@/components/board/Tutorial';
 import { BoardHeader } from '@/components/header/BoardHeader';
 import { NicknameScreen } from '@/components/screens/NicknameScreen';
 import { PinScreen } from '@/components/screens/PinScreen';
@@ -129,10 +130,10 @@ export default function BoardScreen() {
 
   const [creating, setCreating] = useState(false);
   /** A fresh, empty whiteboard — public, anyone with the code can draw; the access button changes that. */
-  async function createNew() {
+  async function createNew(name = '') {
     setCreating(true);
     const request = {
-      name: t.newBoardName,
+      name: name || t.newBoardName,
       access: 'public',
       editPolicy: 'everyone',
       creatorId: userId,
@@ -230,6 +231,7 @@ export default function BoardScreen() {
         onCopyCode={copyCode}
         onOpenPeople={() => setSheet('people')}
         onOpenMenu={() => setSheet('menu')}
+        onOpenNew={() => setSheet('join')}
         onOpenPrivacy={() => setSheet('privacy')}
         onOpenShare={() => setSheet('share')}
         onOpenExport={() => setSheet('export')}
@@ -239,6 +241,7 @@ export default function BoardScreen() {
       <BottomControls top={headerHeight + 6} onOpenAi={() => setSheet('ai')} />
       <ConnectionBanner top={headerHeight + 50} onRetry={sync.retry} />
       {PERF_HUD ? <PerfHud /> : null}
+      <Tutorial />
 
       <ToastHost
         bottom={Math.max(insets.bottom, 16) + 128}
@@ -269,9 +272,7 @@ export default function BoardScreen() {
       <MenuSheet
         open={sheet === 'menu'}
         onClose={() => setSheet(null)}
-        onNew={() => void createNew()}
         onOpenBoards={() => setSheet('boards')}
-        onOpenJoin={() => setSheet('join')}
         onOpenSettings={() => setSheet('settings')}
         onOpenImport={() => setSheet('import')}
         onOpenPrivacy={() => setSheet('privacy')}
@@ -279,7 +280,12 @@ export default function BoardScreen() {
         onOpenAi={() => setSheet('ai')}
       />
       <BoardsSheet open={sheet === 'boards'} onClose={() => setSheet(null)} currentId={id} />
-      <JoinSheet open={sheet === 'join'} onClose={() => setSheet(null)} />
+      <JoinSheet
+        open={sheet === 'join'}
+        onClose={() => setSheet(null)}
+        onCreate={(name) => void createNew(name)}
+        creating={creating}
+      />
       <SettingsSheet
         open={sheet === 'settings'}
         onClose={() => setSheet(null)}
