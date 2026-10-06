@@ -147,7 +147,7 @@ function LocalShare({ open, onClose, onOpenExport }: { open: boolean; onClose: (
   useEffect(() => {
     if (open) void loadLocal().then((board) => setSharedAs(board?.sharedAs));
   }, [open]);
-  const go = (id: string) => router.replace({ pathname: '/board/[id]', params: { id } });
+  const go = (id: string) => router.setParams({ id });
 
   async function promote() {
     const { meta, visibleElements } = useBoardStore.getState();
