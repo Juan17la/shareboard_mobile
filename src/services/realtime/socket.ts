@@ -12,9 +12,13 @@
  * Behavior spec: docs/07-websockets.
  */
 import { REALTIME, WS_URL } from '@/constants/config';
+import { shortId } from '@/utils/id';
 
 import { CloseCode } from './protocol';
 import type { ClientMessage, ServerMessage, ServerMessageType } from './protocol';
+
+/** This app launch. The same user on another device or tab keeps its own socket; this tells their echoes apart. */
+export const TAB_ID = shortId();
 
 /**
  * Close codes the client must not reconnect after on its own: the board is
@@ -117,6 +121,7 @@ export class WebSocketConnection {
           boardId: this.params.boardId,
           userId: this.params.userId,
           nickname: this.params.nickname,
+          tab: TAB_ID,
           ...(this.params.pin ? { pin: this.params.pin } : {}),
         } satisfies ClientMessage),
       );

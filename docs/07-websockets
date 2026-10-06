@@ -113,9 +113,14 @@ localmente) — ver `use-board-sync.ts`.
 
 # Deduplicación de sesión
 
-Si llega un segundo socket para el mismo `(userId, boardId)`, el servidor cierra
-el anterior con **close code 4001** y conserva el nuevo. El cliente viejo
-recibirá `onclose` con ese código y **no** debe reintentar automáticamente.
+Un mismo usuario puede tener varios sockets en una pizarra (dos pestañas, el
+portátil y el móvil): todos reciben todo. Cada cliente manda en `join` un `tab`
+(un id por carga de página o arranque de la app); solo si llega un segundo
+socket para el mismo `(userId, boardId, tab)` —esa pestaña reconectando— el
+servidor cierra el anterior con **close code 4001** y conserva el nuevo. El
+cliente viejo recibirá `onclose` con ese código y **no** debe reintentar
+automáticamente. Cada `op` difundido lleva el `tab` de quien lo envió: un
+cliente reconoce su propio eco por `from` + `tab`, no solo por `from`.
 
 # Backpressure y límites
 

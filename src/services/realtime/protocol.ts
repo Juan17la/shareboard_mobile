@@ -10,7 +10,8 @@ import type { BoardElement, BoardMeta, Op, Participant, Point, UserId } from '@/
 export type { Op, Point };
 
 export type ClientMessage =
-  | { type: 'join'; boardId: string; userId: UserId; nickname: string; pin?: string }
+  /** `tab`: which tab (page load) of this user it is, so two tabs keep a socket each. */
+  | { type: 'join'; boardId: string; userId: UserId; nickname: string; pin?: string; tab?: string }
   /** `seq` is this client's own counter, echoed back for debugging. */
   | { type: 'op'; boardId: string; ops: Op[]; seq: number }
   | { type: 'cursor'; boardId: string; at: Point }
@@ -33,7 +34,8 @@ export type ServerMessage =
    * `from` is `'server'` for a correction: the current state of elements whose
    * edit was refused because someone else holds them.
    */
-  | { type: 'op'; ops: Op[]; from: UserId; seq: number }
+  /** `tab`: the sending tab (absent from older servers). */
+  | { type: 'op'; ops: Op[]; from: UserId; tab?: string; seq: number }
   | { type: 'participants'; participants: Participant[] }
   | { type: 'cursor'; from: UserId; at: Point }
   | { type: 'permissions'; meta: BoardMeta; you: Participant }
