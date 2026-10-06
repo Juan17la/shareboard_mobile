@@ -161,8 +161,10 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const [filling, setFilling] = useState(false);
   /** The box whose options are open in the popover above the strip. */
   const [box, setBox] = useState<Box | null>(null);
-  /** The dropdown's second page: the marker grid for one end of a line. */
+  /** The marker grid for one end of a line, open beside the dropdown. */
   const [endsPage, setEndsPage] = useState<'headStart' | 'headEnd' | null>(null);
+  /** The dropdown's width, so the marker grid can sit just right of it. */
+  const [popWidth, setPopWidth] = useState(221);
   /** How tall the strip and tool bar are, so the dropdown can sit right above them. */
   const [lowerHeight, setLowerHeight] = useState(120);
   // The strip closing (a finger on the canvas) takes its popover with it.
@@ -596,17 +598,17 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                         key={end}
                         wide
                         label={t[end]}
-                        active={false}
+                        active={endsPage === end}
                         onPress={() => {
                           nudge();
-                          setEndsPage(end);
+                          setEndsPage(endsPage === end ? null : end);
                         }}
                       >
-                        <MarkerIcon kind={cur[end]} end={end === 'headEnd'} color={c.text} small />
-                        <Txt weight="bold" size={10} color={c.textSecondary} style={{ marginLeft: 4 }}>
+                        <MarkerIcon kind={cur[end]} end={end === 'headEnd'} color={endsPage === end ? '#FFFFFF' : c.text} small />
+                        <Txt weight="bold" size={10} color={endsPage === end ? '#FFFFFF' : c.textSecondary} style={{ marginLeft: 4 }}>
                           {t[end]}
                         </Txt>
-                        <Icon name="chevron" size={11} color={c.textSecondary} />
+                        <Icon name="chevron" size={11} color={endsPage === end ? '#FFFFFF' : c.textSecondary} />
                       </MiniButton>
                     ))}
                   </Section>
@@ -670,22 +672,33 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
             paddingHorizontal: 8,
           }}
         >
-          <GlassPanel level="panel" radius={16} style={panelShadow}>
+          <View onLayout={(e) => setPopWidth(e.nativeEvent.layout.width)}>
+            <GlassPanel level="panel" radius={16} style={panelShadow}>
               <ScrollView
                 style={{ maxHeight: popMax, maxWidth: 221 }}
                 contentContainerStyle={{ gap: 10, padding: 8 }}
                 showsVerticalScrollIndicator={false}
               >
-                {endsPage && (show('tail') || show('head')) ? (
-                  <>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <MiniButton label={t.back} active={false} onPress={() => setEndsPage(null)}>
-                      <Icon name="back" size={16} color={c.text} />
-                    </MiniButton>
-                    <Txt weight="extrabold" size={11} tone="secondary">
-                      {`${t.secEnds} · ${t[endsPage!]}`}
-                    </Txt>
-                  </View>
+                {sections}
+              </ScrollView>
+            </GlassPanel>
+          </View>
+          {endsPage && (show('tail') || show('head')) ? (
+            // The marker grid opens beside the dropdown, on a layer of its own,
+            // so the dropdown underneath neither moves nor changes page.
+            <View
+              pointerEvents="box-none"
+              style={{ position: 'absolute', left: 8 + popWidth + 6, right: 8, bottom: 0, alignItems: 'flex-start' }}
+            >
+              <GlassPanel level="panel" radius={16} style={panelShadow}>
+                <ScrollView
+                  style={{ maxHeight: popMax, maxWidth: 221 }}
+                  contentContainerStyle={{ gap: 10, padding: 8 }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <Txt weight="extrabold" size={11} tone="secondary">
+                    {`${t.secEnds} · ${t[endsPage]}`}
+                  </Txt>
                   {(
                     [
                       ['markersDefault', MARKERS.default],
@@ -698,30 +711,26 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                         <MiniButton
                           key={kind}
                           label={kind}
-                          active={cur[endsPage!] === kind}
+                          active={cur[endsPage] === kind}
                           onPress={() => {
                             nudge();
-                            setConfig({ [endsPage!]: kind });
+                            setConfig({ [endsPage]: kind });
                             setEndsPage(null);
                           }}
                         >
                           <MarkerIcon
                             kind={kind}
                             end={endsPage === 'headEnd'}
-                            color={cur[endsPage!] === kind ? '#FFFFFF' : c.text}
+                            color={cur[endsPage] === kind ? '#FFFFFF' : c.text}
                           />
                         </MiniButton>
                       ))}
                     </Section>
                   ))}
-                  </>
-                ) : (
-                  <>
-                {sections}
-                  </>
-                )}
-              </ScrollView>
-            </GlassPanel>
+                </ScrollView>
+              </GlassPanel>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
