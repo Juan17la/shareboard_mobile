@@ -74,8 +74,19 @@ type SheetName =
   | 'boards';
 type ConfirmName = 'clear' | 'delete';
 
-export default function BoardScreen() {
+/**
+ * One screen for every board. Going to another board sets this route's `id`
+ * (`router.setParams`) rather than navigating: a second board screen would
+ * live beside this one until its transition ended, and this one's unmount
+ * would then reset the store under the board just joined — a frozen board
+ * until the app was restarted. The key remounts the board cleanly instead.
+ */
+export default function BoardRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  return <BoardScreen key={id} id={id} />;
+}
+
+function BoardScreen({ id }: { id: string }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const landscape = width > height;
@@ -123,7 +134,7 @@ export default function BoardScreen() {
         { ...snapshot, meta: { name: snapshot.meta.name || t.importedBoardName } },
         userId,
       );
-      router.replace({ pathname: '/board/[id]', params: { id: created.id } });
+      router.setParams({ id: created.id });
     },
     [t, userId],
   );
@@ -142,7 +153,7 @@ export default function BoardScreen() {
       const created = await createBoard(request);
       thud(haptics);
       setSheet(null);
-      router.replace({ pathname: '/board/[id]', params: { id: created.id } });
+      router.setParams({ id: created.id });
     } catch (error) {
       toast(error instanceof Error ? error.message : t.errCreate);
     }

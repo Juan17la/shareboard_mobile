@@ -78,6 +78,7 @@ import {
   fillWith,
   heldByOthers,
   sketchElement,
+  shapeElement,
   useBoardStore,
   writable,
   type Camera,
@@ -136,6 +137,21 @@ const LABEL_HANDLE = 6;
 /** The pull of a curved line at its start and at its end. */
 const CURVE_START_HANDLE = 7;
 const CURVE_END_HANDLE = 8;
+
+/**
+ * Whether a move can be shifted as it is, on the UI thread: not when it carries
+ * a line away from a shape left behind — without the link its route (an
+ * elbow's turns) changes, so JS lays the move out from the patches the lift
+ * commits instead.
+ */
+function rigidMove(edit: LiveEdit, byId: (id: string) => BoardElement | undefined): boolean {
+  const moved = new Set(edit.ids);
+  return edit.ids.every((id) => {
+    const el = byId(id);
+    if (el?.kind !== 'shape' || !isLineLike(el)) return true;
+    return !(el.fromLink && !moved.has(el.fromLink.id)) && !(el.toLink && !moved.has(el.toLink.id));
+  });
+}
 
 /** The patch of an edit dragged to `p`. A line's ends are re-bound after. */
 function dragPatch(edit: LiveEdit, el: BoardElement, p: Point): Partial<BoardElement> {
@@ -263,7 +279,10 @@ export function BoardCanvas({
     // The same patches the lift will commit, so the preview is the result —
     // except for what is being moved: that is shifted by the UI thread
     // (`dragTransform`), so only the lines bound to it are patched here.
-    const own = liveEdit.mode === 'move' ? new Set(liveEdit.ids) : null;
+    const own =
+      liveEdit.mode === 'move' && rigidMove(liveEdit, (id) => sorted.find((el) => el.id === id))
+        ? new Set(liveEdit.ids)
+        : null;
     const patches = new Map(
       editPatches(sorted, liveEdit)
         .filter((p) => !own?.has(p.id))
@@ -282,7 +301,10 @@ export function BoardCanvas({
 
   // What the cursor is carrying: drawn through the drag offset, not re-rendered.
   const movingIds = useMemo(
-    () => (liveEdit?.mode === 'move' ? new Set(liveEdit.ids) : null),
+    () =>
+      liveEdit?.mode === 'move' && rigidMove(liveEdit, (id) => useBoardStore.getState().elements[id])
+        ? new Set(liveEdit.ids)
+        : null,
     [liveEdit],
   );
 
@@ -640,7 +662,7 @@ export function BoardCanvas({
       const edit = store().liveEdit;
       if (edit?.mode !== 'move') return;
       drag.set({ dx: 0, dy: 0 });
-      const own = new Set(edit.ids);
+      const own = new Set(rigidMove(edit, (id) => store().elements[id]) ? edit.ids : []);
       followLive.set(editPatches(store().visibleElements(), edit).some((q) => !own.has(q.id)));
       moveLive.set(true);
     };
@@ -1121,21 +1143,13 @@ export function BoardCanvas({
             {liveShape ? (
               <ElementRenderer
                 dark={dark}
-                el={{
+                el={shapeElement(config.shape, liveShape, config, {
                   id: 'live-shape',
-                  kind: 'shape',
-                  shape: config.shape,
-                  from: liveShape.from,
-                  to: liveShape.to,
-                  stroke: config.color,
-                  strokeWidth: config.width,
-                  fill: fillWith(config.fillColor ?? config.color, config.fillOpacity),
-                  dash: config.dash,
                   createdBy: 'local',
                   createdAt: 0,
                   updatedAt: 0,
                   z: Number.MAX_SAFE_INTEGER,
-                }}
+                })}
               />
             ) : null}
 
@@ -1150,6 +1164,8 @@ export function BoardCanvas({
                 strokeWidth={config.width}
                 fill={liveFill}
                 rounded={config.rounded}
+                dash={config.dash}
+                opacity={config.opacity / 100}
               />
             ) : null}
 

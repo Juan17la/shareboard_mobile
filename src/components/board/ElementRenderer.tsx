@@ -57,6 +57,7 @@ import {
 import {
   SHAPE_TEXT_SIZE,
   type BoardElement,
+  type Dash,
   type Marker,
   type Point,
   type ShapeElement,
@@ -618,6 +619,8 @@ export function LiveBoxShape({
   strokeWidth,
   fill,
   rounded,
+  dash,
+  opacity,
 }: {
   from: SharedValue<Point>;
   to: SharedValue<Point>;
@@ -627,8 +630,11 @@ export function LiveBoxShape({
   stroke: string;
   strokeWidth: number;
   fill: string | null;
-  /** Rounds a rectangle's preview; the other figures round once they are placed. */
+  /** Rounds the corners as the placed figure will (`cornerRadius`, `roundedPolygonPath`). */
   rounded: boolean;
+  dash: Dash;
+  /** 0–1, as on the element. */
+  opacity: number;
 }) {
   const path = usePathValue((b) => {
     'worklet';
@@ -653,16 +659,39 @@ export function LiveBoxShape({
               { x, y: y + h },
             ]
           : polygonPoints({ x, y, width: w, height: h }, sides);
-      b.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) b.lineTo(pts[i].x, pts[i].y);
+      if (rounded) {
+        // `roundedPolygonPath`, on the UI thread: each corner cut back by up to
+        // the radius along both edges and joined by a curve through it.
+        const r = Math.min(w, h) * 0.18;
+        const n = pts.length;
+        for (let i = 0; i < n; i++) {
+          const p = pts[i];
+          const a = pts[(i + n - 1) % n];
+          const c = pts[(i + 1) % n];
+          const la = Math.hypot(a.x - p.x, a.y - p.y);
+          const lc = Math.hypot(c.x - p.x, c.y - p.y);
+          const k = Math.min(r, la / 2, lc / 2);
+          const sx = la ? p.x + ((a.x - p.x) / la) * k : p.x;
+          const sy = la ? p.y + ((a.y - p.y) / la) * k : p.y;
+          if (i) b.lineTo(sx, sy);
+          else b.moveTo(sx, sy);
+          b.quadTo(p.x, p.y, lc ? p.x + ((c.x - p.x) / lc) * k : p.x, lc ? p.y + ((c.y - p.y) / lc) * k : p.y);
+        }
+      } else {
+        b.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) b.lineTo(pts[i].x, pts[i].y);
+      }
       b.close();
     }
   });
+  const intervals = dashIntervals(dash, strokeWidth);
   return (
-    <>
+    <Group opacity={opacity}>
       {fill ? <Path path={path} color={fill} /> : null}
-      <Path path={path} color={stroke} style="stroke" strokeWidth={strokeWidth} strokeJoin="round" />
-    </>
+      <Path path={path} color={stroke} style="stroke" strokeWidth={strokeWidth} strokeJoin="round" strokeCap="round">
+        {intervals ? <DashPathEffect intervals={intervals} /> : null}
+      </Path>
+    </Group>
   );
 }
 

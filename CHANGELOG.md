@@ -7,6 +7,32 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.4.1-beta] - 2026-10-06
+
+### Changed
+
+- "+ Crear / Unirse" sits beside the menu button in portrait too, as on the
+  web: the name and its buttons on the top row, people, access, code and
+  share on the second.
+- An arrow's ends (Cola / Punta) open their marker grid in a panel beside the
+  options dropdown instead of replacing it.
+- "Crear / Unirse" has a Join button under the code boxes.
+
+### Fixed
+
+- Joining, creating, importing or switching to another whiteboard opens it at
+  once. It sometimes froze instead, until the app was restarted: the board
+  being left reset the shared board state after the new one had loaded.
+
+- Sheets and dialogs on Android are frosted: they blur the board under their
+  scrim instead of showing it sharp through a pale tint.
+- Typing a new name in Settings no longer reloads the board on every
+  character: the name is saved when you leave the field or close the sheet.
+- The figure being drawn looks like the one that lands: rounded corners
+  (triangles and polygons too), the dash, the opacity, an arrow's heads and its
+  route. Moving an arrow away from the shape it was bound to shows its final
+  route while dragging instead of jumping on release.
+
 ## [1.4.0-beta] - 2026-10-05
 
 ### Added

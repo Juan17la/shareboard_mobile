@@ -57,6 +57,13 @@ export function SettingsSheet({
   const avatar = useSessionStore((s) => s.avatar);
   const setNickname = useSessionStore((s) => s.setNickname);
   const [nick, setNick] = useState(nickname);
+  // Saved when the field is left, not per keystroke: a new nickname rejoins the
+  // board, which reloaded it on every character typed.
+  const commitNick = () => {
+    const next = nick.trim();
+    // Never empty: a blank name would send you back to the identity screen.
+    if (next && next !== nickname) setNickname(next);
+  };
 
   const meta = useBoardStore((s) => s.meta);
   const setMeta = useBoardStore((s) => s.setMeta);
@@ -113,7 +120,16 @@ export function SettingsSheet({
   }
 
   return (
-    <Sheet open={open} title={t.sheetSettings} onClose={onClose} closeLabel={t.close} tall>
+    <Sheet
+      open={open}
+      title={t.sheetSettings}
+      onClose={() => {
+        commitNick();
+        onClose();
+      }}
+      closeLabel={t.close}
+      tall
+    >
       <View style={{ gap: 9 }}>
         {/* Who you are on a board: the name beside your cursor and its icon. */}
         <SectionLabel>{t.nickPlaceholder}</SectionLabel>
@@ -123,12 +139,9 @@ export function SettingsSheet({
             <View style={{ flex: 1, minWidth: 0 }}>
               <Field
                 value={nick}
-                // Written through as typed, but never empty: a blank name would
-                // send you back to the identity screen.
-                onChangeText={(v) => {
-                  setNick(v);
-                  if (v.trim()) setNickname(v);
-                }}
+                onChangeText={setNick}
+                onBlur={commitNick}
+                onSubmitEditing={commitNick}
                 placeholder={t.nickPlaceholder}
                 maxLength={LIMITS.maxNicknameLength}
                 autoComplete="nickname"

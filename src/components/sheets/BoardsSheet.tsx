@@ -100,7 +100,7 @@ export function BoardsSheet({
                     accessibilityState={{ selected: here }}
                     onPress={() => {
                       onClose();
-                      if (!here) router.replace({ pathname: '/board/[id]', params: { id: board.id } });
+                      if (!here) router.setParams({ id: board.id });
                     }}
                     style={{
                       flex: 1,
