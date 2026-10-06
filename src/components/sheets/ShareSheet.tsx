@@ -7,16 +7,23 @@
  * pointing a camera at the first.
  */
 import * as Clipboard from 'expo-clipboard';
-import { Pressable, View } from 'react-native';
+import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Linking, Pressable, Share, View } from 'react-native';
 
 import { Radius } from '@/constants/theme';
-import { useColors } from '@/features/session/store';
+import { useColors, useSessionStore } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 import { useBoardStore } from '@/features/board/store';
+import { loadLocal, updateLocal } from '@/features/board/local';
+import { SNAPSHOT_FORMAT, SNAPSHOT_VERSION } from '@/features/board/model';
+import { ApiError } from '@/services/api/client';
+import { importSnapshot } from '@/services/api/boards';
 import { formatShortCode } from '@/utils/short-code';
 
+import { Button } from '../ui/Button';
 import { GlassPanel } from '../ui/Glass';
-import { Icon } from '../ui/Icon';
+import { Icon, type IconName } from '../ui/Icon';
 import { QRCode } from '../ui/QRCode';
 import { SectionLabel, Sheet } from '../ui/Sheet';
 import { Txt } from '../ui/Text';
@@ -38,12 +45,25 @@ export function ShareSheet({
   const c = useColors();
   const t = useT();
   const meta = useBoardStore((s) => s.meta);
+  const local = useBoardStore((s) => s.connection === 'local');
   const code = meta?.shortCode ?? '';
+
+  const message = `${t.shareMessage} ${link}`;
+  // No canOpenURL: it needs the app's scheme declared natively (a new build);
+  // openURL rejects when nothing handles it, and the web link works everywhere.
+  const sendWhatsApp = () =>
+    Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`).catch(() =>
+      Linking.openURL(`https://wa.me/?text=${encodeURIComponent(message)}`),
+    );
+  // The system chooser: Telegram, Messenger, SMS, mail… without per-app code.
+  const sendMore = () => Share.share({ message });
 
   const copy = async (value: string, message: string) => {
     await Clipboard.setStringAsync(value);
     toast(message);
   };
+
+  if (local) return <LocalShare open={open} onClose={onClose} onOpenExport={onOpenExport} />;
 
   return (
     <Sheet open={open} title={t.sheetShare} onClose={onClose} closeLabel={t.close}>
@@ -102,8 +122,62 @@ export function ShareSheet({
         </GlassPanel>
 
         <View style={{ flexDirection: 'row', gap: 9 }}>
+          <ShortcutTile icon="whatsapp" label={t.shareWhatsApp} onPress={sendWhatsApp} />
+          <ShortcutTile icon="share" label={t.shareMore} onPress={sendMore} />
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 9 }}>
           <ShortcutTile icon="image" label={t.exportImage} onPress={onOpenExport} />
           <ShortcutTile icon="lock" label={t.permissions} onPress={onOpenPrivacy} />
+        </View>
+      </View>
+    </Sheet>
+  );
+}
+
+/**
+ * The offline board has no code yet (plans/34): sharing makes a live copy of
+ * it and opens that, where Share has its code and link. The offline board stays as it is — a private copy, never merged with the live one.
+ */
+function LocalShare({ open, onClose, onOpenExport }: { open: boolean; onClose: () => void; onOpenExport: () => void }) {
+  const t = useT();
+  const userId = useSessionStore((s) => s.userId);
+  const [busy, setBusy] = useState(false);
+  const [sharedAs, setSharedAs] = useState<string | undefined>();
+  useEffect(() => {
+    if (open) void loadLocal().then((board) => setSharedAs(board?.sharedAs));
+  }, [open]);
+  const go = (id: string) => router.replace({ pathname: '/board/[id]', params: { id } });
+
+  async function promote() {
+    const { meta, visibleElements } = useBoardStore.getState();
+    if (!meta) return;
+    setBusy(true);
+    try {
+      const created = await importSnapshot(
+        { format: SNAPSHOT_FORMAT, version: SNAPSHOT_VERSION, meta: { name: meta.name }, elements: visibleElements(), exportedAt: Date.now() },
+        userId,
+      );
+      await updateLocal(meta.id, { sharedAs: created.id });
+      go(created.id);
+    } catch (error) {
+      toast(error instanceof ApiError && error.code !== 'NETWORK' ? error.message : t.needOnline);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <Sheet open={open} title={t.sheetShare} onClose={onClose} closeLabel={t.close}>
+      <View style={{ gap: 12 }}>
+        <Txt size={13} leading={1.45} tone="secondary">
+          {t.shareLocalBody}
+        </Txt>
+        <Button label={t.shareLocalCta} icon="share" loading={busy} fullWidth onPress={() => void promote()} />
+        {sharedAs ? (
+          <Button label={t.openShared} icon="link" variant="secondary" fullWidth onPress={() => go(sharedAs)} />
+        ) : null}
+        <View style={{ flexDirection: 'row' }}>
+          <ShortcutTile icon="image" label={t.exportImage} onPress={onOpenExport} />
         </View>
       </View>
     </Sheet>
@@ -115,7 +189,7 @@ function ShortcutTile({
   label,
   onPress,
 }: {
-  icon: 'image' | 'lock';
+  icon: IconName;
   label: string;
   onPress: () => void;
 }) {

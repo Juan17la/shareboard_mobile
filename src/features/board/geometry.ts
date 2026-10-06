@@ -17,6 +17,7 @@ import {
   type Axis,
   type BoardElement,
   type Dash,
+  type HAlign,
   type Link,
   type Marker,
   type Point,
@@ -289,6 +290,50 @@ export function labelLines(
   if (isLineLike(el)) return text.split('\n');
   const inner = shapeBounds(el).width - LABEL_PAD * 2;
   return textLines({ text, fontSize, font: el.font, width: Math.max(fontSize, inner) });
+}
+
+/**
+ * Where a figure's label is drawn: the x it is anchored at with its alignment,
+ * and the y of the middle of its first line. A line's label is always centred
+ * on its route. A box's sits in the box inside `LABEL_PAD`; a triangle whose
+ * vertical alignment was chosen keeps to its wide lower half, where the text
+ * fits, instead of the whole box, whose top corner is a point.
+ */
+export function labelPlacement(
+  el: Pick<ShapeElement, 'shape' | 'from' | 'to' | 'labelAt' | 'align' | 'valign'>,
+  fontSize: number,
+  lineCount: number,
+): { x: number; y: number; align: HAlign } {
+  const step = fontSize * TEXT_LINE_HEIGHT;
+  if (isLineLike(el)) {
+    const c = lineLabelCentre(el);
+    return { x: c.x, y: c.y - ((lineCount - 1) * step) / 2, align: 'center' };
+  }
+  const b = shapeBounds(el);
+  const lower = el.shape === 'triangle' && !!el.valign;
+  const top = b.y + (lower ? b.height / 2 : 0) + LABEL_PAD;
+  const height = b.height * (lower ? 0.5 : 1) - LABEL_PAD * 2;
+  const left = b.x + LABEL_PAD;
+  const width = b.width - LABEL_PAD * 2;
+  const align = el.align ?? 'center';
+  const valign = el.valign ?? 'middle';
+  return {
+    x: align === 'left' ? left : align === 'right' ? left + width : left + width / 2,
+    y:
+      valign === 'top'
+        ? top + step / 2
+        : valign === 'bottom'
+          ? top + height - step / 2 - (lineCount - 1) * step
+          : top + height / 2 - ((lineCount - 1) * step) / 2,
+    align,
+  };
+}
+
+/** The x a text element's lines are anchored at: its left, middle or right edge. */
+export function textAnchor(el: TextElement): { x: number; align: HAlign } {
+  const align = el.align ?? 'left';
+  const w = align === 'left' ? 0 : textBox(el).width;
+  return { x: el.at.x + (align === 'center' ? w / 2 : align === 'right' ? w : 0), align };
 }
 
 /** A line's label: how far along its route it stands, 0..1 (the middle when absent). */
@@ -583,6 +628,66 @@ export function resizeElement(el: BoardElement, h: number, p: Point): Partial<Bo
 const MIN_SIDES = LIMITS.minSides;
 const MAX_SIDES = LIMITS.maxSides;
 
+// --- several selected, resized together ----------------------------------------
+// The selection's overall box (`contentBounds`) gets four corner handles; a
+// drag of one maps every element from the old box onto the new one. What a
+// kind cannot stretch it keeps: a text its font (only its wrap width scales),
+// a turned element its size (stretching it would skew it) — those just move
+// with the box. Line widths stay as they are.
+
+/** The four corner handles of a multi-selection: TL, TR, BR, BL of its overall box. */
+export function groupHandles(elements: BoardElement[]): Point[] {
+  const b = contentBounds(elements);
+  return b ? cornersOfBox(b) : [];
+}
+
+/** `el` mapped from the box `a` onto `b`, as a patch. */
+function scaleInto(el: BoardElement, a: Bounds, b: Bounds): Partial<BoardElement> {
+  const sx = a.width ? b.width / a.width : 1;
+  const sy = a.height ? b.height / a.height : 1;
+  const map = (p: Point): Point => ({ x: b.x + (p.x - a.x) * sx, y: b.y + (p.y - a.y) * sy });
+  if (rotationOf(el)) {
+    const c = centreOf(boxOf(el));
+    const m = map(c);
+    return translate(el, m.x - c.x, m.y - c.y);
+  }
+  switch (el.kind) {
+    case 'stroke':
+      return { points: el.points.map((v, i) => (i % 2 ? b.y + (v - a.y) * sy : b.x + (v - a.x) * sx)) };
+    case 'shape': {
+      const scaled = (q: Point | undefined) => (q ? { x: q.x * sx, y: q.y * sy } : undefined);
+      return {
+        from: map(el.from),
+        to: map(el.to),
+        ...(el.curveFrom && { curveFrom: scaled(el.curveFrom) }),
+        ...(el.curveTo && { curveTo: scaled(el.curveTo) }),
+      };
+    }
+    case 'image':
+      return { at: map(el.at), width: Math.max(8, el.width * sx), height: Math.max(8, el.height * sy) };
+    case 'text':
+      return { at: map(el.at), ...(el.width ? { width: Math.max(el.fontSize, el.width * sx) } : null) };
+  }
+}
+
+/**
+ * Every element's patch, by id, when corner `h` of the group's overall box is
+ * dragged to `p`; the opposite corner stays put. Past it, the box does not
+ * flip: it grows the other way from the pinned corner.
+ */
+export function resizeGroup(elements: BoardElement[], h: number, p: Point): Record<string, Partial<BoardElement>> {
+  const a = contentBounds(elements);
+  if (!a) return {};
+  const o = cornersOfBox(a)[(h + 2) % 4];
+  const b = {
+    x: Math.min(o.x, p.x),
+    y: Math.min(o.y, p.y),
+    width: Math.max(1, Math.abs(p.x - o.x)),
+    height: Math.max(1, Math.abs(p.y - o.y)),
+  };
+  return Object.fromEntries(elements.map((el) => [el.id, scaleInto(el, a, b)]));
+}
+
 /** A regular polygon's corners inside `b`, the first straight up, on the box's inscribed ellipse. */
 export function polygonPoints(b: Bounds, sides = DEFAULT_SIDES): Point[] {
   'worklet';
@@ -597,6 +702,52 @@ export function polygonPoints(b: Bounds, sides = DEFAULT_SIDES): Point[] {
     out.push({ x: b.x + (b.width / 2) * (1 + Math.cos(a)), y: b.y + (b.height / 2) * (1 + Math.sin(a)) });
   }
   return out;
+}
+
+/** Figures with corners to round: not the ellipse, not the lines. */
+export const canRound = (shape: ShapeElement['shape']): boolean => shape === 'rectangle' || shape === 'triangle' || shape === 'polygon';
+
+/**
+ * The corners of a triangle or polygon, in board space: the apex-up triangle,
+ * the regular polygon of `sides` (first corner up), or — for a polygon drawn
+ * with its own angles — `vertices` placed in the box.
+ */
+export function shapeCorners(el: Pick<ShapeElement, 'shape' | 'from' | 'to' | 'sides' | 'vertices'>): Point[] {
+  const { x, y, width: w, height: h } = shapeBounds(el);
+  if (el.shape === 'polygon' && el.vertices && el.vertices.length >= 3) {
+    return el.vertices.map((v) => ({ x: x + v.x * w, y: y + v.y * h }));
+  }
+  if (el.shape === 'triangle') {
+    return [{ x: x + w / 2, y }, { x: x + w, y: y + h }, { x, y: y + h }];
+  }
+  return polygonPoints({ x, y, width: w, height: h }, el.sides);
+}
+
+/** How round a rounded figure's corners are: a share of its shorter side. */
+export function cornerRadius(width: number, height: number): number {
+  return Math.min(width, height) * 0.18;
+}
+
+/**
+ * A closed polygon as an SVG path with every corner rounded: the corner is cut
+ * back `r` along both edges (at most half of each, so neighbours never overlap)
+ * and joined by a curve through the original vertex.
+ */
+export function roundedPolygonPath(pts: Point[], r: number): string {
+  const f = (v: number) => Math.round(v * 100) / 100;
+  const n = pts.length;
+  let d = '';
+  pts.forEach((p, i) => {
+    const a = pts[(i + n - 1) % n];
+    const b = pts[(i + 1) % n];
+    const la = Math.hypot(a.x - p.x, a.y - p.y);
+    const lb = Math.hypot(b.x - p.x, b.y - p.y);
+    const k = Math.min(r, la / 2, lb / 2);
+    const s = la ? { x: p.x + ((a.x - p.x) / la) * k, y: p.y + ((a.y - p.y) / la) * k } : p;
+    const e = lb ? { x: p.x + ((b.x - p.x) / lb) * k, y: p.y + ((b.y - p.y) / lb) * k } : p;
+    d += `${i ? 'L' : 'M'}${f(s.x)} ${f(s.y)}Q${f(p.x)} ${f(p.y)} ${f(e.x)} ${f(e.y)}`;
+  });
+  return `${d}Z`;
 }
 
 /** Elements whose box lies entirely inside `b` — the marquee's pick. */
@@ -618,9 +769,9 @@ export function elementsIn(elements: BoardElement[], b: Bounds): BoardElement[] 
 // there aims at the other end instead of pinning a spot. Near none of them, the
 // end pins the nearest point of the outline.
 
-/** What a line end can bind to: an enclosed shape or an image. */
+/** What an arrow end can bind to: an enclosed shape, a text or an image — never a stroke or another line. */
 export const isLinkTarget = (el: BoardElement): boolean =>
-  el.kind === 'image' || (el.kind === 'shape' && !isLineLike(el));
+  el.kind === 'image' || el.kind === 'text' || (el.kind === 'shape' && !isLineLike(el));
 
 /** A link target's outline in its own unturned frame: an ellipse's box, or a polygon's corners. */
 type Outline = { ellipse: Bounds } | { poly: Point[] };
@@ -629,10 +780,7 @@ function outlineOf(el: BoardElement): Outline {
   const b = boxOf(el);
   if (el.kind === 'shape') {
     if (el.shape === 'ellipse') return { ellipse: b };
-    if (el.shape === 'triangle') {
-      return { poly: [{ x: b.x + b.width / 2, y: b.y }, { x: b.x + b.width, y: b.y + b.height }, { x: b.x, y: b.y + b.height }] };
-    }
-    if (el.shape === 'polygon') return { poly: polygonPoints(b, el.sides) };
+    if (el.shape === 'triangle' || el.shape === 'polygon') return { poly: shapeCorners(el) };
   }
   return { poly: cornersOfBox(b) };
 }
@@ -659,6 +807,18 @@ function localAnchors(el: BoardElement): Point[] {
 export function anchorsOf(el: BoardElement): Point[] {
   if (!isLinkTarget(el)) return [];
   return [centreOf(boxOf(el)), ...localAnchors(el).map((p) => toWorld(el, p))];
+}
+
+/**
+ * The `n` connection points of a link target nearest to `p`. A figure has
+ * eight or more; showing them all on every figure was a field of dots, so
+ * only the few the end is heading for show. Snapping still uses them all.
+ */
+export function nearestAnchors(el: BoardElement, p: Point, n = 3): Point[] {
+  const d = (a: Point) => Math.hypot(a.x - p.x, a.y - p.y);
+  return anchorsOf(el)
+    .sort((a, b) => d(a) - d(b))
+    .slice(0, n);
 }
 
 /** Where a link lands on its target's current (turned) box. */
@@ -800,7 +960,10 @@ export function linkEndpoints(
     };
   };
   const a = targetAt(enclosed, from, radius);
-  const b = targetAt(enclosed, to, radius);
+  // An end let go on the element the other end started from stays free: a
+  // short drag inside one figure is not an arrow from it to itself.
+  const over = targetAt(enclosed, to, radius);
+  const b = over === a ? null : over;
   // Both ends bound: face the other shape's centre, so the ends stay put while
   // the finger wanders inside its box.
   const f = bind(a, from, b && b !== a ? centre(b) : to);
@@ -821,7 +984,8 @@ export function followLinks(
   const byId = new Map(elements.map((el) => [el.id, el] as const));
   const out: { id: string; from?: Point; to?: Point }[] = [];
   for (const el of elements) {
-    if (el.kind !== 'shape' || !isLineLike(el)) continue;
+    // Only arrows bind; a plain line from an older board keeps its ends where they are.
+    if (el.kind !== 'shape' || el.shape !== 'arrow') continue;
     // Only the end that is bound to a moved shape changes: patching the other
     // one too would make an undo rewind wherever a collaborator had put it.
     const end = (link: Link | null | undefined) => {
@@ -1473,12 +1637,14 @@ export function markerPaths(kind: Marker, tip: Point, angle: number, size: numbe
 // (`recognizeSketch`): a loop becomes an ellipse — a circle when it is about as
 // tall as wide — a loop with four corners a rectangle (a square), with three a
 // triangle; a straight run becomes a line, and a straight run with a hook at
-// its tip an arrow. Anything else stays the stroke it was.
+// its tip — or a small loop at either end — an arrow. Anything else stays the stroke it was.
 
 export interface Sketch {
   shape: 'ellipse' | 'rectangle' | 'triangle' | 'polygon' | 'line' | 'arrow';
   /** A polygon's corner count. */
   sides?: number;
+  /** An irregular polygon's corners, as fractions of the box (`ShapeElement.vertices`). */
+  vertices?: Point[];
   from: Point;
   to: Point;
 }
@@ -1591,7 +1757,113 @@ function boxed(shape: Sketch['shape'], b: Bounds): Sketch {
   return { shape, from: { x: b.x, y: b.y }, to: { x: b.x + b.width, y: b.y + b.height } };
 }
 
+/** How near a line must run to horizontal, vertical or 45° to be made exactly so, in degrees. */
+const SNAP_DEG = 6;
+
+/** `to`, turned about `from` onto the nearest multiple of 45° when it is within `SNAP_DEG` of one. */
+function snapAngle(from: Point, to: Point): Point {
+  const a = Math.atan2(to.y - from.y, to.x - from.x);
+  const k = Math.round(a / (Math.PI / 4));
+  if (Math.abs(a - (k * Math.PI) / 4) > (SNAP_DEG * Math.PI) / 180) return to;
+  const len = dist(from, to);
+  const r = (v: number) => Math.round(v * 1e6) / 1e6;
+  return { x: from.x + r(len * Math.cos((k * Math.PI) / 4)), y: from.y + r(len * Math.sin((k * Math.PI) / 4)) };
+}
+
+/**
+ * A hand-drawn polygon's corners made tidy: corners that almost share an x (or
+ * a y) share it exactly, so near-vertical and near-horizontal sides are
+ * straight; and a figure that is nearly its own mirror image, left to right or
+ * top to bottom, becomes exactly symmetric.
+ */
+function tidyCorners(corners: Point[]): Point[] {
+  const out = corners.map((c) => ({ ...c }));
+  const span = () => {
+    const b = boundsOf(out);
+    return { b, tol: 0.09 * Math.max(b.width, b.height) };
+  };
+  for (const axis of ['x', 'y'] as const) {
+    const { tol } = span();
+    const order = out.map((_, i) => i).sort((i, j) => out[i][axis] - out[j][axis]);
+    let from = 0;
+    for (let k = 1; k <= order.length; k++) {
+      if (k < order.length && out[order[k]][axis] - out[order[k - 1]][axis] <= tol) continue;
+      const group = order.slice(from, k);
+      const mean = group.reduce((sum, i) => sum + out[i][axis], 0) / group.length;
+      for (const i of group) out[i][axis] = mean;
+      from = k;
+    }
+  }
+  // Mirror image about the vertical (`x`) or horizontal (`y`) middle line.
+  for (const axis of ['x', 'y'] as const) {
+    const other = axis === 'x' ? 'y' : 'x';
+    const { b, tol } = span();
+    const mid = axis === 'x' ? b.x + b.width / 2 : b.y + b.height / 2;
+    const partner = out.map((c) => {
+      const mirror = { ...c, [axis]: 2 * mid - c[axis] } as Point;
+      let best = 0;
+      out.forEach((d, j) => {
+        if (dist(mirror, d) < dist(mirror, out[best])) best = j;
+      });
+      return dist(mirror, out[best]) <= tol ? best : -1;
+    });
+    const paired = partner.every((j, i) => j >= 0 && partner[j] === i);
+    if (!paired) continue;
+    const fixed = out.map((c, i) => {
+      const d = out[partner[i]];
+      return { [axis]: i === partner[i] ? mid : mid + (c[axis] < mid ? -1 : 1) * (Math.abs(c[axis] - mid) + Math.abs(d[axis] - mid)) / 2, [other]: (c[other] + d[other]) / 2 } as unknown as Point;
+    });
+    fixed.forEach((c, i) => (out[i] = c));
+  }
+  return out;
+}
+
+/** The corners of a recognised box figure (not an ellipse), to measure how well a template fits. */
+function sketchCorners(s: Sketch): Point[] {
+  const b = { x: s.from.x, y: s.from.y, width: s.to.x - s.from.x, height: s.to.y - s.from.y };
+  if (s.shape === 'triangle') {
+    return [{ x: b.x + b.width / 2, y: b.y }, { x: b.x + b.width, y: b.y + b.height }, { x: b.x, y: b.y + b.height }];
+  }
+  if (s.shape === 'rectangle') {
+    return [{ x: b.x, y: b.y }, { x: b.x + b.width, y: b.y }, { x: b.x + b.width, y: b.y + b.height }, { x: b.x, y: b.y + b.height }];
+  }
+  return polygonPoints(b, s.sides);
+}
+
+/** A polygon through exactly these corners (tidied), any number of sides, any angles. */
+function freePolygon(rough: Point[]): Sketch {
+  const corners = tidyCorners(rough);
+  const b = boundsOf(corners);
+  const [w, h] = [b.width || 1, b.height || 1];
+  return {
+    shape: 'polygon',
+    sides: corners.length,
+    vertices: corners.map((c) => ({ x: (c.x - b.x) / w, y: (c.y - b.y) / h })),
+    from: { x: b.x, y: b.y },
+    to: { x: b.x + b.width, y: b.y + b.height },
+  };
+}
+
+/**
+ * A closed loop as a figure. A figure with corners is the template shape
+ * (square, isosceles triangle, regular polygon) when the stroke is close to it,
+ * and a polygon through the corners themselves when the sketch is clearly
+ * something else — a scalene triangle, a trapezoid, a lopsided pentagon.
+ */
 function closedSketch(loop: Point[]): Sketch | null {
+  const found = closedTemplate(loop);
+  if (!found) return null;
+  if (!found.corners) return found.sketch;
+  // How far the stroke's own corners sit from the template's: a hand-drawn
+  // square wobbles a few percent of its size, a parallelogram or a scalene
+  // triangle is a fifth or more away.
+  const b = boundsOf(loop);
+  const template = sketchCorners(found.sketch);
+  const gap = Math.max(...found.corners.map((c) => Math.min(...template.map((t) => dist(c, t)))));
+  return gap > 0.16 * Math.hypot(b.width, b.height) ? freePolygon(found.corners) : found.sketch;
+}
+
+function closedTemplate(loop: Point[]): { sketch: Sketch; corners: Point[] | null } | null {
   const b = boundsOf(loop);
   const q = resampleLoop(loop, 64);
   const size = (b.width + b.height) / 4;
@@ -1617,11 +1889,11 @@ function closedSketch(loop: Point[]): Sketch | null {
   const [shape, error] =
     quadError < triError * 0.7 ? (['rectangle', quadError] as const) : (['triangle', triError] as const);
   const round = ellipseError(q, b);
-  // Five to eight corners: a polygon — when it fits clearly better than a
+  // Five to twelve corners: a polygon — when it fits clearly better than a
   // triangle or a rectangle with corners missing, and than the curve a lumpy
   // circle would also be read as.
   let many: { sides: number; error: number } | null = null;
-  for (let sides = 5; sides <= 8; sides++) {
+  for (let sides = 5; sides <= 12; sides++) {
     const corners = polygon(sides);
     if (!corners) break;
     const fit = polygonError(q, corners, size);
@@ -1629,7 +1901,7 @@ function closedSketch(loop: Point[]): Sketch | null {
     if (!many || fit < many.error * 0.75) many = { sides, error: fit };
   }
   if (many && many.error <= 0.06 && many.error < round * 0.5 && many.error < Math.min(triError, quadError) * 0.6) {
-    return { ...boxed('polygon', b), sides: many.sides };
+    return { sketch: { ...boxed('polygon', b), sides: many.sides }, corners: polygon(many.sides) };
   }
   // Corners win only when they fit clearly better than a curve: a lumpy
   // circle has "corners" too, and is still a circle.
@@ -1644,12 +1916,12 @@ function closedSketch(loop: Point[]): Sketch | null {
         [{ x: x + w / 2, y }, { x: x + w, y: y + h / 2 }, { x: x + w / 2, y: y + h }, { x, y: y + h / 2 }],
         size,
       );
-      if (diamond < box * 0.5) return { ...boxed('polygon', b), sides: 4 };
+      if (diamond < box * 0.5) return { sketch: { ...boxed('polygon', b), sides: 4 }, corners: quad };
     }
-    return boxed(shape, b);
+    return { sketch: boxed(shape, b), corners: shape === 'rectangle' ? quad : tri };
   }
   // Lenient: this is what a really bad circle is for.
-  if (round <= 0.28) return boxed('ellipse', b);
+  if (round <= 0.28) return { sketch: boxed('ellipse', b), corners: null };
   return null;
 }
 
@@ -1672,6 +1944,45 @@ export function sketchResize(sketch: Sketch, p0: Point, p: Point): { from: Point
 function hugs(p: Point[], a: Point, b: Point): boolean {
   const chord = dist(a, b);
   return chord > 0 && p.every((q) => segmentDistance(a, b, q) <= 0.08 * chord);
+}
+
+/** Where the segment `a`→`b` crosses `c`→`d`, or null. */
+function crossing(a: Point, b: Point, c: Point, d: Point): Point | null {
+  const [rx, ry, sx, sy] = [b.x - a.x, b.y - a.y, d.x - c.x, d.y - c.y];
+  const den = rx * sy - ry * sx;
+  if (!den) return null;
+  const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / den;
+  const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / den;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? { x: a.x + rx * t, y: a.y + ry * t } : null;
+}
+
+/**
+ * A straight run that ends in a small loop — the pen curls round once, crossing
+ * its own line — is an arrow whose head is where the loop starts. The loop has
+ * to enclose something (a barb drawn there and back is not one) and stay small
+ * beside the run (a big circle with a tail is still a circle).
+ */
+function loopArrow(p: Point[]): Sketch | null {
+  for (let i = 1; i < p.length - 2; i++) {
+    for (let j = i + 1; j < p.length - 1; j++) {
+      const x = crossing(p[i - 1], p[i], p[j], p[j + 1]);
+      if (!x) continue;
+      const shaft = dist(p[0], x);
+      const rest = boundsOf(p.slice(i));
+      const size = Math.hypot(rest.width, rest.height);
+      if (size > 0.4 * shaft || size < 0.04 * shaft) continue;
+      const loop = [x, ...p.slice(i, j + 1)];
+      let area = 0;
+      for (let k = 0; k < loop.length; k++) {
+        const [a, b] = [loop[k], loop[(k + 1) % loop.length]];
+        area += a.x * b.y - b.x * a.y;
+      }
+      const lb = boundsOf(loop);
+      if (Math.abs(area) / 2 < 0.15 * (lb.width ** 2 + lb.height ** 2)) continue;
+      if (hugs([...p.slice(0, i), x], p[0], x)) return { shape: 'arrow', from: p[0], to: x };
+    }
+  }
+  return null;
 }
 
 function openSketch(p: Point[]): Sketch | null {
@@ -1701,10 +2012,17 @@ function openSketch(p: Point[]): Sketch | null {
  * than `minSize` across, it is left alone.
  */
 export function recognizeSketch(flat: number[], minSize: number): Sketch | null {
-  const p = flatToPoints(flat);
+  // At most ~200 points, however long the stroke: "draw to shape" reads it
+  // again every few frames while the pen moves.
+  const raw = flatToPoints(flat);
+  const step = Math.ceil(raw.length / 200);
+  const p = step > 1 ? raw.filter((_, i) => i % step === 0 || i === raw.length - 1) : raw;
   if (p.length < 3) return null;
   const all = boundsOf(p);
   if (Math.hypot(all.width, all.height) < minSize) return null;
+  // A small loop at either end marks the head.
+  const looped = loopArrow(p) ?? loopArrow([...p].reverse());
+  if (looped) return { ...looped, to: snapAngle(looped.from, looped.to) };
   // Back where it started, it is a loop: cut any run past the start (the
   // point nearest the start in the last stretch), then allow a gap of up to a
   // third of its size.
@@ -1717,5 +2035,7 @@ export function recognizeSketch(flat: number[], minSize: number): Sketch | null 
   if (loop.length >= 3 && dist(loop[end], p[0]) <= 0.35 * Math.hypot(lb.width, lb.height)) {
     return closedSketch(loop);
   }
-  return openSketch(p);
+  const open = openSketch(p);
+  // Straight enough to be horizontal, vertical or diagonal: it is.
+  return open && { ...open, to: snapAngle(open.from, open.to) };
 }

@@ -7,6 +7,104 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.4.0-beta] - 2026-10-05
+
+### Added
+
+- A "+ Crear / Unirse" button ("+ New / Join") in the header for another
+  whiteboard: name a new blank one, or join one with its code. "New whiteboard" and "Join with a code" left the menu.
+- The pencil's icon shows its mode: a pencil and ruler while "Draw to shape"
+  is on (the toggle in its options uses the same two icons).
+- A short tutorial for new users: six coach marks over the real toolbar
+  (draw with the pencil, the colour and settings, draw to shape, select,
+  arrows and text, share). Drawing and selecting move it on by themselves;
+  Skip ends it. It shows once — not to anyone who used the app before — and
+  again from Settings → "Replay the tutorial".
+- An offline board: the app always opens on a board kept on the device (a
+  file in the app's documents) that works without a connection and survives a
+  restart. Share turns it into a live board (a copy; the offline one stays
+  private), "My whiteboards" lists it first, and live boards there are hidden
+  once the server hasn't been reached for five hours, back as soon as it
+  answers. "Draw with AI" works on it while online.
+- The options dropdown shows exactly each tool's options from the to-do's list
+  (the same table as the web toolbar); the strip keeps the colours and the
+  settings button. A polygon's sides moved from the kind menu into settings;
+  the figure opacity row and a box label's size/font are gone (figures keep
+  the opacity they have).
+- Underline for text (with bold and italic), drawn on the board and in SVG exports.
+- "Draw to shape" straightens what it reads: a line that runs nearly level,
+  upright or diagonal (within 6°) becomes exactly so, and a polygon's corners
+  that nearly share a line snap onto it and a nearly symmetric one is made
+  symmetric, so trapezoids, right triangles and the like come out tidy.
+- "Draw to shape" now reads irregular figures too: scalene and right triangles,
+  trapezoids, parallelograms and polygons of any angles keep their own corners
+  (a clean square, circle or regular polygon still comes out regular).
+- A pencil stroke with a small loop curled at either end becomes an arrow,
+  its head where the loop is.
+- While an arrow is drawn, each figure shows only the three connection points
+  nearest the finger; the end still snaps to any of them.
+- Arrows bind to text as well as figures and images, each end on its own: a
+  tail started on empty board stays free while the head binds. The element an
+  end will bind to is framed while drawing, and an arrow let go on the element
+  it started from no longer links to itself.
+- "Draw to shape" pencil mode (pencil options, remembered): the figure the
+  stroke reads as shows faintly while drawing and lands on release — lines,
+  arrows, circles, rectangles, triangles, polygons — and the pencil stays in hand, so figures can be drawn one after another. A stroke it can't read stays freehand.
+- Several selected elements resize together from the corners of their overall
+  box: strokes, figures and lines scale, text moves and re-wraps (its size
+  stays), rotated elements move without stretching. One undo step.
+- Opacity for figures (25 / 50 / 75 / 100 %): the fill, outline and label fade
+  together, in the canvas and in the SVG export. Older boards stay opaque.
+- Rounded or sharp corners for rectangles, triangles and polygons (sharp by
+  default, so rectangles drawn before this look sharper than they did).
+- Text alignment: left / centre / right for text, and left / centre / right plus
+  top / middle / bottom (and a one-tap "fully centred") for a figure's label.
+- The options strip shows only a tool's main options; the rest are behind
+  "More options".
+- While typing, the board lifts so the text stays above the keyboard, and
+  returns when you finish.
+- Share sheet: a WhatsApp button (falls back to wa.me) and a "More…" button
+  that opens the system share sheet.
+- Four text sizes (small, medium, large, extra large) replace the +/- stepper;
+  older boards keep their size and the nearest one is lit.
+- An export button in the header, so exporting is one tap instead of a trip
+  through the menu.
+- A stroke style (solid, dashed, dotted) for every figure, not only lines and
+  arrows; it shows in the canvas and in SVG/PNG export.
+
+### Changed
+
+- Settings is the first entry of the three-dots menu; its header button is gone.
+- The share button uses the familiar three-connected-dots icon.
+- The fill tool's icon is a paint bucket.
+- The pencil reads a held stroke as a figure after 500 ms instead of 700 ms.
+- Choosing a transparent background hides the JPG format instead of greying the
+  switch.
+- Accepting an AI drawing closes the assistant and shows the board.
+- Plain lines no longer bind to shapes; only arrows do. Lines from older boards
+  stay where they are.
+- Clearer labels: arrow type, tail, head and background.
+- The header has no background or glass any more: each button sits on its own
+  small solid chip over the board.
+- The options strip is at most three buttons on the left: Color, Border and
+  Settings (a dropdown with width, stroke style, shape, background, line and
+  text options). The colour box opens the picker directly (which now also
+  has the quick palette); the fill box shows its opacity over a checkerboard.
+- The eraser fades what it passes over until you lift, instead of hiding it.
+- After drawing a figure or a text, the cursor comes back with the new element
+  selected. The pencil, hand, eraser and fill stay in hand.
+- Stroke width is a four-stop slider; option groups carry a small subtitle, and
+  a button next to the background colour removes the background.
+
+### Fixed
+
+- Two tabs (or a tab and a phone) of the same user on one board no longer
+  knock each other offline: each keeps its socket and sees the other's
+  changes. Before, the second tab closed the first ("Sin conexión") and edits
+  from one never showed in the other.
+- A selected figure's resize points can be grabbed even where another figure
+  is drawn on top of them; a press on that figure's body still selects it.
+
 ## [1.3.1-beta] - 2026-10-01
 
 ### Fixed

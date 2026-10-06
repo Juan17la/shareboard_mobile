@@ -23,7 +23,7 @@ import { Palettes, inkFor } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 import {
   addStroke,
-  anchorsOf,
+  nearestAnchors,
   bendHandleOf,
   curveHandlesOf,
   boxOf,
@@ -31,18 +31,22 @@ import {
   dashIntervals,
   elementBounds,
   endAngles,
+  groupHandles,
   handlesOf,
   headsOf,
   isLineLike,
   labelBox,
   labelLines,
-  lineLabelCentre,
+  labelPlacement,
+  textAnchor,
   markerPaths,
   polygonPoints,
+  shapeCorners,
+  cornerRadius,
+  roundedPolygonPath,
   rotateHandleOf,
   rotationOf,
   routePath,
-  shapeBounds,
   strokeToSvgPath,
   textLines,
   toWorld,
@@ -140,25 +144,27 @@ function MarkerPartView({
   );
 }
 
+/** How far left of its anchor a line of width `w` starts: Skia has no text-align. */
+const alignShift = (align: 'left' | 'center' | 'right', w: number) => (align === 'center' ? w / 2 : align === 'right' ? w : 0);
+
 /** A shape's label: centred in its box, or floating just above a line's midpoint. */
 function ShapeLabel({ el }: { el: ShapeElement }) {
   const fontSize = el.fontSize ?? SHAPE_TEXT_SIZE;
   const font = useBoardFont(fontSize, false, false, el.font);
   if (!el.text) return null;
-  const { x, y, width, height } = shapeBounds(el);
   const step = fontSize * TEXT_LINE_HEIGHT;
   // Wrapped inside the figure (a line's label only breaks where typed).
   const lines = labelLines(el, fontSize);
-  // Centred in a box; on a line, where it stands along it (the line is cut behind it).
-  const { x: cx, y: cy } = isLineLike(el) ? lineLabelCentre(el) : { x: x + width / 2, y: y + height / 2 };
+  // Where the figure's alignment puts it; on a line, where it stands along it (the line is cut behind it).
+  const at = labelPlacement(el, fontSize, lines.length);
   // Skia draws from the baseline: centre the block, then sit each line on it.
-  const top = cy - ((lines.length - 1) * step) / 2 + fontSize * 0.35;
+  const top = at.y + fontSize * 0.35;
   return (
     <Group>
       {lines.map((line, i) => (
         <TextPath
           key={i}
-          x={cx - textWidth(font, line) / 2}
+          x={at.x - alignShift(at.align, textWidth(font, line))}
           y={top + i * step}
           text={line}
           font={font}
@@ -183,6 +189,8 @@ export const HANDLE_SIZE = 12;
 
 /** How opaque an element someone else holds is painted. */
 export const HELD_ALPHA = 0.45;
+/** What the eraser is about to take: faint enough to read as going, visible enough to see what. */
+export const ERASING_ALPHA = 0.25;
 
 /** A dashed box round board-space bounds, 4 screen px outside them: the frame, and the marquee. */
 export function DashedBox({
@@ -291,7 +299,7 @@ export function SelectionFrame({
           <Rect x={-half} y={-half} width={2 * half} height={2 * half} color={c.accent} style="stroke" strokeWidth={hair} />
         </Group>
       ) : null}
-      {(one ? handlesOf(one) : []).map((h, i) =>
+      {(one ? handlesOf(one) : groupHandles(elements)).map((h, i) =>
         line ? (
           <Group key={i}>
             <Circle cx={h.x} cy={h.y} r={half + k} color={c.accent} />
@@ -354,11 +362,12 @@ function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
   const y = Math.min(el.from.y, el.to.y);
   const w = Math.abs(el.to.x - el.from.x);
   const h = Math.abs(el.to.y - el.from.y);
+  // Closed shapes dash their outline; the line below does it for its own route.
+  const outline = dashIntervals(el.dash, el.strokeWidth);
+  const dashed = outline ? <DashPathEffect intervals={outline} /> : null;
 
   if (el.shape === 'rectangle') {
-    // The design's rectangles are softly rounded, capped so a thin sliver does
-    // not turn into a lozenge.
-    const r = Math.min(8, w / 4, h / 4);
+    const r = el.rounded ? cornerRadius(w, h) : 0;
     return (
       <Group>
         {el.fill ? <RoundedRect x={x} y={y} width={w} height={h} r={r} color={el.fill} /> : null}
@@ -371,7 +380,10 @@ function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
           color={el.stroke}
           style="stroke"
           strokeWidth={el.strokeWidth}
-        />
+          strokeCap="round"
+        >
+          {dashed}
+        </RoundedRect>
       </Group>
     );
   }
@@ -388,7 +400,10 @@ function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
           color={el.stroke}
           style="stroke"
           strokeWidth={el.strokeWidth}
-        />
+          strokeCap="round"
+        >
+          {dashed}
+        </Oval>
       </Group>
     );
   }
@@ -464,24 +479,21 @@ function PolygonView({
   w: number;
   h: number;
 }) {
-  const { shape, sides } = el;
+  const { rounded } = el;
+  const outline = dashIntervals(el.dash, el.strokeWidth);
   const path = useMemo(() => {
-    const pts =
-      shape === 'triangle'
-        ? [
-            { x: x + w / 2, y },
-            { x: x + w, y: y + h },
-            { x, y: y + h },
-          ]
-        : polygonPoints({ x, y, width: w, height: h }, sides);
+    const pts = shapeCorners(el);
+    if (rounded) return Skia.Path.MakeFromSVGString(roundedPolygonPath(pts, cornerRadius(w, h)))!;
     const builder = Skia.PathBuilder.Make().moveTo(pts[0].x, pts[0].y);
     for (const p of pts.slice(1)) builder.lineTo(p.x, p.y);
     return builder.close().detach();
-  }, [shape, sides, x, y, w, h]);
+  }, [el, rounded, w, h]);
   return (
     <Group>
       {el.fill ? <Path path={path} color={el.fill} /> : null}
-      <Path path={path} color={el.stroke} style="stroke" strokeWidth={el.strokeWidth} strokeJoin="round" />
+      <Path path={path} color={el.stroke} style="stroke" strokeWidth={el.strokeWidth} strokeJoin="round" strokeCap="round">
+        {outline ? <DashPathEffect intervals={outline} /> : null}
+      </Path>
     </Group>
   );
 }
@@ -533,18 +545,22 @@ function TextView({ el }: { el: Extract<BoardElement, { kind: 'text' }> }) {
   const step = el.fontSize * TEXT_LINE_HEIGHT;
   // Its own newlines, then wrapped to its width if it has one. Skia draws text
   // from the baseline; nudge each line down by ~the font size.
+  const { x, align } = textAnchor(el);
   return (
     <Group>
-      {textLines(el).map((line, i) => (
-        <TextPath
-          key={i}
-          x={el.at.x}
-          y={el.at.y + el.fontSize + i * step}
-          text={line}
-          font={font}
-          color={el.color}
-        />
-      ))}
+      {textLines(el).map((line, i) => {
+        const w = textWidth(font, line);
+        const left = x - alignShift(align, w);
+        const y = el.at.y + el.fontSize + i * step;
+        return (
+          <Group key={i}>
+            <TextPath x={left} y={y} text={line} font={font} color={el.color} />
+            {el.underline && line ? (
+              <Rect x={left} y={y + el.fontSize * 0.12} width={w} height={Math.max(1, el.fontSize / 16)} color={el.color} />
+            ) : null}
+          </Group>
+        );
+      })}
     </Group>
   );
 }
@@ -601,6 +617,7 @@ export function LiveBoxShape({
   stroke,
   strokeWidth,
   fill,
+  rounded,
 }: {
   from: SharedValue<Point>;
   to: SharedValue<Point>;
@@ -610,6 +627,8 @@ export function LiveBoxShape({
   stroke: string;
   strokeWidth: number;
   fill: string | null;
+  /** Rounds a rectangle's preview; the other figures round once they are placed. */
+  rounded: boolean;
 }) {
   const path = usePathValue((b) => {
     'worklet';
@@ -621,8 +640,7 @@ export function LiveBoxShape({
     const w = Math.abs(t.x - f.x);
     const h = Math.abs(t.y - f.y);
     if (shape === 'rectangle') {
-      // Softly rounded, capped so a thin sliver does not turn into a lozenge.
-      const r = Math.min(8, w / 4, h / 4);
+      const r = rounded ? Math.min(w, h) * 0.18 : 0;
       b.addRRect({ rect: { x, y, width: w, height: h }, rx: r, ry: r });
     } else if (shape === 'ellipse') {
       b.addOval({ x, y, width: w, height: h });
@@ -677,16 +695,17 @@ function StrokeView({
 }
 
 /**
- * Connection points on every enclosed shape, shown while a line or an arrow is
- * being drawn so the snap targets are visible. Board space, pixel-sized by `scale`.
+ * Connection points on every enclosed shape, shown while an arrow is being
+ * drawn so the snap targets are visible: on each, the three nearest `near`
+ * (the end under the finger). Board space, pixel-sized by `scale`.
  */
-export function Anchors({ elements, scale }: { elements: BoardElement[]; scale: number }) {
+export function Anchors({ elements, near, scale }: { elements: BoardElement[]; near: Point; scale: number }) {
   const c = useColors();
   const k = 1 / scale;
   return (
     <Group>
       {elements.map((el) =>
-        anchorsOf(el).map((a, i) => (
+        nearestAnchors(el, near).map((a, i) => (
           <Group key={`${el.id}-${i}`}>
             <Circle cx={a.x} cy={a.y} r={4 * k} color={c.background} />
             <Circle cx={a.x} cy={a.y} r={4 * k} color={c.accent} style="stroke" strokeWidth={1.5 * k} />
@@ -758,7 +777,9 @@ export const ElementRenderer = memo(function ElementRenderer({
   const shown = useMemo(() => (dark ? inked(el) : el), [el, dark]);
   const ground = dark ? Palettes.dark.background : Palettes.light.background;
   const angle = rotationOf(shown);
-  const painted = <Painted el={shown} smooth={smooth} ground={ground} />;
+  const solid = <Painted el={shown} smooth={smooth} ground={ground} />;
+  // The element's own opacity composites its fill, line and label as one.
+  const painted = shown.opacity != null && shown.opacity < 1 ? <Group opacity={shown.opacity}>{solid}</Group> : solid;
   // Turned about the centre of its box: the element itself paints unturned.
   const b = boxOf(shown);
   const placed = angle ? (

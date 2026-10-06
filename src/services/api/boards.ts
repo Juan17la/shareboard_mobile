@@ -49,6 +49,10 @@ export const drawWithAi = (boardId: string, prompt: string, at: Point, auth: Aut
     ...auth,
   });
 
+/** The same for the offline board, which the server has never seen: always a preview. */
+export const drawWithAiLocal = (prompt: string, at: Point, userId: UserId) =>
+  request<{ reply: string; elements: BoardElement[] }>('POST', '/ai', { body: { prompt, at }, userId });
+
 /** Creator only. */
 export const renameBoard = (boardId: string, name: string, auth: Auth) =>
   request<BoardMeta>('PATCH', `/boards/${id(boardId)}`, { body: { name }, ...auth });

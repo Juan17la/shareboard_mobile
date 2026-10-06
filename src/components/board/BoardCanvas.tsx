@@ -47,6 +47,7 @@ import {
   canRotate,
   elementBounds,
   elementsIn,
+  groupHandles,
   handlesOf,
   isLineLike,
   labelBox,
@@ -58,6 +59,7 @@ import {
   sketchResize,
   type Sketch,
   resizeElement,
+  resizeGroup,
   rotateHandleOf,
   rotationOf,
   rotationFromDrag,
@@ -77,6 +79,7 @@ import {
   heldByOthers,
   sketchElement,
   useBoardStore,
+  writable,
   type Camera,
   type LiveEdit,
 } from '@/features/board/store';
@@ -90,6 +93,7 @@ import {
   ElementRenderer,
   LiveBoxShape,
   LiveStroke,
+  ERASING_ALPHA,
   HELD_ALPHA,
   LiveDotGrid,
   SelectionFrame,
@@ -113,9 +117,9 @@ type Ends = {
   toLink?: Link | null;
 };
 
-/** A line's ends bind to the shapes they land on; other shapes pass through. */
+/** An arrow's ends bind to the shapes they land on; a plain line never does. */
 function snapLine(shape: string, from: Point, to: Point): Ends {
-  if (shape !== 'line' && shape !== 'arrow') return { from, to };
+  if (shape !== 'arrow') return { from, to };
   const store = useBoardStore.getState();
   // Never to itself: the line being reshaped is not a target.
   const others = store.visibleElements().filter((el) => !store.selectedIds.includes(el.id));
@@ -179,9 +183,13 @@ const MAX_STROKE_POINTS = LIMITS.maxStrokePoints;
 /** How long a finger holds still with the cursor before the menu opens: paste on empty board, the element's actions on a figure. */
 const HOLD_MS = 500;
 /** How long a pen stroke's end is held before it is read as a figure (`recognizeSketch`). */
-const SKETCH_MS = 700;
+const SKETCH_MS = 500;
 /** Screen pixels a finger may wander and still count as held still. */
 const STILL_PX = 8;
+/** How often "draw to shape" reads the stroke again while the pen moves. */
+const GUESS_MS = 60;
+/** How faint the figure it reads shows over the stroke until the pen lifts. */
+const GUESS_ALPHA = 0.35;
 
 /**
  * Whether this tap on `id` is the second within 300 ms — the cursor tool's
@@ -225,7 +233,7 @@ export function BoardCanvas({
   const liveSketch = useBoardStore((s) => s.liveSketch);
   const liveErased = useBoardStore((s) => s.liveErased);
   const canEdit = useBoardStore((s) => s.canEditNow());
-  const online = useBoardStore((s) => s.connection === 'online');
+  const online = useBoardStore((s) => writable(s.connection));
   const [editingId, setEditingId] = useState<string | null>(null);
   /** What is being typed: painted in place by the canvas, so the editor only holds the caret. */
   const [draft, setDraft] = useState<string | null>(null);
@@ -243,12 +251,10 @@ export function BoardCanvas({
   // Sorted once per change to the elements, not once per finger move: the
   // drag preview below only patches the sorted list.
   const drawn = useMemo(() => visibleSorted(elements), [elements]);
-  // What the eraser has passed over is gone from the screen at once; it is
-  // deleted for real (one step) when the finger lifts.
-  const sorted = useMemo(
-    () => (liveErased.length ? drawn.filter((el) => !liveErased.includes(el.id)) : drawn),
-    [drawn, liveErased],
-  );
+  // What the eraser has passed over fades (`ERASING_ALPHA`) and is deleted for
+  // real, as one step, when the finger lifts.
+  const sorted = drawn;
+  const erasing = useMemo(() => new Set(liveErased), [liveErased]);
   const list = useMemo(() => {
     if (editingId && draft !== null) {
       return sorted.map((el) => (el.id === editingId ? ({ ...el, text: draft } as BoardElement) : el));
@@ -353,7 +359,7 @@ export function BoardCanvas({
     const store = () => useBoardStore.getState();
     // Viewers and offline clients get no draft: a stroke that cannot be sent
     // would only ever exist on this screen, and the banner is what says so.
-    const editable = () => store().canEditNow() && store().connection === 'online';
+    const editable = () => store().canEditNow() && writable(store().connection);
 
     // A finger landing on the selection drags it rather than drawing: a
     // handle (one element only) reshapes, anything selected moves the lot.
@@ -361,10 +367,6 @@ export function BoardCanvas({
       const sel = store().selectedElements();
       if (!sel.length) return false;
       const scale = store().camera.scale;
-      // Something drawn above the selection owns the press there. After "send
-      // to back" the selection sits hidden under other figures; a finger on
-      // one of them must pick it, not move or resize everything behind it.
-      if (coveringFigure(store().visibleElements(), sel, p, 6 / scale)) return false;
       const hitR = 18 / scale;
       const one = sel.length === 1 ? sel[0] : null;
       const curve = one?.kind === 'shape' ? curveHandlesOf(one) : null;
@@ -374,7 +376,9 @@ export function BoardCanvas({
       const knob = one ? rotateHandleOf(one, scale) : null;
       const onKnob = knob ? Math.hypot(knob.x - p.x, knob.y - p.y) <= hitR : false;
       // A line's label is dragged along the line; an end, before it, is still an end.
-      const end = one ? handlesOf(one).findIndex((h) => Math.hypot(h.x - p.x, h.y - p.y) <= hitR) : -1;
+      // Several selected: the corners of their overall box resize them together.
+      const corners = one ? handlesOf(one) : groupHandles(sel);
+      const end = corners.findIndex((h) => Math.hypot(h.x - p.x, h.y - p.y) <= hitR);
       const label = one?.kind === 'shape' && isLineLike(one) && one.text ? one : null;
       const size = label?.fontSize ?? SHAPE_TEXT_SIZE;
       const box = label ? labelBox(label, labelLines(label, size), size) : null;
@@ -395,6 +399,12 @@ export function BoardCanvas({
                 : onFold
                   ? BEND_HANDLE
                   : -1;
+      // The selection's handles are drawn over everything, so they are its own
+      // wherever they are, even with a figure on top. Elsewhere, something drawn
+      // above the selection owns the press: after "send to back" the selection
+      // sits hidden under other figures, and a press on one of them must pick it,
+      // not move everything behind it.
+      if (handle < 0 && coveringFigure(store().visibleElements(), sel, p, 6 / scale)) return false;
       const onBody = !!store().elementAt(p, 6 / scale, sel);
       const mode = handle >= 0 ? 'resize' : onBody ? 'move' : null;
       if (!mode) return false;
@@ -411,8 +421,8 @@ export function BoardCanvas({
               ? (curve?.end ?? null)
               : handle === BEND_HANDLE
                 ? fold
-                : one && handle >= 0
-                  ? handlesOf(one)[handle]
+                : handle >= 0
+                  ? corners[handle]
                   : null;
       grab.x = held ? held.x - p.x : 0;
       grab.y = held ? held.y - p.y : 0;
@@ -468,6 +478,15 @@ export function BoardCanvas({
       if (still.timer) clearTimeout(still.timer);
       still.timer = null;
     };
+    // "Draw to shape" reads the stroke every few frames while the pen moves
+    // and shows the figure it reads, faint, over it (`liveSketch`).
+    const guess = { timer: null as ReturnType<typeof setInterval> | null };
+    const stopGuess = () => {
+      if (guess.timer) clearInterval(guess.timer);
+      guess.timer = null;
+      if (store().liveSketch) store().setLiveSketch(null);
+    };
+    const drawsToShape = () => useSessionStore.getState().settings.drawToShape;
     const watchSketch = () => {
       still.timer = null;
       const { at } = penAnchor.get();
@@ -482,6 +501,7 @@ export function BoardCanvas({
         const sketch = recognizeSketch(pen.get(), 24 / store().camera.scale);
         const id = sketch ? store().addSketch(sketch) : null;
         if (sketch && id) {
+          stopGuess();
           figure.id = id;
           figure.sketch = sketch;
           figure.p0 = penLast.get();
@@ -514,6 +534,12 @@ export function BoardCanvas({
       store().setRailOpen(false);
       stopSketch();
       still.timer = setTimeout(watchSketch, SKETCH_MS);
+      stopGuess();
+      if (drawsToShape()) {
+        guess.timer = setInterval(() => {
+          store().setLiveSketch(recognizeSketch(pen.get(), 24 / store().camera.scale));
+        }, GUESS_MS);
+      }
     };
     /** The pen moved after it made a figure: the figure follows, once a frame (JS side of the pen gesture). */
     const figureMoved = (x: number, y: number) => {
@@ -537,6 +563,7 @@ export function BoardCanvas({
     /** The pen lifted (or was cancelled): commit what was drawn. */
     const penEnded = (points: number[], success: boolean) => {
       stopSketch();
+      stopGuess();
       penSketch.set(false);
       if (figure.raf) cancelAnimationFrame(figure.raf);
       figure.raf = 0;
@@ -549,6 +576,18 @@ export function BoardCanvas({
         figure.patch = null;
         return;
       }
+      // "Draw to shape" lands the figure the stroke reads as and stays in hand:
+      // drawing figure after figure is what the mode is for.
+      const sketch =
+        success && points.length >= 4 && drawsToShape()
+          ? recognizeSketch(points, 24 / store().camera.scale)
+          : null;
+      const made = sketch ? store().addSketch(sketch) : null;
+      if (made) {
+        pen.set([]);
+        return;
+      }
+      // The pencil stays in hand: many strokes in a row is what it is for.
       if (success && points.length >= 4) store().addStroke(simplify(points));
       if (!success) {
         pen.set([]);
@@ -574,7 +613,10 @@ export function BoardCanvas({
       const edit = store().liveEdit;
       if (!edit || edit.mode === 'move') return;
       const held = { x: p.x + grab.x, y: p.y + grab.y };
-      store().setLiveEdit({ ...edit, patch: dragPatch(edit, store().elements[edit.ids[0]], held) });
+      if (edit.ids.length > 1) {
+        const els = edit.ids.map((id) => store().elements[id]);
+        store().setLiveEdit({ ...edit, patches: resizeGroup(els, edit.handle, held) });
+      } else store().setLiveEdit({ ...edit, patch: dragPatch(edit, store().elements[edit.ids[0]], held) });
     };
     /** One undo step for the whole drag; a move's offset is the UI thread's last. */
     const finishEdit = (dx?: number, dy?: number) => {
@@ -583,7 +625,7 @@ export function BoardCanvas({
       const edit = live.mode === 'move' && dx !== undefined ? { ...live, dx, dy: dy ?? 0 } : live;
       // A nudge of a pixel or two is a tap that wobbled, not a move to commit.
       const nudged = edit.mode === 'move' && Math.hypot(edit.dx, edit.dy) * store().camera.scale < 3;
-      if (!nudged && (edit.dx || edit.dy || edit.patch)) store().commitEdit(edit);
+      if (!nudged && (edit.dx || edit.dy || edit.patch || edit.patches)) store().commitEdit(edit);
       store().setLiveEdit(null);
       // The drag is over and the selection is still there: its options come back.
       store().setRailOpen(true);
@@ -738,10 +780,10 @@ export function BoardCanvas({
         // Measured in screen pixels, like web: a board-space threshold made a
         // small shape drawn while zoomed in read as a mis-tap and vanish
         // instead of landing selected.
-        // A new shape lands bare — no handles, no options — so the next one
-        // can be drawn straight away. A tap on it picks it (see `tap`).
+        // A new shape comes up selected with the cursor back, handles ready.
         if (Math.hypot(to.x - from.x, to.y - from.y) * store().camera.scale > 6) {
-          store().addShape(store().config.shape, { from, to });
+          const id = store().addShape(store().config.shape, { from, to });
+          if (id) store().finishCreate([id]);
         }
         // The preview stays until the canvas has the committed shape (a render
         // or two), unless a new one has begun by then and owns it.
@@ -753,7 +795,10 @@ export function BoardCanvas({
         );
       } else if (t === 'shape' && shape) {
         const dragged = Math.hypot(shape.to.x - shape.from.x, shape.to.y - shape.from.y);
-        if (dragged * store().camera.scale > 6) store().addShape(store().config.shape, shape);
+        if (dragged * store().camera.scale > 6) {
+          const id = store().addShape(store().config.shape, shape);
+          if (id) store().finishCreate([id]);
+        }
       }
       store().setLiveShape(null);
     };
@@ -1003,10 +1048,22 @@ export function BoardCanvas({
   ]);
 
   const editing = editingId ? elements[editingId] : null;
-  // Connection points show whenever a line or arrow could land on them.
+  // Connection points show whenever an arrow could land on them: those nearest
+  // the end under the finger — the one being drawn, or the handle being dragged.
+  const draggedEnd =
+    liveEdit?.mode === 'resize' && (liveEdit.handle === 0 || liveEdit.handle === 1)
+      ? (liveEdit.patch as Partial<ShapeElement> | null)?.[liveEdit.handle === 0 ? 'from' : 'to']
+      : undefined;
   const anchors =
-    (tool === 'shape' && (config.shape === 'line' || config.shape === 'arrow')) ||
-    (selectedShape && isLineLike(selectedShape));
+    ((tool === 'shape' && config.shape === 'arrow') || selectedShape?.shape === 'arrow') &&
+    (liveShape?.to ?? draggedEnd ?? null);
+  // What the arrow being drawn, or the end being dragged, binds to: framed, so
+  // where it will hold on is no surprise.
+  const linked = useMemo(() => {
+    const ends = (liveShape ?? (liveEdit?.mode === 'resize' ? liveEdit.patch : null)) as Partial<Ends> | null;
+    const ids = [ends?.fromLink?.id, ends?.toLink?.id];
+    return list.filter((el) => ids.includes(el.id));
+  }, [list, liveShape, liveEdit]);
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }} onLayout={onLayout}>
@@ -1019,9 +1076,10 @@ export function BoardCanvas({
 
           <Group transform={transform}>
             {list.map((el) =>
-              held.has(el.id) ? (
-                // Someone else holds it: dimmed, framed in their colour below.
-                <Group key={el.id} opacity={HELD_ALPHA}>
+              held.has(el.id) || erasing.has(el.id) ? (
+                // Someone else holds it (dimmed, framed in their colour below),
+                // or the eraser is about to take it (fainter).
+                <Group key={el.id} opacity={erasing.has(el.id) ? ERASING_ALPHA : HELD_ALPHA}>
                   <ElementRenderer el={el} smooth={smooth} dark={dark} />
                 </Group>
               ) : (
@@ -1035,24 +1093,29 @@ export function BoardCanvas({
               ),
             )}
 
-            {liveSketch ? (
-              <ElementRenderer
-                dark={dark}
-                el={sketchElement(liveSketch, config, {
-                  id: 'live-sketch',
-                  createdBy: 'local',
-                  createdAt: 0,
-                  updatedAt: 0,
-                  z: Number.MAX_SAFE_INTEGER,
-                })}
-              />
-            ) : tool === 'pen' ? (
+            {tool === 'pen' ? (
               <LiveStroke
                 points={pen}
                 color={dark ? inkFor(config.color, true) : config.color}
                 width={config.width}
                 smooth={smooth}
               />
+            ) : null}
+
+            {/* "Draw to shape": the figure the stroke reads as, faint over it. */}
+            {liveSketch ? (
+              <Group opacity={GUESS_ALPHA}>
+                <ElementRenderer
+                  dark={dark}
+                  el={sketchElement(liveSketch, config, {
+                    id: 'live-sketch',
+                    createdBy: 'local',
+                    createdAt: 0,
+                    updatedAt: 0,
+                    z: Number.MAX_SAFE_INTEGER,
+                  })}
+                />
+              </Group>
             ) : null}
 
             {liveShape ? (
@@ -1067,6 +1130,7 @@ export function BoardCanvas({
                   stroke: config.color,
                   strokeWidth: config.width,
                   fill: fillWith(config.fillColor ?? config.color, config.fillOpacity),
+                  dash: config.dash,
                   createdBy: 'local',
                   createdAt: 0,
                   updatedAt: 0,
@@ -1085,15 +1149,17 @@ export function BoardCanvas({
                 stroke={dark ? inkFor(config.color, true) : config.color}
                 strokeWidth={config.width}
                 fill={liveFill}
+                rounded={config.rounded}
               />
             ) : null}
 
-            {selected.length || liveMarquee || anchors || held.size ? (
+            {selected.length || liveMarquee || anchors || linked.length || held.size ? (
               <ScreenOverlays
                 shift={movingIds ? dragTransform : undefined}
                 selected={selected}
                 marquee={liveMarquee}
-                anchors={anchors ? list : null}
+                anchors={anchors ? { elements: list, near: anchors } : null}
+                linked={linked}
                 held={held}
                 elements={list}
               />
@@ -1124,6 +1190,10 @@ export function BoardCanvas({
           element={editing}
           onDraft={setDraft}
           onClose={() => {
+            // A new text that kept its words comes up selected, with the cursor.
+            const { tool: t, elements: all, finishCreate } = useBoardStore.getState();
+            const done = all[editing.id];
+            if (t === 'text' && done?.kind === 'text' && !done.deleted && done.text) finishCreate([done.id]);
             setEditingId(null);
             setDraft(null);
           }}
@@ -1158,6 +1228,7 @@ function ScreenOverlays({
   selected,
   marquee,
   anchors,
+  linked,
   held,
   elements,
 }: {
@@ -1165,7 +1236,9 @@ function ScreenOverlays({
   shift?: DerivedValue<Transforms3d>;
   selected: BoardElement[];
   marquee: { from: Point; to: Point } | null;
-  anchors: BoardElement[] | null;
+  anchors: { elements: BoardElement[]; near: Point } | null;
+  /** What the arrow being drawn binds to. */
+  linked: BoardElement[];
   /** What others hold, framed in their colour. */
   held: ReadonlyMap<string, Participant>;
   elements: BoardElement[];
@@ -1195,7 +1268,10 @@ function ScreenOverlays({
         </Group>
       ) : null}
       {marquee ? <DashedBox b={shapeBounds(marquee)} scale={scale} /> : null}
-      {anchors ? <Anchors elements={anchors} scale={scale} /> : null}
+      {anchors ? <Anchors elements={anchors.elements} near={anchors.near} scale={scale} /> : null}
+      {linked.map((el) => (
+        <DashedBox key={`link-${el.id}`} b={boxOf(el)} scale={scale} angle={rotationOf(el)} />
+      ))}
     </>
   );
 }

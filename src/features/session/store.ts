@@ -40,6 +40,8 @@ export interface AppSettings {
   smooth: boolean;
   /** Haptic tick when a tool or option is picked. */
   haptics: boolean;
+  /** The pencil turns what is drawn into the figure it was meant to be ("draw to shape"). */
+  drawToShape: boolean;
 }
 
 interface SessionState {
@@ -56,6 +58,8 @@ interface SessionState {
   recent: RecentBoard[];
   /** PINs this device chose, by board id. */
   pins: Record<string, string>;
+  /** The first-run walkthrough has been finished or skipped (plans/33). */
+  tutorialDone: boolean;
   /** True once AsyncStorage has been read back. */
   hydrated: boolean;
 
@@ -69,6 +73,7 @@ interface SessionState {
   rememberBoard(board: Omit<RecentBoard, 'lastOpenedAt'>): void;
   forgetBoard(id: string): void;
   rememberPin(boardId: string, pin: string | null): void;
+  setTutorialDone(done: boolean): void;
 }
 
 /**
@@ -92,6 +97,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   peers: true,
   smooth: true,
   haptics: false,
+  drawToShape: false,
 };
 
 export const useSessionStore = create<SessionState>()(
@@ -106,6 +112,7 @@ export const useSessionStore = create<SessionState>()(
       settings: DEFAULT_SETTINGS,
       recent: [],
       pins: {},
+      tutorialDone: false,
       hydrated: false,
 
       setNickname(nickname) {
@@ -131,6 +138,10 @@ export const useSessionStore = create<SessionState>()(
 
       toggleTheme() {
         set((s) => ({ theme: s.theme === 'dark' ? 'light' : 'dark' }));
+      },
+
+      setTutorialDone(tutorialDone) {
+        set({ tutorialDone });
       },
 
       setSetting(key, value) {
@@ -176,6 +187,7 @@ export const useSessionStore = create<SessionState>()(
         settings: s.settings,
         recent: s.recent,
         pins: s.pins,
+        tutorialDone: s.tutorialDone,
       }),
       // Older installs have no `settings`/`lang` key; merge over the defaults so
       // a new toggle does not come back `undefined` and render as "off".
@@ -189,6 +201,8 @@ export const useSessionStore = create<SessionState>()(
           nickColor: avatarColor(avatar),
           theme: saved.theme === 'dark' ? 'dark' : 'light',
           settings: { ...DEFAULT_SETTINGS, ...(saved.settings ?? {}) },
+          // Saved before the walkthrough existed: someone who has used the app already, not to be walked through it.
+          tutorialDone: saved.tutorialDone ?? persisted != null,
         };
       },
       onRehydrateStorage: () => () => {

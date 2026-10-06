@@ -11,6 +11,7 @@
  */
 import { Pressable, View } from 'react-native';
 
+import { DrawingPalette } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 
@@ -96,6 +97,14 @@ export function ColorPickerSheet({
   return (
     <Sheet open={open} title={t.color} onClose={onClose} closeLabel={t.close}>
       <View style={{ gap: 6 }}>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {DrawingPalette.map((color) => swatch(color, `p-${color}`))}
+          {/* Keeps the palette row the same cell size as the hue rows below. */}
+          {Array.from({ length: HUES.length - DrawingPalette.length }).map((_, i) => (
+            <View key={`palette-spacer-${i}`} style={{ flex: 1, aspectRatio: 1 }} />
+          ))}
+        </View>
+        <View style={{ height: 6 }} />
         {RAMP.map((step, row) => (
           <View key={row} style={{ flexDirection: 'row', gap: 6 }}>
             {HUES.map((h) => swatch(hsl(h, step.s, step.l), `${h}-${row}`))}

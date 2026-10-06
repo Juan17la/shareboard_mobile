@@ -20,10 +20,8 @@ import { Txt } from '../ui/Text';
 export function MenuSheet({
   open,
   onClose,
-  onNew,
   onOpenBoards,
-  onOpenJoin,
-  onOpenExport,
+  onOpenSettings,
   onOpenImport,
   onOpenPrivacy,
   onOpenPeople,
@@ -31,10 +29,8 @@ export function MenuSheet({
 }: {
   open: boolean;
   onClose: () => void;
-  onNew: () => void;
   onOpenBoards: () => void;
-  onOpenJoin: () => void;
-  onOpenExport: () => void;
+  onOpenSettings: () => void;
   onOpenImport: () => void;
   onOpenPrivacy: () => void;
   onOpenPeople: () => void;
@@ -43,16 +39,20 @@ export function MenuSheet({
   const c = useColors();
   const t = useT();
   const canEdit = useBoardStore((s) => s.canEditNow());
+  const local = useBoardStore((s) => s.connection === 'local');
 
   type Row = { icon: IconName; label: string; onPress: () => void };
   const rows: Row[] = [
-      { icon: 'plus', label: t.newWhiteboard, onPress: onNew },
+      { icon: 'settings', label: t.sheetSettings, onPress: onOpenSettings },
       { icon: 'board', label: t.myWhiteboards, onPress: onOpenBoards },
-      { icon: 'link', label: t.joinWhiteboard, onPress: onOpenJoin },
       { icon: 'download', label: t.importBoard, onPress: onOpenImport },
-      { icon: 'image', label: t.exportImage, onPress: onOpenExport },
-      { icon: 'lock', label: t.whoEdits, onPress: onOpenPrivacy },
-      { icon: 'people', label: t.sheetPeople, onPress: onOpenPeople },
+      // The offline board has nobody else on it and no access to set.
+      ...(local
+        ? []
+        : [
+            { icon: 'lock' as const, label: t.whoEdits, onPress: onOpenPrivacy },
+            { icon: 'people' as const, label: t.sheetPeople, onPress: onOpenPeople },
+          ]),
       ...(canEdit ? [{ icon: 'sparkle' as const, label: t.sheetAi, onPress: onOpenAi }] : []),
   ];
 

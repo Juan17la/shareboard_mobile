@@ -11,12 +11,14 @@ import {
   dashIntervals,
   endAngles,
   headsOf,
-  isLineLike,
   labelBox,
   labelLines,
-  lineLabelCentre,
+  labelPlacement,
+  textAnchor,
   markerPaths,
-  polygonPoints,
+  shapeCorners,
+  cornerRadius,
+  roundedPolygonPath,
   rotationOf,
   routePath,
   shapeBounds,
@@ -59,7 +61,7 @@ export function toSvg(
   const w = r(b.width + padding * 2);
   const h = r(b.height + padding * 2);
   const ground = background ?? '#FFFFFF';
-  const body = elements.map((el) => turned(el, elementSvg(el, ground))).join('\n');
+  const body = elements.map((el) => faded(el, turned(el, elementSvg(el, ground)))).join('\n');
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
     `<style>${FONT_CSS}</style>`,
@@ -68,6 +70,13 @@ export function toSvg(
     '</svg>',
     '',
   ].join('\n');
+}
+
+const ANCHOR = { left: 'start', center: 'middle', right: 'end' } as const;
+
+/** Wraps a translucent element in its opacity. */
+function faded(el: BoardElement, inner: string): string {
+  return el.opacity != null && el.opacity < 1 ? `<g opacity="${r(el.opacity)}">${inner}</g>` : inner;
 }
 
 /** Wraps a turned element in a rotation about the centre of its box. */
@@ -86,10 +95,11 @@ function elementSvg(el: BoardElement, ground: string): string {
       return shapeSvg(el, ground) + labelSvg(el);
     case 'text': {
       const step = el.fontSize * TEXT_LINE_HEIGHT;
+      const { x, align } = textAnchor(el);
       return textLines(el)
         .map(
           (line, i) =>
-            `<text x="${r(el.at.x)}" y="${r(el.at.y + el.fontSize + i * step)}" ${fontAttrs(el.font, el.fontSize, !!el.bold, !!el.italic)} fill="${el.color}">${esc(line)}</text>`,
+            `<text x="${r(x)}" text-anchor="${ANCHOR[align]}" y="${r(el.at.y + el.fontSize + i * step)}" ${fontAttrs(el.font, el.fontSize, !!el.bold, !!el.italic)}${el.underline ? ' text-decoration="underline"' : ''} fill="${el.color}">${esc(line)}</text>`,
         )
         .join('');
     }
@@ -104,23 +114,18 @@ function fontAttrs(font: FontKey | undefined, size: number, bold: boolean, itali
 
 function shapeSvg(el: ShapeElement, ground: string): string {
   const { x, y, width: w, height: h } = shapeBounds(el);
-  const paint = `fill="${el.fill ?? 'none'}" stroke="${el.stroke}" stroke-width="${el.strokeWidth}" stroke-linejoin="round"`;
+  const outline = dashIntervals(el.dash, el.strokeWidth);
+  const paint = `fill="${el.fill ?? 'none'}" stroke="${el.stroke}" stroke-width="${el.strokeWidth}" stroke-linejoin="round"${outline ? ` stroke-linecap="round" stroke-dasharray="${outline.join(' ')}"` : ''}`;
   if (el.shape === 'rectangle') {
-    const rx = Math.max(0, Math.min(8, w / 4, h / 4));
+    const rx = el.rounded ? cornerRadius(w, h) : 0;
     return `<rect x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}" rx="${r(rx)}" ${paint}/>`;
   }
   if (el.shape === 'ellipse') {
     return `<ellipse cx="${r(x + w / 2)}" cy="${r(y + h / 2)}" rx="${r(w / 2)}" ry="${r(h / 2)}" ${paint}/>`;
   }
   if (el.shape === 'triangle' || el.shape === 'polygon') {
-    const pts =
-      el.shape === 'triangle'
-        ? [
-            { x: x + w / 2, y },
-            { x: x + w, y: y + h },
-            { x, y: y + h },
-          ]
-        : polygonPoints({ x, y, width: w, height: h }, el.sides);
+    const pts = shapeCorners(el);
+    if (el.rounded) return `<path d="${roundedPolygonPath(pts, cornerRadius(w, h))}" ${paint}/>`;
     return `<polygon points="${pts.map((p) => `${r(p.x)},${r(p.y)}`).join(' ')}" ${paint}/>`;
   }
   // line / arrow: the route, dashed if asked, then a marker at each end.
@@ -153,16 +158,14 @@ function shapeSvg(el: ShapeElement, ground: string): string {
 /** A figure's label: centred in its box (wrapped inside it), or just above a line's midpoint. */
 function labelSvg(el: ShapeElement): string {
   if (!el.text) return '';
-  const { x, y, width, height } = shapeBounds(el);
   const fontSize = el.fontSize ?? SHAPE_TEXT_SIZE;
   const step = fontSize * TEXT_LINE_HEIGHT;
   const lines = labelLines(el, fontSize);
-  const { x: cx, y: cy } = isLineLike(el) ? lineLabelCentre(el) : { x: x + width / 2, y: y + height / 2 };
-  const top = cy - ((lines.length - 1) * step) / 2;
+  const at = labelPlacement(el, fontSize, lines.length);
   return lines
     .map(
       (line, i) =>
-        `<text x="${r(cx)}" y="${r(top + i * step)}" text-anchor="middle" dominant-baseline="central" ${fontAttrs(el.font, fontSize, false, false)} fill="${el.stroke}">${esc(line)}</text>`,
+        `<text x="${r(at.x)}" y="${r(at.y + i * step)}" text-anchor="${ANCHOR[at.align]}" dominant-baseline="central" ${fontAttrs(el.font, fontSize, false, false)} fill="${el.stroke}">${esc(line)}</text>`,
     )
     .join('');
 }

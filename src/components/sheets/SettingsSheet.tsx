@@ -20,6 +20,7 @@ import { LIMITS } from '@/features/board/model';
 import { useBoardStore } from '@/features/board/store';
 import { useSessionStore, type AppSettings, useColors } from '@/features/session/store';
 import { renameBoard } from '@/services/api/boards';
+import { isLocalId, updateLocal } from '@/features/board/local';
 
 import { AvatarPicker } from '../screens/NicknameScreen';
 import { Avatar } from '../ui/Avatar';
@@ -93,6 +94,13 @@ export function SettingsSheet({
     }
     setRenaming(true);
     try {
+      if (isLocalId(meta.id)) {
+        // The offline board is renamed where it lives.
+        await updateLocal(meta.id, { name: next });
+        setMeta({ ...meta, name: next });
+        toast(t.toastRenamed);
+        return;
+      }
       const updated = await renameBoard(meta.id, next, { userId, token: boardToken ?? '' });
       setMeta(updated);
       toast(t.toastRenamed);
@@ -183,6 +191,16 @@ export function SettingsSheet({
         ))}
 
         <SheetRow
+          title={t.tourReplay}
+          description={t.tourReplayDesc}
+          onPress={() => {
+            useSessionStore.getState().setTutorialDone(false);
+            onClose();
+          }}
+          right={<Icon name="chevron" size={14} color={c.textTertiary} />}
+        />
+
+        <SheetRow
           title={t.settingTheme}
           description={t.settingThemeDesc}
           right={
@@ -255,7 +273,8 @@ export function SettingsSheet({
           </Pressable>
         ) : null}
 
-        {isCreator ? (
+        {/* The offline board is never deleted, only cleared: the app always opens on it. */}
+        {isCreator && !isLocalId(meta.id) ? (
           <Button label={t.deleteBoard} icon="x-circle" variant="danger" onPress={onAskDelete} fullWidth />
         ) : null}
 

@@ -27,10 +27,9 @@ import {
   CursorIcon,
   DotsThreeIcon,
   DownloadSimpleIcon,
-  DropIcon,
   EraserIcon,
-  ExportIcon,
   GearSixIcon,
+  SlidersHorizontalIcon,
   HandIcon,
   HexagonIcon,
   ImageIcon,
@@ -41,12 +40,15 @@ import {
   MagnifyingGlassIcon,
   MinusIcon,
   MoonIcon,
+  PaintBucketIcon,
+  PencilRulerIcon,
   PencilSimpleIcon,
   PencilSimpleLineIcon,
   PlusIcon,
   RectangleIcon,
   ScissorsIcon,
   SelectionSlashIcon,
+  ShareNetworkIcon,
   ShapesIcon,
   SparkleIcon,
   SunIcon,
@@ -58,6 +60,7 @@ import {
   WarningIcon,
   XCircleIcon,
   XIcon,
+  WhatsappLogoIcon,
   type Icon as PhosphorIcon,
   type IconWeight,
 } from 'phosphor-react-native';
@@ -80,9 +83,11 @@ export type IconName =
   | 'lock'
   | 'lock-open'
   | 'share'
+  | 'whatsapp'
   | 'board'
   | 'people'
   | 'settings'
+  | 'options'
   | 'image'
   | 'download'
   | 'upload'
@@ -91,6 +96,8 @@ export type IconName =
   | 'warning'
   | 'hand'
   | 'pencil'
+  /** The pencil in "draw to shape" mode: it straightens what it draws. */
+  | 'pencil-shape'
   | 'eraser'
   | 'shapes'
   | 'text'
@@ -131,10 +138,12 @@ const GLYPHS: Record<IconName, [PhosphorIcon, IconWeight?]> = {
   search: [MagnifyingGlassIcon],
   lock: [LockSimpleIcon],
   'lock-open': [LockSimpleOpenIcon],
-  share: [ExportIcon],
+  share: [ShareNetworkIcon],
+  whatsapp: [WhatsappLogoIcon],
   board: [ChalkboardSimpleIcon],
   people: [UsersIcon],
   settings: [GearSixIcon],
+  options: [SlidersHorizontalIcon],
   image: [ImageIcon],
   download: [DownloadSimpleIcon],
   upload: [UploadSimpleIcon],
@@ -143,10 +152,11 @@ const GLYPHS: Record<IconName, [PhosphorIcon, IconWeight?]> = {
   warning: [WarningIcon],
   hand: [HandIcon],
   pencil: [PencilSimpleIcon],
+  'pencil-shape': [PencilRulerIcon],
   eraser: [EraserIcon],
   shapes: [ShapesIcon],
   text: [TextTIcon],
-  fill: [DropIcon],
+  fill: [PaintBucketIcon],
   rectangle: [RectangleIcon],
   ellipse: [CircleIcon],
   triangle: [TriangleIcon],

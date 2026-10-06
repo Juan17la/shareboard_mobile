@@ -18,6 +18,11 @@ import {
   contentBounds,
   handlesOf,
   polygonPoints,
+  roundedPolygonPath,
+  labelPlacement,
+  textAnchor,
+  TEXT_LINE_HEIGHT,
+  cornerRadius,
   resizeElement,
   rotationFromDrag,
   shapeHit,
@@ -45,6 +50,10 @@ import {
   routePath,
   shapeAt,
   translate,
+  nearestAnchors,
+  isLinkTarget,
+  groupHandles,
+  resizeGroup,
 } from '../src/features/board/geometry.ts';
 import { coveringFigure, editPatches, fillColorOf, fillOpacityOf, fillWith, parseHex, useBoardStore } from '../src/features/board/store.ts';
 import { decodeClip, encodeClip } from '../src/features/board/clip.ts';
@@ -610,6 +619,8 @@ assert.deepEqual(bendHandleOf({ ...step, shape: 'arrow', ...draggedElbow }), { x
     const c = [...corners.slice(k), ...corners.slice(0, k)].map(([x, y]) => [x + (r() - 0.5) * 0.12 * size, y + (r() - 0.5) * 0.12 * size]);
     return through(r, [...c, c[0], [c[0][0] + (c[1][0] - c[0][0]) * 0.1, c[0][1] + (c[1][1] - c[0][1]) * 0.1]]);
   };
+  // A straight run with a small loop curled at its end: the loop crosses back over the run near x 310.
+  const curl = [[0, 0], [330, 0], [345, -15], [335, -35], [315, -35], [305, -15], [312, 8]];
   const cases = [
     ['a bad circle', (r) => wobbly(r, 100, 100, 0.2), 'ellipse'],
     ['a circle left open', (r) => wobbly(r, 100, 100, 0.12, 1.85 * Math.PI), 'ellipse'],
@@ -617,7 +628,11 @@ assert.deepEqual(bendHandleOf({ ...step, shape: 'arrow', ...draggedElbow }), { x
     ['a square', (r) => rough(r, [[0, 0], [200, 0], [200, 200], [0, 200]], 200), 'rectangle'],
     ['a long rectangle', (r) => rough(r, [[0, 0], [400, 0], [400, 100], [0, 100]], 100), 'rectangle'],
     ['a triangle', (r) => rough(r, [[100, 0], [200, 170], [0, 170]], 200), 'triangle'],
-    ['a right triangle', (r) => rough(r, [[0, 0], [200, 200], [0, 200]], 200), 'triangle'],
+    ['a right triangle', (r) => rough(r, [[0, 0], [200, 200], [0, 200]], 200), 'polygon'],
+    ['a scalene triangle', (r) => rough(r, [[30, 0], [230, 120], [0, 170]], 230), 'polygon'],
+    ['a trapezoid', (r) => rough(r, [[70, 0], [170, 0], [240, 120], [0, 120]], 240), 'polygon'],
+    ['a parallelogram', (r) => rough(r, [[60, 0], [260, 0], [200, 120], [0, 120]], 260), 'polygon'],
+    ['a house-shaped pentagon', (r) => rough(r, [[0, 90], [110, 0], [220, 90], [190, 190], [30, 190]], 220), 'polygon'],
     ['a line', (r) => through(r, [[0, 0], [300, 90]], 2.5), 'line'],
     ['an arrow, two barbs', (r) => through(r, [[0, 0], [300, 0], [260, -25], [300, 0], [260, 25]], 2), 'arrow'],
     ['an arrow, one barb', (r) => through(r, [[0, 0], [250, 150], [215, 150]], 2), 'arrow'],
@@ -626,18 +641,62 @@ assert.deepEqual(bendHandleOf({ ...step, shape: 'arrow', ...draggedElbow }), { x
     ['hatching', (r) => through(r, [[0, 0], [150, 20], [5, 40], [160, 60], [0, 80], [150, 100]]), undefined],
     ['a line and back', (r) => through(r, [[0, 0], [300, 0], [150, 0]]), undefined],
     ['a tiny loop', (r) => wobbly(r, 5, 5, 0.1), undefined],
+    ['a line ending in a small loop', (r) => through(r, curl), 'arrow'],
+    ['a small loop, then a line', (r) => through(r, [...curl].reverse()), 'arrow'],
+    ['a big circle with a short tail', (r) => [...wobbly(r, 100, 100, 0.1), 140, 0, 135, 0, 130, 0], 'ellipse'],
   ];
   for (const [name, draw, want] of cases) {
     for (let seed = 1; seed <= 30; seed++) {
       assert.equal(recognizeSketch(draw(rng(seed)), 20)?.shape, want, `${name} (hand ${seed})`);
     }
   }
+  // An irregular polygon keeps its own corners (as fractions of its box); a clean one stays regular.
+  const scalene = recognizeSketch(rough(rng(4), [[30, 0], [230, 120], [0, 170]], 230), 20);
+  assert.equal(scalene.vertices.length, 3, 'a scalene triangle keeps its three corners');
+  assert.ok(scalene.vertices.every((v) => v.x >= 0 && v.x <= 1 && v.y >= 0 && v.y <= 1), 'in the unit box');
+  assert.equal(recognizeSketch(rough(rng(4), [[0, 0], [200, 0], [200, 200], [0, 200]], 200), 20).vertices, undefined, 'a square is not a free polygon');
+  // Straight runs are tidied: near-horizontal / vertical / 45° lines are exact, other angles are left alone.
+  const near = (pts) => recognizeSketch(through(rng(2), pts, 1), 20);
+  const level = near([[0, 0], [300, 12]]);
+  assert.equal(level.to.y, level.from.y, 'a nearly level line is level');
+  const upright = near([[0, 0], [8, 300]]);
+  assert.equal(upright.to.x, upright.from.x, 'a nearly upright line is upright');
+  const diag = near([[0, 0], [300, 290]]);
+  assert.ok(Math.abs(diag.to.x - diag.from.x - (diag.to.y - diag.from.y)) < 1e-3, 'a nearly diagonal line is at 45°');
+  assert.ok(near([[0, 0], [300, 90]]).to.y > 80, 'a 17° line stays as drawn');
+  // And a figure's near-equal corners line up: a trapezoid is level and symmetric, a right triangle square.
+  let level2 = 0;
+  for (let seed = 1; seed <= 30; seed++) {
+    const v = recognizeSketch(rough(rng(seed), [[70, 0], [170, 0], [240, 120], [0, 120]], 240), 20).vertices;
+    if (v.filter((q) => q.y === 0).length >= 2) level2++;
+  }
+  assert.ok(level2 >= 20, `a sloppy trapezoid's top is level (${level2}/30)`);
+  const clean = recognizeSketch(through(rng(1), [[70, 0], [170, 0], [240, 120], [0, 120], [70, 0], [100, 0]], 1), 20).vertices;
+  const top = clean.filter((q) => q.y === 0).sort((a, c) => a.x - c.x);
+  assert.ok(top.length === 2 && Math.abs(top[0].x + top[1].x - 1) < 1e-9, 'a trapezoid is mirrored left to right');
+  let square = 0;
+  for (let seed = 1; seed <= 30; seed++) {
+    const rt = recognizeSketch(rough(rng(seed), [[0, 0], [200, 200], [0, 200]], 200), 20).vertices;
+    if (rt.filter((v) => v.x === 0).length === 2 && rt.filter((v) => v.y === 1).length === 2) square++;
+  }
+  assert.ok(square >= 26, `a sloppy right triangle gets a true right angle (${square}/30)`);
   // About as tall as wide, a circle comes out round and a square square.
   const circle = recognizeSketch(wobbly(rng(7), 100, 92, 0.1), 20);
   assert.ok(Math.abs(circle.to.x - circle.from.x - (circle.to.y - circle.from.y)) < 1e-9, 'a round circle');
   // An arrow runs from where the stroke started to its tip.
   const arrowSketch = recognizeSketch(through(rng(3), [[0, 0], [300, 0], [260, -25], [300, 0], [260, 25]], 0), 20);
   assert.deepEqual([arrowSketch.from, arrowSketch.to], [{ x: 0, y: 0 }, { x: 300, y: 0 }]);
+
+  // A long stroke is thinned before it is read ("draw to shape" reads it as the pen moves), and reads the same.
+  const long = Array.from({ length: 2000 }, (_, i) => [100 * Math.cos((i / 1999) * 2 * Math.PI), 80 * Math.sin((i / 1999) * 2 * Math.PI)]).flat();
+  assert.equal(recognizeSketch(long, 20)?.shape, 'ellipse', 'a 2000-point ellipse');
+  assert.equal(recognizeSketch(through(rng(2), curl.map(([x, y]) => [x * 6, y * 6]), 1), 20)?.shape, 'arrow', 'a long looped arrow');
+
+  // The loop marks the head, whichever end it was drawn at.
+  for (const pts of [curl, [...curl].reverse()]) {
+    const looped = recognizeSketch(through(rng(5), pts), 20);
+    assert.ok(Math.hypot(looped.from.x, looped.from.y) < 5 && Math.abs(looped.to.x - 310) < 8 && Math.abs(looped.to.y) < 5, 'from the run\'s far end to the loop');
+  }
 
   // Held and lifted, it lands as the pen's figure: its ink and width, no fill, a plain arrow.
   useBoardStore.getState().hydrate({ meta, elements: [], participants: [you], you, seq: 0 });
@@ -651,6 +710,13 @@ assert.deepEqual(bendHandleOf({ ...step, shape: 'arrow', ...draggedElbow }), { x
   );
   s().undo();
   assert.equal(s().visibleElements().length, 0, 'one undo step');
+
+  // A closed figure carries the strip's stroke style too, and the cursor comes back with it selected.
+  s().setTool('shape');
+  const box = s().addShape('rectangle', { from: { x: 0, y: 0 }, to: { x: 50, y: 40 } });
+  assert.equal(s().elements[box].dash, 'dashed');
+  s().finishCreate([box]);
+  assert.deepEqual([s().tool, s().selectedIds], ['select', [box]]);
 }
 
 // --- text: whitespace-only is empty, so the element goes ---------------------
@@ -735,6 +801,35 @@ assert.equal((svg.match(/<polygon points="([^"]*)"/)[1].trim().split(' ')).lengt
 assert.match(svg, /stroke-dasharray=/, 'dashed line');
 assert.match(svg, /<path d="M 0 100 C/, 'the smoothed stroke');
 assert.equal(toSvg([]), null);
+{
+  // Alignment: a figure's label against its padded box, a text against its own box.
+  const step = 10 * TEXT_LINE_HEIGHT;
+  const R = box('al', 0, 0, 100, 60);
+  assert.deepEqual(labelPlacement(R, 10, 1), { x: 50, y: 30, align: 'center' }, 'centred by default');
+  assert.deepEqual(labelPlacement({ ...R, align: 'left', valign: 'top' }, 10, 1), { x: 6, y: 6 + step / 2, align: 'left' });
+  assert.equal(labelPlacement({ ...R, align: 'right', valign: 'bottom' }, 10, 2).x, 94);
+  assert.equal(labelPlacement({ ...R, valign: 'bottom' }, 10, 2).y, 54 - step / 2 - step, 'two lines end at the bottom padding');
+  assert.ok(labelPlacement({ ...R, shape: 'triangle', valign: 'top' }, 10, 1).y > 30, 'a triangle label keeps to its lower half');
+  assert.equal(labelPlacement({ ...R, shape: 'triangle' }, 10, 1).y, 30, 'unaligned: the old centre');
+  const T = { ...base('tx', 1), kind: 'text', at: { x: 10, y: 0 }, text: 'ab', color: '#000', fontSize: 10, width: 100 };
+  assert.deepEqual(textAnchor(T), { x: 10, align: 'left' });
+  assert.deepEqual(textAnchor({ ...T, align: 'center' }), { x: 60, align: 'center' });
+  assert.deepEqual(textAnchor({ ...T, align: 'right' }), { x: 110, align: 'right' });
+  assert.match(toSvg([{ ...R, text: 'hi', align: 'left' }]), /text-anchor="start"/);
+}
+{
+  // Rounded corners: one curve per vertex, finite even for a sliver or a point.
+  for (const [w, h] of [[100, 60], [3, 100], [0, 0]]) {
+    const d = roundedPolygonPath(polygonPoints({ x: 0, y: 0, width: w, height: h }, 5), cornerRadius(w, h));
+    assert.equal((d.match(/Q/g) || []).length, 5, 'a curve at each corner');
+    assert.ok(!/NaN|Infinity/.test(d), `finite at ${w}x${h}`);
+  }
+  assert.match(toSvg([{ ...box('rr', 0, 0, 100, 50), rounded: true }]), /rx="9"/, 'rounded rectangle');
+  assert.match(toSvg([{ ...box('rr', 0, 0, 100, 50) }]), /rx="0"/, 'sharp by default');
+  assert.match(toSvg([{ ...box('rp', 0, 0, 60, 60), shape: 'triangle', rounded: true }]), /<path d="M[^"]*Q/, 'rounded triangle');
+}
+assert.match(toSvg([{ ...box('o', 0, 0, 10, 10), opacity: 0.4 }]), /<g opacity="0.4">/, 'element opacity');
+assert.doesNotMatch(toSvg([box('o', 0, 0, 10, 10)]), /opacity/, 'opaque: no group');
 assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rect x="-24"/, 'transparent: no ground');
 
 // --- a board opens on its content; a reconnect leaves the camera alone -------
@@ -836,6 +931,11 @@ assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rec
   assert.equal(anchorsOf(hex).length, 1 + 12, 'a hexagon: its centre, six corners and six middles');
   assert.equal(anchorsOf(tri).length, 1 + 6, 'a triangle: its centre, three corners and three middles');
   for (const p of anchorsOf(circle).slice(1)) on(p, circle, 'an ellipse anchor');
+  // Only the three nearest the pointer show, nearest first.
+  const shown = nearestAnchors(circle, { x: 210, y: 50 });
+  assert.equal(shown.length, 3, 'three of the nine');
+  near2(shown[0], { x: 200, y: 50 });
+  assert.ok(shown.every((p) => p.x > 100), 'all on the side the pointer is on');
   // A line end dropped near the outline of an ellipse lands on it, not on its box.
   const r = linkEndpoints([circle], { x: 160, y: 20 }, { x: 600, y: 600 }, 18);
   on(r.from, circle, 'a free end pinned to an ellipse');
@@ -847,10 +947,12 @@ assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rec
   const aim = linkEndpoints([circle], { x: 100, y: 50 }, { x: 600, y: 50 }, 18);
   near2(aim.from, { x: 200, y: 50 });
   // Resize the shape: the bound end stays on the outline.
-  const bound = { ...base('L2', 2), kind: 'shape', shape: 'line', from: r.from, to: { x: 600, y: 600 }, stroke: '#000000', strokeWidth: 2, fill: null, fromLink: r.fromLink, toLink: null };
+  const bound = { ...base('L2', 2), kind: 'shape', shape: 'arrow', from: r.from, to: { x: 600, y: 600 }, stroke: '#000000', strokeWidth: 2, fill: null, fromLink: r.fromLink, toLink: null };
   const bigger = { ...circle, to: { x: 400, y: 300 } };
   const moved = followLinks([bigger, bound], ['C'])[0].from;
   on(moved, bigger, 'an end that followed a resized ellipse');
+  // A plain line from an older board no longer follows: only arrows bind.
+  assert.equal(followLinks([bigger, { ...bound, shape: 'line' }], ['C']).length, 0, 'a line stays where it is');
   function near2(a, b) { assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < 1e-6, `${JSON.stringify(a)} vs ${JSON.stringify(b)}`); }
 }
 
@@ -876,7 +978,11 @@ assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rec
   }
   // `drawn` puts the first corner at the angle given: a quarter turn plus a little is a square standing on its side.
   assert.equal(recognizeSketch(drawn(4, Math.PI / 4 + 0.1), 24)?.shape, 'rectangle', 'a four-sided one is still a rectangle');
-  assert.equal(recognizeSketch(drawn(3, 0.3), 24)?.shape, 'triangle', 'and three a triangle');
+  // Three, upside down, no longer fits the apex-up triangle: it keeps its own three corners.
+  assert.equal(recognizeSketch(drawn(3, 0.3), 24)?.shape, 'triangle', 'a slightly tilted three is still the plain triangle');
+  const tilted = recognizeSketch(drawn(3, Math.PI / 2 + 0.1), 24);
+  assert.deepEqual([tilted?.shape, tilted?.vertices?.length], ['polygon', 3], 'and an upside-down three a free triangle');
+  assert.equal(recognizeSketch(drawn(3, -Math.PI / 2), 24)?.shape, 'triangle', 'a triangle standing on its base is the plain one');
   const lumpy = [];
   for (let i = 0; i <= 90; i++) {
     const a = (i / 90) * 2 * Math.PI * 1.03;
@@ -1061,6 +1167,65 @@ assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rec
   wire();
   assert.equal(server.get(r).from.x, 70, 'and the server has it');
   start();
+}
+
+// --- arrow linking rules: each end binds to what it lands on, on its own -------------
+{
+  const A = box('A', 0, 0, 100, 100);
+  const N = { ...base('N', 2), kind: 'text', at: { x: 400, y: 0 }, text: 'note', color: '#000000', fontSize: 20 };
+  const all = [A, N];
+  // Starts on a figure, ends on a text: both ends bound.
+  let r = linkEndpoints(all, { x: 50, y: 50 }, { x: 410, y: 10 }, 14);
+  assert.deepEqual([r.fromLink?.id, r.toLink?.id], ['A', 'N'], 'figure to text');
+  // Starts on empty board, ends on a figure: the tail stays free.
+  r = linkEndpoints(all, { x: 250, y: 300 }, { x: 50, y: 50 }, 14);
+  assert.deepEqual([r.fromLink, r.toLink?.id], [null, 'A'], 'free tail, bound head');
+  assert.deepEqual(r.from, { x: 250, y: 300 }, 'the free tail stays where it started');
+  // Starts on a figure, let go on empty board: only the tail binds.
+  r = linkEndpoints(all, { x: 50, y: 50 }, { x: 250, y: 300 }, 14);
+  assert.deepEqual([r.fromLink?.id, r.toLink], ['A', null], 'bound tail, free head');
+  // Let go on the figure it started from: no arrow from it to itself.
+  r = linkEndpoints(all, { x: 20, y: 20 }, { x: 80, y: 80 }, 14);
+  assert.deepEqual([r.fromLink?.id, r.toLink], ['A', null], 'not linked back to itself');
+  // A stroke and another line are never targets.
+  assert.equal(isLinkTarget({ ...base('S', 3), kind: 'stroke', points: [0, 0, 10, 10], color: '#000000', width: 2 }), false);
+  assert.equal(isLinkTarget({ ...A, id: 'L', shape: 'arrow' }), false);
+  assert.equal(anchorsOf(N).length, 1 + 8, 'a text has the box\'s anchors');
+  // Moving the text carries the end bound to it.
+  const arrow = { ...A, id: 'R', shape: 'arrow', from: { x: 0, y: 0 }, to: { x: 400, y: 0 }, toLink: { id: 'N', u: 0, v: 0 } };
+  const moved = { ...N, at: { x: 500, y: 50 } };
+  const end = followLinks([moved, arrow], ['N'])[0].to;
+  assert.ok(Math.hypot(end.x - 500, end.y - 50) < 1e-6, 'the end follows the text');
+}
+
+// --- several selected, resized together ----------------------------------------
+{
+  const R = { ...box('R', 0, 0, 100, 100), strokeWidth: 0 };
+  const W = { ...base('W', 2), kind: 'stroke', points: [100, 100, 200, 200], color: '#000000', width: 0 };
+  const X = { ...base('X', 3), kind: 'text', at: { x: 0, y: 150 }, text: 'hi', color: '#000000', fontSize: 20, width: 50 };
+  const Q = { ...box('Q', 150, 0, 50, 50), strokeWidth: 0, rotation: 0.5 };
+  const group = [R, W, X];
+  const corners = groupHandles(group);
+  assert.deepEqual(corners[0], { x: 0, y: 0 }, 'the overall box\'s top left');
+  near(corners[2], { x: 200, y: 200 }, 'and its bottom right');
+  // Drag the bottom right corner to (400, 300): twice as wide, one and a half as tall.
+  const p = resizeGroup(group, 2, { x: 400, y: 300 });
+  assert.deepEqual([p.R.from, p.R.to], [{ x: 0, y: 0 }, { x: 200, y: 150 }], 'a box stretches with it');
+  assert.deepEqual(p.W.points, [200, 150, 400, 300], 'a stroke\'s points scale');
+  assert.deepEqual([p.X.at, p.X.width, p.X.fontSize], [{ x: 0, y: 225 }, 100, undefined], 'a text moves and re-wraps, its font stays');
+  // A turned figure only moves (it would skew); past the pinned corner the box grows the other way.
+  const turned = resizeGroup([R, Q], 0, { x: 400, y: 0 });
+  near(turned.Q.from, { x: 150 + (turned.Q.to.x - Q.to.x), y: turned.Q.from.y }, 'kept its size');
+  assert.equal(turned.Q.to.x - turned.Q.from.x, 50, 'not stretched');
+  // Committed as one step; undo puts everything back.
+  useBoardStore.getState().hydrate({ meta, elements: group, participants: [you], you, seq: 0 });
+  s().setConnection('online');
+  s().commitEdit({ ids: ['R', 'W', 'X'], mode: 'resize', handle: 2, start: { x: 200, y: 200 }, dx: 0, dy: 0, patch: null, patches: p });
+  assert.deepEqual(s().elements.R.to, { x: 200, y: 150 });
+  assert.deepEqual(s().elements.W.points, [200, 150, 400, 300]);
+  s().undo();
+  assert.deepEqual([s().elements.R.to, s().elements.W.points, s().elements.X.at], [R.to, W.points, X.at], 'one undo restores all three');
+  function near(a, b, msg) { assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < 1e-6, `${msg}: ${JSON.stringify(a)} vs ${JSON.stringify(b)}`); }
 }
 
 console.log('geometry: ok');
