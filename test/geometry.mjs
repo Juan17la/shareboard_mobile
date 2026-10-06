@@ -55,7 +55,7 @@ import {
   groupHandles,
   resizeGroup,
 } from '../src/features/board/geometry.ts';
-import { coveringFigure, editPatches, fillColorOf, fillOpacityOf, fillWith, parseHex, useBoardStore } from '../src/features/board/store.ts';
+import { coveringFigure, editPatches, shapeElement, fillColorOf, fillOpacityOf, fillWith, parseHex, useBoardStore } from '../src/features/board/store.ts';
 import { decodeClip, encodeClip } from '../src/features/board/clip.ts';
 import { splitOps } from '../src/features/board/ops.ts';
 import { toSvg } from '../src/features/board/svg.ts';
@@ -1226,6 +1226,18 @@ assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rec
   s().undo();
   assert.deepEqual([s().elements.R.to, s().elements.W.points, s().elements.X.at], [R.to, W.points, X.at], 'one undo restores all three');
   function near(a, b, msg) { assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < 1e-6, `${msg}: ${JSON.stringify(a)} vs ${JSON.stringify(b)}`); }
+}
+
+// The shape tool's preview is built like the figure it commits (rounded corners, an elbow's route).
+{
+  const base = { id: 'live', createdBy: 'local', createdAt: 0, updatedAt: 0, z: 0 };
+  const cfg = { ...useBoardStore.getState().config, rounded: true, route: 'elbow', dash: 'dashed' };
+  const box = shapeElement('rectangle', { from: { x: 0, y: 0 }, to: { x: 40, y: 30 } }, cfg, base);
+  assert.equal(box.rounded, true, 'a rounded rectangle previews rounded');
+  assert.equal(box.dash, 'dashed', 'the preview keeps the dash');
+  const arrow = shapeElement('arrow', { from: { x: 0, y: 0 }, to: { x: 40, y: 30 } }, cfg, base);
+  assert.equal(arrow.route, 'elbow', 'an elbow arrow previews elbowed');
+  assert.equal(arrow.headEnd, cfg.headEnd, 'the preview keeps the heads');
 }
 
 console.log('geometry: ok');

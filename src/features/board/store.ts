@@ -200,6 +200,43 @@ export function editPatches(
 }
 
 /**
+ * A figure drawn with the shape tool, dressed in the tool's options. Shared by
+ * the preview and the commit, so what shows under the pointer is what lands.
+ */
+export function shapeElement(
+  shape: ShapeKind,
+  ends: { from: Point; to: Point; fromLink?: Link | null; toLink?: Link | null },
+  config: ToolConfig,
+  base: ElementBase,
+): ShapeElement {
+  return {
+    ...base,
+    kind: 'shape',
+    shape,
+    from: ends.from,
+    to: ends.to,
+    stroke: config.color,
+    strokeWidth: clampWidth(config.width),
+    fill: isFillable(shape) ? fillWith(config.fillColor ?? config.color, config.fillOpacity) : null,
+    ...(shape === 'polygon' ? { sides: config.sides } : null),
+    dash: config.dash,
+    ...(config.opacity < 100 ? { opacity: config.opacity / 100 } : null),
+    ...(config.rounded && canRound(shape) ? { rounded: true } : null),
+    ...(shape === 'line' || shape === 'arrow'
+      ? {
+          headStart: config.headStart,
+          headEnd: config.headEnd,
+          route: config.route,
+          ...(config.startAxis ? { startAxis: config.startAxis } : null),
+          ...(config.endAxis ? { endAxis: config.endAxis } : null),
+          fromLink: ends.fromLink ?? null,
+          toLink: ends.toLink ?? null,
+        }
+      : null),
+  };
+}
+
+/**
  * The figure a recognised pen sketch becomes: the pen's colour and width, no
  * fill — it stands in for a line drawn by hand — and, for a line or an arrow,
  * the plain straight kind. Shared by the preview and the commit, so what shows
@@ -1065,32 +1102,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     addShape(shape, ends) {
       if (!get().canEditNow()) return null;
-      const { config } = get();
-      const el: ShapeElement = {
-        ...baseFields(),
-        kind: 'shape',
-        shape,
-        from: ends.from,
-        to: ends.to,
-        stroke: config.color,
-        strokeWidth: clampWidth(config.width),
-        fill: isFillable(shape) ? fillWith(config.fillColor ?? config.color, config.fillOpacity) : null,
-        ...(shape === 'polygon' ? { sides: config.sides } : null),
-        dash: config.dash,
-        ...(config.opacity < 100 ? { opacity: config.opacity / 100 } : null),
-        ...(config.rounded && canRound(shape) ? { rounded: true } : null),
-        ...(shape === 'line' || shape === 'arrow'
-          ? {
-              headStart: config.headStart,
-              headEnd: config.headEnd,
-              route: config.route,
-              ...(config.startAxis ? { startAxis: config.startAxis } : null),
-              ...(config.endAxis ? { endAxis: config.endAxis } : null),
-              fromLink: ends.fromLink ?? null,
-              toLink: ends.toLink ?? null,
-            }
-          : null),
-      };
+      const el = shapeElement(shape, ends, get().config, baseFields());
       commitLocal([{ t: 'add', el }]);
       return el.id;
     },
