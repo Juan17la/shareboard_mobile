@@ -1,6 +1,8 @@
 /**
- * "Join with a code": the six characters of a board's code, or a link to it.
+ * The header's "+": another whiteboard — a blank one, named here, or one
+ * someone else made, joined with its code.
  *
+ * The code is six characters of a board's code, or a link to it.
  * The code is six boxes over one invisible `TextInput`, so the keyboard, paste
  * and autofill all work as they do on any input while the boxes show the code
  * character by character. A pasted link goes straight through `parseBoardRef`;
@@ -13,17 +15,32 @@ import { Pressable, TextInput, View } from 'react-native';
 import { Fonts } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
 import { useColors } from '@/features/session/store';
+import { LIMITS } from '@/features/board/model';
 import { resolveShortCode } from '@/services/api/boards';
 import { parseBoardRef } from '@/utils/deep-link';
 import { SHORT_CODE_LENGTH, normalizeShortCode } from '@/utils/short-code';
 
-import { Sheet } from '../ui/Sheet';
+import { Button } from '../ui/Button';
+import { Field } from '../ui/Field';
+import { SectionLabel, Sheet } from '../ui/Sheet';
 import { Txt } from '../ui/Text';
 import { toast } from '../ui/Toast';
 
-export function JoinSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function JoinSheet({
+  open,
+  onClose,
+  onCreate,
+  creating,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Makes a blank whiteboard with this name (empty: the default name) and opens it. */
+  onCreate: (name: string) => void;
+  creating: boolean;
+}) {
   const c = useColors();
   const t = useT();
+  const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const input = useRef<TextInput>(null);
@@ -64,8 +81,21 @@ export function JoinSheet({ open, onClose }: { open: boolean; onClose: () => voi
   }
 
   return (
-    <Sheet open={open} title={t.joinWhiteboard} onClose={onClose} closeLabel={t.close}>
+    <Sheet open={open} title={t.anotherWhiteboard} onClose={onClose} closeLabel={t.close}>
+      <View style={{ gap: 10, marginBottom: 22 }}>
+        <SectionLabel>{t.newWhiteboard}</SectionLabel>
+        <Field
+          value={name}
+          onChangeText={(next) => setName(next.slice(0, LIMITS.maxBoardNameLength))}
+          placeholder={t.boardNamePlaceholder}
+          accessibilityLabel={t.boardName}
+          returnKeyType="done"
+          onSubmitEditing={() => onCreate(name.trim())}
+        />
+        <Button label={t.createBoard} icon="plus" loading={creating} fullWidth onPress={() => onCreate(name.trim())} />
+      </View>
       <View style={{ gap: 8, paddingBottom: 8 }}>
+        <SectionLabel>{t.joinWhiteboard}</SectionLabel>
         {/* The boxes are a picture of the input; the input itself is the thing
             with focus, so paste and autofill just work. */}
         <Pressable
@@ -94,7 +124,6 @@ export function JoinSheet({ open, onClose }: { open: boolean; onClose: () => voi
           ))}
           <TextInput
             ref={input}
-            autoFocus
             value={code}
             onChangeText={onChange}
             accessibilityLabel={t.joinCode}
