@@ -16,7 +16,7 @@ import {
   labelPlacement,
   textAnchor,
   markerPaths,
-  polygonPoints,
+  shapeCorners,
   cornerRadius,
   roundedPolygonPath,
   rotationOf,
@@ -99,7 +99,7 @@ function elementSvg(el: BoardElement, ground: string): string {
       return textLines(el)
         .map(
           (line, i) =>
-            `<text x="${r(x)}" text-anchor="${ANCHOR[align]}" y="${r(el.at.y + el.fontSize + i * step)}" ${fontAttrs(el.font, el.fontSize, !!el.bold, !!el.italic)} fill="${el.color}">${esc(line)}</text>`,
+            `<text x="${r(x)}" text-anchor="${ANCHOR[align]}" y="${r(el.at.y + el.fontSize + i * step)}" ${fontAttrs(el.font, el.fontSize, !!el.bold, !!el.italic)}${el.underline ? ' text-decoration="underline"' : ''} fill="${el.color}">${esc(line)}</text>`,
         )
         .join('');
     }
@@ -124,14 +124,7 @@ function shapeSvg(el: ShapeElement, ground: string): string {
     return `<ellipse cx="${r(x + w / 2)}" cy="${r(y + h / 2)}" rx="${r(w / 2)}" ry="${r(h / 2)}" ${paint}/>`;
   }
   if (el.shape === 'triangle' || el.shape === 'polygon') {
-    const pts =
-      el.shape === 'triangle'
-        ? [
-            { x: x + w / 2, y },
-            { x: x + w, y: y + h },
-            { x, y: y + h },
-          ]
-        : polygonPoints({ x, y, width: w, height: h }, el.sides);
+    const pts = shapeCorners(el);
     if (el.rounded) return `<path d="${roundedPolygonPath(pts, cornerRadius(w, h))}" ${paint}/>`;
     return `<polygon points="${pts.map((p) => `${r(p.x)},${r(p.y)}`).join(' ')}" ${paint}/>`;
   }

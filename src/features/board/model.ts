@@ -144,6 +144,12 @@ export interface ShapeElement extends ElementBase {
   labelAt?: number;
   /** A polygon's corner count, `LIMITS.minSides`..`maxSides`; `DEFAULT_SIDES` when absent. */
   sides?: number;
+  /**
+   * A polygon of any angles instead of a regular one: its corners as fractions
+   * (0..1) of the box, so resizing and turning carry them along. `sides` is
+   * their count. Absent: the regular polygon of `sides`.
+   */
+  vertices?: Point[];
   // Lines and arrows only. Absent: no start marker, an `arrow` head on an arrow.
   headStart?: Marker;
   headEnd?: Marker;
@@ -185,6 +191,7 @@ export interface TextElement extends ElementBase {
   fontSize: number;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
   /** Typeface; `sans` when absent. */
   font?: FontKey;
   /** Wrap width in board units; absent, each line is as long as it is typed. */
