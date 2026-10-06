@@ -23,7 +23,7 @@ import { Palettes, inkFor } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 import {
   addStroke,
-  anchorsOf,
+  nearestAnchors,
   bendHandleOf,
   curveHandlesOf,
   boxOf,
@@ -31,6 +31,7 @@ import {
   dashIntervals,
   elementBounds,
   endAngles,
+  groupHandles,
   handlesOf,
   headsOf,
   isLineLike,
@@ -40,6 +41,7 @@ import {
   textAnchor,
   markerPaths,
   polygonPoints,
+  shapeCorners,
   cornerRadius,
   roundedPolygonPath,
   rotateHandleOf,
@@ -297,7 +299,7 @@ export function SelectionFrame({
           <Rect x={-half} y={-half} width={2 * half} height={2 * half} color={c.accent} style="stroke" strokeWidth={hair} />
         </Group>
       ) : null}
-      {(one ? handlesOf(one) : []).map((h, i) =>
+      {(one ? handlesOf(one) : groupHandles(elements)).map((h, i) =>
         line ? (
           <Group key={i}>
             <Circle cx={h.x} cy={h.y} r={half + k} color={c.accent} />
@@ -477,22 +479,15 @@ function PolygonView({
   w: number;
   h: number;
 }) {
-  const { shape, sides, rounded } = el;
+  const { rounded } = el;
   const outline = dashIntervals(el.dash, el.strokeWidth);
   const path = useMemo(() => {
-    const pts =
-      shape === 'triangle'
-        ? [
-            { x: x + w / 2, y },
-            { x: x + w, y: y + h },
-            { x, y: y + h },
-          ]
-        : polygonPoints({ x, y, width: w, height: h }, sides);
+    const pts = shapeCorners(el);
     if (rounded) return Skia.Path.MakeFromSVGString(roundedPolygonPath(pts, cornerRadius(w, h)))!;
     const builder = Skia.PathBuilder.Make().moveTo(pts[0].x, pts[0].y);
     for (const p of pts.slice(1)) builder.lineTo(p.x, p.y);
     return builder.close().detach();
-  }, [shape, sides, rounded, x, y, w, h]);
+  }, [el, rounded, w, h]);
   return (
     <Group>
       {el.fill ? <Path path={path} color={el.fill} /> : null}
@@ -553,16 +548,19 @@ function TextView({ el }: { el: Extract<BoardElement, { kind: 'text' }> }) {
   const { x, align } = textAnchor(el);
   return (
     <Group>
-      {textLines(el).map((line, i) => (
-        <TextPath
-          key={i}
-          x={x - alignShift(align, textWidth(font, line))}
-          y={el.at.y + el.fontSize + i * step}
-          text={line}
-          font={font}
-          color={el.color}
-        />
-      ))}
+      {textLines(el).map((line, i) => {
+        const w = textWidth(font, line);
+        const left = x - alignShift(align, w);
+        const y = el.at.y + el.fontSize + i * step;
+        return (
+          <Group key={i}>
+            <TextPath x={left} y={y} text={line} font={font} color={el.color} />
+            {el.underline && line ? (
+              <Rect x={left} y={y + el.fontSize * 0.12} width={w} height={Math.max(1, el.fontSize / 16)} color={el.color} />
+            ) : null}
+          </Group>
+        );
+      })}
     </Group>
   );
 }
@@ -697,16 +695,17 @@ function StrokeView({
 }
 
 /**
- * Connection points on every enclosed shape, shown while a line or an arrow is
- * being drawn so the snap targets are visible. Board space, pixel-sized by `scale`.
+ * Connection points on every enclosed shape, shown while an arrow is being
+ * drawn so the snap targets are visible: on each, the three nearest `near`
+ * (the end under the finger). Board space, pixel-sized by `scale`.
  */
-export function Anchors({ elements, scale }: { elements: BoardElement[]; scale: number }) {
+export function Anchors({ elements, near, scale }: { elements: BoardElement[]; near: Point; scale: number }) {
   const c = useColors();
   const k = 1 / scale;
   return (
     <Group>
       {elements.map((el) =>
-        anchorsOf(el).map((a, i) => (
+        nearestAnchors(el, near).map((a, i) => (
           <Group key={`${el.id}-${i}`}>
             <Circle cx={a.x} cy={a.y} r={4 * k} color={c.background} />
             <Circle cx={a.x} cy={a.y} r={4 * k} color={c.accent} style="stroke" strokeWidth={1.5 * k} />
