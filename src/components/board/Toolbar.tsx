@@ -7,7 +7,9 @@
  *
  * What is not a tool (colour, stroke size, fill, font size, bold/italic) lives
  * in an options strip above the bar that only shows the options belonging to
- * the tool in hand. Picking a tool opens it; tapping the tool you already hold
+ * the tool in hand. The strip keeps only the colours and a settings button; the
+ * rest of the tool's options (the `OPTIONS` table, the to-do's list) open
+ * in a dropdown above it, Excalidraw-mobile style. Picking a tool opens it; tapping the tool you already hold
  * toggles it. It closes itself the moment a
  * finger lands on the canvas and comes back when a drag ends on a selection
  * (`railOpen` in the store).
@@ -67,6 +69,7 @@ import { Txt } from '../ui/Text';
 
 import { FAMILIES } from './BoardFonts';
 import { tip } from '../ui/Toast';
+import { tourRef } from './Tutorial';
 
 type LabelKey =
   | 'hand'
@@ -148,6 +151,8 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   );
   const canEdit = useBoardStore((s) => s.canEditNow());
   const haptics = useSessionStore((s) => s.settings.haptics);
+  const drawToShape = useSessionStore((s) => s.settings.drawToShape);
+  const setSetting = useSessionStore((s) => s.setSetting);
   const dark = useDark();
   const { width, height } = useWindowDimensions();
 
@@ -165,7 +170,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
 
   const nudge = () => tick(haptics);
 
-  const has = (test: (el: BoardElement) => boolean) => selected.some(test);
   /** The first selected element's value for an option, so the strip shows what it will change. */
   const first = <T,>(pick: (el: BoardElement) => T | undefined): T | undefined => {
     for (const el of selected) {
@@ -188,56 +192,31 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   // them out, so the board is all there is to look at (docs/04).
   if (!canEdit) return null;
 
-  // What the strip shows: the options of the tool in hand, or of what is
-  // selected. Every button goes through `setConfig`, which restyles the
-  // selection as well as setting the next thing drawn.
+  // What the strip shows: the options of what is selected, else of the tool in
+  // hand — the to-do's list, nothing else. Every button goes through
+  // `setConfig`, which restyles the selection as well as setting the next thing drawn.
   const shapeTool = tool === 'shape';
-  const lineTool = shapeTool && (config.shape === 'line' || config.shape === 'arrow');
-  const selShape = has((el) => el.kind === 'shape');
-  const selLine = has((el) => el.kind === 'shape' && isLineLike(el));
-  const selBox = has((el) => el.kind === 'shape' && isFillable(el.shape));
-  const selText = has((el) => el.kind === 'text');
-  const showSizes =
-    tool === 'pen' ||
-    tool === 'eraser' ||
-    shapeTool ||
-    has((el) => el.kind === 'stroke') ||
-    selShape;
-  const showFill = (shapeTool && isFillable(config.shape)) || selBox;
-  const showLine = lineTool || selLine;
-  const showDash = shapeTool || selShape;
-  const showAlign = selText || selShape;
-  const showCorners = (shapeTool && canRound(config.shape)) || has((el) => el.kind === 'shape' && canRound(el.shape));
-  const showSides =
-    (shapeTool && config.shape === 'polygon') ||
-    has((el) => el.kind === 'shape' && el.shape === 'polygon');
-  // Text and its style sit in the strip itself; a shape's label (size, font)
-  // folds into one "Aa" box, since most shapes never carry one.
-  const showStyle = tool === 'text' || selText;
-  const showLabelBox = selShape || showStyle;
-  const showColor =
-    tool !== 'hand' &&
-    tool !== 'eraser' &&
-    (tool !== 'select' || (selected.length > 0 && !selected.every((el) => el.kind === 'image')));
+  const opts = new Set<Opt>(
+    selected.length
+      ? selected.flatMap((el) => OPTIONS[optionsKey(el)] ?? [])
+      : (OPTIONS[shapeTool ? config.shape : tool] ?? []),
+  );
+  const show = (opt: Opt) => opts.has(opt);
+  // A box shape's label aligns both ways; text only across.
+  const alignBoth = selected.length ? selected.some((el) => el.kind === 'shape') : shapeTool;
+  const showFill = show('fill');
+  // A circle's border colour is its main colour too: the colours stay on the strip, the rest goes in the dropdown.
+  const showColor = show('color') || show('border');
+  // With the shapes tool in hand, the strip is where the kind is chosen.
+  const kinds: ShapeKind[] = shapeTool && !selected.length ? SHAPES.map((e) => e.shape!) : [];
+  const hasSettings = [...opts].some((o) => o !== 'color');
   // The cursor with nothing selected, and the hand, have nothing to offer: an
   // empty strip is noise, whatever asked for it.
-  const hasOptions = showSizes || showFill || showLine || showDash || showStyle || showLabelBox || showColor;
-  // A selected shape can change kind within its family: box to box, line to
-  // arrow. With the shapes tool in hand, the strip is where the kind is chosen.
-  const kinds: ShapeKind[] = selLine
-    ? ['line', 'arrow']
-    : selShape
-      ? ['rectangle', 'ellipse', 'triangle', 'polygon']
-      : shapeTool
-        ? SHAPES.map((e) => e.shape!)
-        : [];
-  const hasSettings = showSizes || showDash || showFill || showLine || showLabelBox;
+  const hasOptions = opts.size > 0 || kinds.length > 0;
   const pickKind = (kind: ShapeKind) => {
     nudge();
-    if (selected.length) setConfig({ shape: kind });
-    else pickTool('shape', kind);
+    pickTool('shape', kind);
   };
-
   const cur = {
     width:
       first((el) =>
@@ -273,6 +252,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
       ) ?? config.font,
     bold: first((el) => (el.kind === 'text' ? !!el.bold : undefined)) ?? config.bold,
     italic: first((el) => (el.kind === 'text' ? !!el.italic : undefined)) ?? config.italic,
+    underline: first((el) => (el.kind === 'text' ? !!el.underline : undefined)) ?? config.underline,
     headStart:
       first((el) => (el.kind === 'shape' && isLineLike(el) ? headsOf(el)[0] : undefined)) ??
       config.headStart,
@@ -283,14 +263,13 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
       first((el) =>
         el.kind === 'shape' && isLineLike(el) ? (el.route ?? 'straight') : undefined,
       ) ?? config.route,
-    shape: first((el) => (el.kind === 'shape' ? el.shape : undefined)) ?? config.shape,
+    shape: config.shape,
     dash: first((el) => (el.kind === 'shape' ? (el.dash ?? 'solid') : undefined)) ?? config.dash,
     align:
       first((el) => (el.kind === 'text' ? (el.align ?? 'left') : el.kind === 'shape' ? (el.align ?? 'center') : undefined)) ??
       config.align,
     valign: first((el) => (el.kind === 'shape' ? (el.valign ?? 'middle') : undefined)) ?? config.valign,
     rounded: first((el) => (el.kind === 'shape' && canRound(el.shape) ? !!el.rounded : undefined)) ?? config.rounded,
-    opacity: first((el) => (el.kind === 'shape' ? Math.round((el.opacity ?? 1) * 100) : undefined)) ?? config.opacity,
   };
   const fontSize = cur.fontSize;
   // The board ink flips on the dark theme (`inkFor`); the swatches follow it.
@@ -321,9 +300,10 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     setEndsPage(null);
     setBox(box === next ? null : next);
   };
-  /** Size, typeface and (for text itself) bold and italic, each under its own subtitle. */
+  /** Size, typeface, bold/italic/underline and alignment — whichever the tool offers — each under its own subtitle. */
   const textSections = (
     <View style={{ gap: 10 }}>
+      {show('textSize') || show('label') ? (
       <Section title={t.secTextSize}>
       {TEXT_SIZES.map((size) => (
         <MiniButton
@@ -340,6 +320,8 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
         />
       ))}
       </Section>
+      ) : null}
+      {show('font') || show('label') ? (
       <Section title={t.secFont}>
         {FONTS.map((font) => (
           <MiniButton
@@ -357,7 +339,8 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
           </MiniButton>
         ))}
       </Section>
-      {showStyle ? (
+      ) : null}
+      {show('style') ? (
         <Section title={t.secStyle}>
           <MiniButton
             glyph="B"
@@ -379,10 +362,25 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
               setConfig({ italic: !cur.italic });
             }}
           />
+          <MiniButton
+            label={t.underline}
+            active={cur.underline}
+            onPress={() => {
+              nudge();
+              setConfig({ underline: !cur.underline });
+            }}
+          >
+            <Txt weight="bold" size={13} color={cur.underline ? '#FFFFFF' : c.text} style={{ textDecorationLine: 'underline' }}>
+              U
+            </Txt>
+          </MiniButton>
         </Section>
       ) : null}
-      {showAlign ? (
+      {show('align') ? (
         <Section title={t.secAlign}>
+          {/* Three to a row; each row is its own View so the section is exactly three buttons wide. */}
+          <View style={{ gap: 5 }}>
+          <View style={{ flexDirection: 'row', gap: 5 }}>
           {H_ALIGNS.map((align) => (
             <MiniButton
               key={align}
@@ -398,10 +396,10 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
               </Svg>
             </MiniButton>
           ))}
-          {selShape ? (
+          </View>
+          {alignBoth ? (
             <>
-              {/* Three to a row: across, up and down, then the one-tap centre. */}
-              <View style={{ width: '100%', height: 0 }} />
+              <View style={{ flexDirection: 'row', gap: 5 }}>
               {V_ALIGNS.map((valign) => (
                 <MiniButton
                   key={valign}
@@ -418,7 +416,8 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Svg>
                 </MiniButton>
               ))}
-              <View style={{ width: '100%', height: 0 }} />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 5 }}>
               <MiniButton
                 label={t.alignCentered}
                 active={cur.align === 'center' && cur.valign === 'middle'}
@@ -432,8 +431,10 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   <Circle cx="12" cy="12" r="2.2" fill={cur.align === 'center' && cur.valign === 'middle' ? '#FFFFFF' : c.text} />
                 </Svg>
               </MiniButton>
+              </View>
             </>
           ) : null}
+          </View>
         </Section>
       ) : null}
     </View>
@@ -442,7 +443,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   /** Every section the tool in hand offers. */
   const sections = (
     <>
-                {showSizes ? (
+                {show('width') || show('border') ? (
                   <Section title={t.size}>
                     <WidthSlider
                       value={cur.width}
@@ -455,7 +456,25 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
   
-                {showDash ? (
+                {show('drawToShape') ? (
+                  <Section title={t.pencil}>
+                    {([false, true] as const).map((on) => (
+                      <MiniButton
+                        key={String(on)}
+                        label={on ? t.penShape : t.penFree}
+                        active={drawToShape === on}
+                        onPress={() => {
+                          nudge();
+                          setSetting('drawToShape', on);
+                        }}
+                      >
+                        <Icon name={on ? 'pencil-shape' : 'pencil'} size={18} color={drawToShape === on ? '#FFFFFF' : c.text} />
+                      </MiniButton>
+                    ))}
+                  </Section>
+                ) : null}
+
+                {show('dash') ? (
                   <Section title={t.secStroke}>
                     {DASHES.map((dash) => (
                       <MiniButton
@@ -475,26 +494,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
 
-                {showDash ? (
-                  <Section title={t.secOpacity}>
-                    {OPACITIES.map((pct) => (
-                      <MiniButton
-                        key={pct}
-                        label={`${t.secOpacity} ${pct}%`}
-                        active={cur.opacity === pct}
-                        onPress={() => {
-                          nudge();
-                          setConfig({ opacity: pct });
-                        }}
-                      >
-                        <Svg width={20} height={20} viewBox="0 0 24 24" fill={cur.opacity === pct ? '#FFFFFF' : c.text} stroke={cur.opacity === pct ? '#FFFFFF' : c.text} strokeWidth={2}>
-                          <Circle cx="12" cy="12" r="8" fillOpacity={pct / 100} />
-                        </Svg>
-                      </MiniButton>
-                    ))}
-                  </Section>
-                ) : null}
-  
                 {showFill ? (
                   <Section title={t.fillColor}>
                     <MiniButton
@@ -526,7 +525,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
   
-                {showCorners ? (
+                {show('corners') ? (
                   <Section title={t.secCorners}>
                     {([false, true] as const).map((rounded) => (
                       <MiniButton
@@ -546,8 +545,34 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
 
-                {showLine ? (
-                  <Section title={t.secRoute}>
+                {show('sides') ? (
+                  <Section title={t.sides}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                      <StepperButton
+                        icon="minus"
+                        label={t.fewerSides}
+                        onPress={() => {
+                          nudge();
+                          setConfig({ sides: Math.max(LIMITS.minSides, cur.sides - 1) });
+                        }}
+                      />
+                      <Txt weight="extrabold" size={11} mono style={{ width: 28, textAlign: 'center' }}>
+                        {cur.sides}
+                      </Txt>
+                      <StepperButton
+                        icon="plus"
+                        label={t.moreSides}
+                        onPress={() => {
+                          nudge();
+                          setConfig({ sides: Math.min(LIMITS.maxSides, cur.sides + 1) });
+                        }}
+                      />
+                    </View>
+                  </Section>
+                ) : null}
+
+                {show('route') ? (
+                  <Section title={t.route}>
                     {ROUTES.map((route) => (
                       <MiniButton
                         key={route}
@@ -564,9 +589,9 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
   
-                {showLine ? (
+                {show('tail') || show('head') ? (
                   <Section title={t.secEnds}>
-                    {(['headStart', 'headEnd'] as const).map((end) => (
+                    {(['headStart', 'headEnd'] as const).filter((end) => show(end === 'headStart' ? 'tail' : 'head')).map((end) => (
                       <MiniButton
                         key={end}
                         wide
@@ -587,7 +612,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
   
-                {showLabelBox ? textSections : null}
+                {textSections}
     </>
   );
 
@@ -598,7 +623,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   return (
     <>
       {open && hasOptions && box === 'kind' && kinds.length ? (
-        // The figure's own, smaller dropdown: just the kinds (and the corners of a polygon).
+        // The figure's own, smaller dropdown: just the kinds.
         <View
           pointerEvents="box-none"
           style={{
@@ -625,29 +650,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                     </MiniButton>
                   ))}
                 </View>
-                {showSides ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                    <StepperButton
-                      icon="minus"
-                      label={t.fewerSides}
-                      onPress={() => {
-                        nudge();
-                        setConfig({ sides: Math.max(LIMITS.minSides, cur.sides - 1) });
-                      }}
-                    />
-                    <Txt weight="extrabold" size={11} mono style={{ width: 52, textAlign: 'center' }}>
-                      {cur.sides} {t.sides}
-                    </Txt>
-                    <StepperButton
-                      icon="plus"
-                      label={t.moreSides}
-                      onPress={() => {
-                        nudge();
-                        setConfig({ sides: Math.min(LIMITS.maxSides, cur.sides + 1) });
-                      }}
-                    />
-                  </View>
-                ) : null}
               </View>
             </Dense.Provider>
           </GlassPanel>
@@ -670,11 +672,11 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
         >
           <GlassPanel level="panel" radius={16} style={panelShadow}>
               <ScrollView
-                style={{ maxHeight: popMax }}
-                contentContainerStyle={{ gap: 10, width: 221, padding: 8 }}
+                style={{ maxHeight: popMax, maxWidth: 221 }}
+                contentContainerStyle={{ gap: 10, padding: 8 }}
                 showsVerticalScrollIndicator={false}
               >
-                {endsPage && showLine ? (
+                {endsPage && (show('tail') || show('head')) ? (
                   <>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <MiniButton label={t.back} active={false} onPress={() => setEndsPage(null)}>
@@ -738,7 +740,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
       >
         {open && hasOptions ? (
           <GlassPanel level="panel" radius={16} style={[panelShadow, { alignSelf: 'flex-start', maxWidth: '100%' }]}>
-            <View style={{ ...stripStyle, justifyContent: 'flex-start' }}>
+            <View ref={tourRef('options')} style={{ ...stripStyle, justifyContent: 'flex-start' }}>
               {kinds.length ? (
                 <MiniButton
                   label={t[SHAPES.find((e) => e.shape === cur.shape)?.labelKey ?? 'shapes']}
@@ -778,7 +780,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
               ) : null}
 
               {hasSettings ? (
-                <MiniButton label={t.sheetSettings} active={box === 'settings'} onPress={() => toggle('settings')}>
+                <MiniButton ref={tourRef('settings')} label={t.sheetSettings} active={box === 'settings'} onPress={() => toggle('settings')}>
                   <Icon name="options" size={18} color={box === 'settings' ? '#FFFFFF' : c.text} />
                 </MiniButton>
               ) : null}
@@ -809,7 +811,9 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                 {row.map((entry) => (
                   <ToolButton
                     key={entry.labelKey}
-                    icon={entry.icon}
+                    ref={entry.labelKey === 'pencil' || entry.labelKey === 'select' || entry.labelKey === 'shapes' ? tourRef(entry.labelKey) : undefined}
+                    // The pencil shows which pencil it is: freehand, or draw to shape.
+                    icon={entry.tool === 'pen' && drawToShape ? 'pencil-shape' : entry.icon}
                     label={t[entry.labelKey]}
                     active={isActive(entry)}
                     size={buttonSize}
@@ -885,6 +889,45 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 /** Inside the dropdown the buttons are 30px, so six fit a row of the narrow panel. */
 const Dense = createContext(false);
 
+/** One option; `style` is bold, italic and underline together. Same table as the web toolbar. */
+type Opt =
+  | 'fill'
+  | 'color'
+  | 'border'
+  | 'width'
+  | 'drawToShape'
+  | 'corners'
+  | 'dash'
+  | 'sides'
+  | 'tail'
+  | 'head'
+  | 'route'
+  | 'label'
+  | 'textSize'
+  | 'font'
+  | 'style'
+  | 'align';
+
+/**
+ * What each tool, or a selected element of that kind, offers: the to-do's list
+ * (docs/00-to-do, web 4 — mobile 5 puts all but the colours in the dropdown).
+ * Keys are tools, shape kinds and `stroke` (a selected pencil line).
+ */
+const OPTIONS: Partial<Record<string, Opt[]>> = {
+  pen: ['color', 'width', 'drawToShape'],
+  stroke: ['color', 'width'],
+  eraser: ['width'],
+  fill: ['color'],
+  rectangle: ['fill', 'color', 'width', 'corners', 'dash', 'align'],
+  ellipse: ['fill', 'border', 'dash'],
+  triangle: ['fill', 'color', 'width', 'corners', 'dash'],
+  polygon: ['fill', 'color', 'width', 'corners', 'dash', 'sides'],
+  line: ['color', 'width', 'dash'],
+  arrow: ['color', 'dash', 'tail', 'head', 'route', 'label'],
+  text: ['color', 'textSize', 'font', 'style', 'align'],
+};
+const optionsKey = (el: BoardElement) => (el.kind === 'shape' ? el.shape : el.kind);
+
 /**
  * Stroke width as a slider with one stop per size: a track with four dots drawn
  * at their widths; a tap or a drag along it snaps to the nearest stop.
@@ -896,9 +939,6 @@ const H_ALIGNS = ['left', 'center', 'right'] as const;
 const V_ALIGNS = ['top', 'middle', 'bottom'] as const;
 const H_ALIGN_LABEL = { left: 'alignLeft', center: 'alignCenter', right: 'alignRight' } as const;
 const V_ALIGN_LABEL = { top: 'alignTop', middle: 'alignMiddle', bottom: 'alignBottom' } as const;
-
-/** The stops of the figure opacity control, in percent. */
-const OPACITIES = [25, 50, 75, 100];
 
 function WidthSlider({ value, label, onChange }: { value: number; label: string; onChange: (width: number) => void }) {
   const c = useColors();
@@ -965,6 +1005,7 @@ function LineGlyph({ d, on }: { d: string; on: boolean }) {
 }
 
 function ToolButton({
+  ref,
   icon,
   label,
   active,
@@ -972,6 +1013,7 @@ function ToolButton({
   radius,
   onPress,
 }: {
+  ref?: React.Ref<View>;
   icon: IconName;
   label: string;
   active: boolean;
@@ -982,6 +1024,7 @@ function ToolButton({
   const c = useColors();
   return (
     <Pressable
+      ref={ref}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected: active }}
@@ -1048,6 +1091,7 @@ const SIZE_LABELS = {
 } as const;
 
 function MiniButton({
+  ref,
   glyph,
   glyphWeight = 'bold',
   glyphItalic,
@@ -1058,6 +1102,7 @@ function MiniButton({
   compact = false,
   children,
 }: {
+  ref?: React.Ref<View>;
   glyph?: string;
   glyphWeight?: 'bold' | 'extrabold';
   glyphItalic?: boolean;
@@ -1075,6 +1120,7 @@ function MiniButton({
   const dense = useContext(Dense);
   return (
     <Pressable
+      ref={ref}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected: active }}
