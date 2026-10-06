@@ -70,7 +70,11 @@ export const MAX_ZOOM = 6;
 /** One tap of the zoom buttons. */
 export const ZOOM_STEP = 1.2;
 
-export type ConnectionStatus = 'idle' | 'connecting' | 'online' | 'offline';
+/** `local`: the offline board (`features/board/local.ts`) — no server, and every edit is kept. */
+export type ConnectionStatus = 'idle' | 'connecting' | 'online' | 'offline' | 'local';
+
+/** Whether an edit can be made now: one that could never reach the server is refused. */
+export const writable = (connection: ConnectionStatus) => connection === 'online' || connection === 'local';
 
 export interface Camera {
   x: number;
@@ -91,6 +95,7 @@ export interface ToolConfig {
   fontSize: number;
   bold: boolean;
   italic: boolean;
+  underline: boolean;
   /** Typeface of new text and of labels. */
   font: FontKey;
   // Lines and arrows. The line/arrow buttons reset these to the kind's default.
@@ -157,6 +162,8 @@ export interface LiveEdit {
   dx: number;
   dy: number;
   patch: Partial<BoardElement> | null;
+  /** Several resized together (`resizeGroup`): each one's own patch, by id. */
+  patches?: Record<ElementId, Partial<BoardElement>>;
 }
 
 /**
@@ -173,7 +180,7 @@ export function editPatches(
   const after = elements.map((el) => {
     if (!moved.has(el.id)) return el;
     const patch: Partial<BoardElement> =
-      edit.mode === 'move' ? translate(el, edit.dx, edit.dy) : { ...edit.patch };
+      edit.mode === 'move' ? translate(el, edit.dx, edit.dy) : { ...(edit.patches?.[el.id] ?? edit.patch) };
     // A line carried away from what it was bound to lets go; carried together
     // with it (a group, a marquee) it keeps the link.
     if (edit.mode === 'move' && el.kind === 'shape' && isLineLike(el)) {
@@ -205,6 +212,7 @@ export function sketchElement(sketch: Sketch, config: ToolConfig, base: ElementB
     kind: 'shape',
     shape: sketch.shape,
     ...(sketch.shape === 'polygon' ? { sides: sketch.sides } : null),
+    ...(sketch.vertices ? { vertices: sketch.vertices } : null),
     from: sketch.from,
     to: sketch.to,
     stroke: config.color,
@@ -476,6 +484,7 @@ const DEFAULT_CONFIG: ToolConfig = {
   fontSize: 28,
   bold: false,
   italic: false,
+  underline: false,
   font: 'sans',
   headStart: 'none',
   headEnd: 'arrow',
@@ -522,7 +531,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
   function commitLocal(ops: Op[], how: 'push' | 'merge' | 'replace' = 'push') {
     // Offline, an edit would only ever exist on this screen — and vanish on
     // the reconnect's hydrate. Refusing it is what makes the banner honest.
-    if (ops.length === 0 || get().connection !== 'online') return;
+    if (ops.length === 0 || !writable(get().connection)) return;
     const { elements, undoStack, outbox, clientSeq } = get();
     const last = undoStack[undoStack.length - 1];
     let stack: HistoryEntry[];
@@ -792,6 +801,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
           if (patch.fontSize !== undefined) p.fontSize = patch.fontSize;
           if (patch.bold !== undefined) p.bold = patch.bold;
           if (patch.italic !== undefined) p.italic = patch.italic;
+          if (patch.underline !== undefined) p.underline = patch.underline;
           if (patch.font !== undefined) p.font = patch.font;
           if (patch.align !== undefined) p.align = patch.align;
         } else if (el.kind === 'shape') {
@@ -820,6 +830,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
           if (patch.font !== undefined) p.font = patch.font;
           if (shape === 'polygon' && (patch.sides !== undefined || shape !== el.shape)) {
             p.sides = patch.sides ?? get().config.sides;
+            // Choosing a corner count turns a hand-drawn polygon into the regular one.
+            if (patch.sides !== undefined && el.vertices) p.vertices = null;
           }
           if (patch.align !== undefined) p.align = patch.align;
           if (patch.valign !== undefined) p.valign = patch.valign;
@@ -1183,7 +1195,9 @@ export const useBoardStore = create<BoardState>((set, get) => {
         fontSize: config.fontSize,
         bold: config.bold,
         italic: config.italic,
+        ...(config.underline ? { underline: true } : null),
         ...(config.font !== 'sans' ? { font: config.font } : null),
+        ...(config.align !== 'left' ? { align: config.align } : null),
       };
       commitLocal([{ t: 'add', el }]);
       freshText = el.id;
@@ -1274,7 +1288,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     cutSelection() {
       const sel = get().selectedElements();
-      if (!sel.length || !get().canEditNow() || get().connection !== 'online') return;
+      if (!sel.length || !get().canEditNow() || !writable(get().connection)) return;
       get().copySelection();
       commitLocal(sel.map((el) => ({ t: 'delete', id: el.id }) as Op));
       set({ selectedIds: [] });
@@ -1289,7 +1303,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     duplicateSelection() {
       const sel = get().selectedElements();
-      if (!sel.length || !get().canEditNow() || get().connection !== 'online') return;
+      if (!sel.length || !get().canEditNow() || !writable(get().connection)) return;
       const copies = cloneElements(sel, 16, 16);
       commitLocal(copies.map((el) => ({ t: 'add', el }) as Op));
       get().select(copies.map((el) => el.id));
@@ -1297,7 +1311,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     paste(at, elements = get().clipboard) {
       const b = contentBounds(elements);
-      if (!b || !get().canEditNow() || get().connection !== 'online') return;
+      if (!b || !get().canEditNow() || !writable(get().connection)) return;
       const dx = at ? at.x - (b.x + b.width / 2) : 16;
       const dy = at ? at.y - (b.y + b.height / 2) : 16;
       const copies = cloneElements(elements, dx, dy);
@@ -1309,7 +1323,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     addElements(elements) {
-      if (!elements.length || !get().canEditNow() || get().connection !== 'online') return;
+      if (!elements.length || !get().canEditNow() || !writable(get().connection)) return;
       // Ids are kept (lines are linked by them); authorship and order are ours.
       const added = elements.map((el) => ({ ...el, ...baseFields(), id: el.id }) as BoardElement);
       commitLocal(added.map((el) => ({ t: 'add', el }) as Op));
@@ -1325,7 +1339,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
       const { undoStack, redoStack, elements, outbox, liveEdit, selectedIds } = get();
       const entry = undoStack[undoStack.length - 1];
       // Not under a finger that is still dragging: the drag would land on top of it.
-      if (!entry || get().connection !== 'online' || liveEdit) return;
+      if (!entry || !writable(get().connection) || liveEdit) return;
       const ops = restoreDeleted(elements, entry.undo);
       const next = applyOps(elements, ops);
       set({
@@ -1340,7 +1354,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     redo() {
       const { undoStack, redoStack, elements, outbox, liveEdit, selectedIds } = get();
       const entry = redoStack[redoStack.length - 1];
-      if (!entry || get().connection !== 'online' || liveEdit) return;
+      if (!entry || !writable(get().connection) || liveEdit) return;
       const ops = restoreDeleted(elements, entry.redo);
       const next = applyOps(elements, ops);
       set({
