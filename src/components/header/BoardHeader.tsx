@@ -21,6 +21,7 @@ import { formatShortCode } from '@/utils/short-code';
 
 import { IconButton } from '../ui/Button';
 import { Avatar, AvatarOverflow } from '../ui/Avatar';
+import { tourRef } from '../board/Tutorial';
 import { Icon } from '../ui/Icon';
 import { Txt } from '../ui/Text';
 import { tip } from '../ui/Toast';
@@ -78,6 +79,7 @@ export function BoardHeader({
   onCopyCode,
   onOpenPeople,
   onOpenMenu,
+  onOpenNew,
   onOpenPrivacy,
   onOpenShare,
   onOpenExport,
@@ -87,6 +89,8 @@ export function BoardHeader({
   onCopyCode: () => void;
   onOpenPeople: () => void;
   onOpenMenu: () => void;
+  /** Another whiteboard: a blank one, or one joined with a code. */
+  onOpenNew: () => void;
   onOpenPrivacy: () => void;
   onOpenShare: () => void;
   onOpenExport: () => void;
@@ -101,16 +105,22 @@ export function BoardHeader({
   const canEdit = useBoardStore((s) => s.canEditNow());
 
   const online = connection === 'online';
+  // The offline board (plans/34): nobody else is on it, and there is no code yet — Share makes one.
+  const local = connection === 'local';
   const statusColor = online
     ? StatusColors.online
-    : connection === 'offline'
+    : local
+      ? c.textSecondary
+      : connection === 'offline'
       ? StatusColors.offline
       : StatusColors.connecting;
   const statusLabel = online
     ? participants.length === 1
       ? t.onlineOne
       : tf('onlineMany', { N: participants.length })
-    : connection === 'offline'
+    : local
+      ? t.localStatus
+      : connection === 'offline'
       ? t.offline
       : t.connecting;
 
@@ -136,9 +146,26 @@ export function BoardHeader({
   // permissions, the code to copy) and share. In portrait each is a row, the name and the
   // people on top; in landscape there is room for all of it on one row.
   const row = { flexDirection: 'row', alignItems: 'center', gap: 6 } as const;
+  // Says what it does: the "+" alone read as "add something to this board".
+  // In portrait the second row has no room for its words, so it sits by the name.
+  const newChip = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t.anotherWhiteboard}
+      onPress={onOpenNew}
+      onLongPress={() => tip(t.anotherWhiteboard)}
+      style={[chip, { gap: 5, flexShrink: 0 }]}
+    >
+      <Icon name="plus" size={15} color={c.text} />
+      <Txt weight="bold" size={11.5} numberOfLines={1}>
+        {t.createOrJoin}
+      </Txt>
+    </Pressable>
+  );
   const left = (
     <View style={{ ...row, flexShrink: 1 }}>
       <IconButton icon="more" label={t.boardMenu} onPress={onOpenMenu} size={30} iconSize={17} />
+      {landscape ? newChip : null}
       <IconButton
         icon="download"
         label={t.exportImage}
@@ -186,8 +213,10 @@ export function BoardHeader({
   );
   const right = (
     <View style={{ ...row, justifyContent: 'flex-end' }}>
-      {landscape ? people : null}
+      {landscape && !local ? people : null}
 
+      {local ? null : (
+      <>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t.privacyShort}
@@ -229,8 +258,11 @@ export function BoardHeader({
           {meta ? formatShortCode(meta.shortCode) : '———·———'}
         </Txt>
       </Pressable>
+      </>
+      )}
 
       <Pressable
+        ref={tourRef('share')}
         accessibilityRole="button"
         accessibilityLabel={t.share}
         onPress={onOpenShare}
@@ -324,7 +356,8 @@ export function BoardHeader({
           <View style={{ ...row, gap: 8 }}>
             {titleEl}
             <View style={{ flex: 1 }} />
-            {people}
+            {newChip}
+            {local ? null : people}
           </View>
           <View style={{ ...row, gap: 8, justifyContent: 'space-between' }}>
             {left}
