@@ -41,6 +41,7 @@ import {
   MinusIcon,
   MoonIcon,
   PaintBucketIcon,
+  PencilRulerIcon,
   PencilSimpleIcon,
   PencilSimpleLineIcon,
   PlusIcon,
@@ -95,6 +96,8 @@ export type IconName =
   | 'warning'
   | 'hand'
   | 'pencil'
+  /** The pencil in "draw to shape" mode: it straightens what it draws. */
+  | 'pencil-shape'
   | 'eraser'
   | 'shapes'
   | 'text'
@@ -149,6 +152,7 @@ const GLYPHS: Record<IconName, [PhosphorIcon, IconWeight?]> = {
   warning: [WarningIcon],
   hand: [HandIcon],
   pencil: [PencilSimpleIcon],
+  'pencil-shape': [PencilRulerIcon],
   eraser: [EraserIcon],
   shapes: [ShapesIcon],
   text: [TextTIcon],
