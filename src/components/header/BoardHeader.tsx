@@ -143,11 +143,11 @@ export function BoardHeader({
 
   // The header is two clusters: on the left the board (its name, the menu
   // and export), on the right who is here and who may edit (people,
-  // permissions, the code to copy) and share. In portrait each is a row, the name and the
-  // people on top; in landscape there is room for all of it on one row.
+  // permissions, the code to copy) and share. In portrait each is a row, the name and its
+  // buttons on top; in landscape there is room for all of it on one row.
   const row = { flexDirection: 'row', alignItems: 'center', gap: 6 } as const;
   // Says what it does: the "+" alone read as "add something to this board".
-  // In portrait the second row has no room for its words, so it sits by the name.
+  // It sits beside the menu button, as on the web.
   const newChip = (
     <Pressable
       accessibilityRole="button"
@@ -165,7 +165,7 @@ export function BoardHeader({
   const left = (
     <View style={{ ...row, flexShrink: 1 }}>
       <IconButton icon="more" label={t.boardMenu} onPress={onOpenMenu} size={30} iconSize={17} />
-      {landscape ? newChip : null}
+      {newChip}
       <IconButton
         icon="download"
         label={t.exportImage}
@@ -213,7 +213,7 @@ export function BoardHeader({
   );
   const right = (
     <View style={{ ...row, justifyContent: 'flex-end' }}>
-      {landscape && !local ? people : null}
+      {local ? null : people}
 
       {local ? null : (
       <>
@@ -356,13 +356,9 @@ export function BoardHeader({
           <View style={{ ...row, gap: 8 }}>
             {titleEl}
             <View style={{ flex: 1 }} />
-            {newChip}
-            {local ? null : people}
-          </View>
-          <View style={{ ...row, gap: 8, justifyContent: 'space-between' }}>
             {left}
-            {right}
           </View>
+          <View style={{ ...row, gap: 8, justifyContent: 'flex-end' }}>{right}</View>
         </>
       )}
     </View>
