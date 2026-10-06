@@ -7,6 +7,8 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.4.1-beta] - 2026-10-06
+
 ### Changed
 
 - "+ Crear / Unirse" sits beside the menu button in portrait too, as on the
