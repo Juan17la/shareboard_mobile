@@ -11,6 +11,7 @@ import { Modal, Pressable, View } from 'react-native';
 import { Glass } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 
+import { MirrorScene } from '../board/BoardMirror';
 import { GlassPanel, NoGlassScene } from './Glass';
 import { Icon } from './Icon';
 import { Txt } from './Text';
@@ -44,7 +45,7 @@ export function ConfirmDialog({
 
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
-      <NoGlassScene>
+      <MirrorScene veil={Glass.scrimStrong}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           {/* The scrim is a sibling of the card, not its parent: nesting the card
               inside a pressable backdrop makes the card's own buttons children of
@@ -75,6 +76,7 @@ export function ConfirmDialog({
                 elevation: 24,
               }}
             >
+              <NoGlassScene>
               <View style={{ alignItems: 'center', gap: 9, paddingHorizontal: 20, paddingVertical: 22 }}>
                 <View
                   style={{
@@ -136,10 +138,11 @@ export function ConfirmDialog({
                   </Pressable>
                 </View>
               </View>
+              </NoGlassScene>
             </GlassPanel>
           </View>
         </View>
-      </NoGlassScene>
+      </MirrorScene>
     </Modal>
   );
 }

@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Glass, Radius } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 
+import { MirrorScene } from '../board/BoardMirror';
 import { GlassPanel, NoGlassScene } from './Glass';
 import { IconButton } from './Button';
 import { Txt } from './Text';
@@ -108,7 +109,7 @@ export function Sheet({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <NoGlassScene>
+      <MirrorScene veil={Glass.scrim}>
         <View
           style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: lift }}
           onLayout={(e) => setWindowHeight(e.nativeEvent.layout.height)}
@@ -160,6 +161,7 @@ export function Sheet({
                 elevation: 24,
               }}
             >
+              <NoGlassScene>
               <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 2 }}>
                 <View
                   style={{
@@ -217,6 +219,7 @@ export function Sheet({
                   {children}
                 </ScrollView>
               )}
+              </NoGlassScene>
             </GlassPanel>
           </Animated.View>
 
@@ -224,7 +227,7 @@ export function Sheet({
               in the sheet ("Code copied") is actually visible. */}
           <ToastHost top={insets.top + 24} />
         </View>
-      </NoGlassScene>
+      </MirrorScene>
     </Modal>
   );
 }

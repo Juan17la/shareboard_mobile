@@ -20,7 +20,7 @@ import { create } from 'zustand';
 import { useBoardStore } from '@/features/board/store';
 import { useColors } from '@/features/session/store';
 
-import type { SceneSize } from '../ui/Glass';
+import { GlassScene, NoGlassScene, type SceneSize } from '../ui/Glass';
 
 // `EXPO_PUBLIC_NO_MIRROR=1` turns the snapshots off, to measure what they cost.
 const ENABLED = Platform.OS === 'android' && process.env.EXPO_PUBLIC_NO_MIRROR !== '1';
@@ -130,4 +130,29 @@ export function useBoardMirror(canvasRef: RefObject<CanvasRef | null>) {
     ),
     [c.background],
   );
+}
+
+/**
+ * The board's last snapshot as the scene for surfaces in a `Modal` (sheets,
+ * dialogs), which sit outside the board screen's `GlassScene`: their panel
+ * blurs the board with the modal's scrim (`veil`) painted over it, as it shows
+ * on screen. A full-screen modal shares the board's coordinates, so the panels
+ * line up with what is under them. Without a snapshot (iOS, no board open)
+ * the panels keep their tinted fallback. What scrolls inside the panel cannot
+ * be followed, so callers wrap their content in `NoGlassScene`.
+ */
+export function MirrorScene({ veil, children }: { veil: string; children: ReactNode }) {
+  const ready = useMirrorImage((s) => s.image !== null);
+  const c = useColors();
+  const render = useCallback(
+    (size: SceneSize) => (
+      <>
+        <MirrorLayer width={size.width} height={size.height} ground={c.background} />
+        <Rect x={0} y={0} width={size.width} height={size.height} color={veil} />
+      </>
+    ),
+    [c.background, veil],
+  );
+  if (!ready) return <NoGlassScene>{children}</NoGlassScene>;
+  return <GlassScene render={render}>{children}</GlassScene>;
 }
