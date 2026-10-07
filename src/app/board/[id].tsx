@@ -46,7 +46,7 @@ import { GlassScene } from '@/components/ui/Glass';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { Txt } from '@/components/ui/Text';
 import { ToastHost, toast } from '@/components/ui/Toast';
-import { API_BASE_URL } from '@/constants/config';
+import { WEB_BASE_URL } from '@/constants/config';
 import { fill, type Strings } from '@/features/i18n/strings';
 import { useT } from '@/features/i18n/store';
 import type { BoardSnapshot } from '@/features/board/model';
@@ -56,10 +56,6 @@ import { useBoardSync } from '@/hooks/use-board-sync';
 import { createBoard, deleteBoard, importSnapshot } from '@/services/api/boards';
 import { boardShareLink } from '@/utils/deep-link';
 import { notify, thud } from '@/utils/haptics';
-
-// The web app is served from the API host unless they are split; override with
-// `expo.extra` if they diverge.
-const WEB_BASE_URL = API_BASE_URL;
 
 type SheetName =
   | 'share'
@@ -242,6 +238,7 @@ function BoardScreen({ id }: { id: string }) {
         onCopyCode={copyCode}
         onOpenPeople={() => setSheet('people')}
         onOpenMenu={() => setSheet('menu')}
+        onOpenSettings={() => setSheet('settings')}
         onOpenNew={() => setSheet('join')}
         onOpenPrivacy={() => setSheet('privacy')}
         onOpenShare={() => setSheet('share')}
