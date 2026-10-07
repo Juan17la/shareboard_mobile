@@ -167,7 +167,14 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const [popWidth, setPopWidth] = useState(221);
   /** How tall the strip and tool bar are, so the dropdown can sit right above them. */
   const [lowerHeight, setLowerHeight] = useState(120);
-  // The strip closing (a finger on the canvas) takes its popover with it.
+  // The strip closing (a finger on the canvas) takes its popover with it, and
+  // so does a rotation: it sat at the old orientation's size and position.
+  const [wasLandscape, setWasLandscape] = useState(landscape);
+  if (wasLandscape !== landscape) {
+    setWasLandscape(landscape);
+    setBox(null);
+    setEndsPage(null);
+  }
   if (!open && box) setBox(null);
 
   const nudge = () => tick(haptics);

@@ -24,6 +24,7 @@ import {
   type Route,
   type ShapeElement,
   type TextElement,
+  isFillable,
 } from './model';
 
 export interface Bounds {
@@ -1038,6 +1039,41 @@ export function shapeHit(el: ShapeElement, at: Point, pad: number): boolean {
     return false;
   }
   return inBox(toLocal(el, at), shapeBounds(el), pad);
+}
+
+/**
+ * Whether `at` is in the empty middle of an unfilled, unlabelled shape: on the
+ * board only its outline is drawn there, so a press there looks through it.
+ */
+// ponytail: the middle is the box shrunk past the outline, so an ellipse's or a
+// triangle's box corners still count as its body; test the real outline if that bites.
+export function hollowAt(el: BoardElement, at: Point, pad: number): boolean {
+  return (
+    el.kind === 'shape' &&
+    isFillable(el.shape) &&
+    !el.fill &&
+    !el.text &&
+    inBox(toLocal(el, at), shapeBounds(el), -(pad + el.strokeWidth))
+  );
+}
+
+/**
+ * Of `hits` (ids under `at`, in paint order), the one a press picks: the
+ * topmost, looking through the hollow middle of an empty shape to whatever is
+ * drawn inside or beneath it, as Excalidraw does. With only empty shapes there
+ * the smallest one is picked, the innermost of nested frames.
+ */
+export function pickHit(elements: BoardElement[], hits: string[], at: Point, pad: number): string | undefined {
+  let best: string | undefined;
+  let bestArea = Infinity;
+  for (let i = hits.length - 1; i >= 0; i--) {
+    const el = elements.find((e) => e.id === hits[i]);
+    if (!el) continue;
+    if (el.kind !== 'shape' || !hollowAt(el, at, pad)) return hits[i];
+    const b = shapeBounds(el);
+    if (b.width * b.height < bestArea) [best, bestArea] = [hits[i], b.width * b.height];
+  }
+  return best;
 }
 
 /** Distance from `p` to the segment ab. */

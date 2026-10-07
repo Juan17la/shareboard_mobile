@@ -79,6 +79,7 @@ export function BoardHeader({
   onCopyCode,
   onOpenPeople,
   onOpenMenu,
+  onOpenSettings,
   onOpenNew,
   onOpenPrivacy,
   onOpenShare,
@@ -89,6 +90,7 @@ export function BoardHeader({
   onCopyCode: () => void;
   onOpenPeople: () => void;
   onOpenMenu: () => void;
+  onOpenSettings: () => void;
   /** Another whiteboard: a blank one, or one joined with a code. */
   onOpenNew: () => void;
   onOpenPrivacy: () => void;
@@ -162,9 +164,23 @@ export function BoardHeader({
       </Txt>
     </Pressable>
   );
+  const settingsBtn = (
+    <IconButton
+      icon="settings"
+      label={t.sheetSettings}
+      onPress={onOpenSettings}
+      size={30}
+      iconSize={16}
+    />
+  );
+  const moreBtn = (
+    <IconButton icon="more" label={t.boardMenu} onPress={onOpenMenu} size={30} iconSize={17} />
+  );
+  // Landscape only: portrait reaches export through the share sheet.
   const left = (
     <View style={{ ...row, flexShrink: 1 }}>
-      <IconButton icon="more" label={t.boardMenu} onPress={onOpenMenu} size={30} iconSize={17} />
+      {settingsBtn}
+      {moreBtn}
       {newChip}
       <IconButton
         icon="download"
@@ -211,12 +227,10 @@ export function BoardHeader({
       {overflow > 0 ? <AvatarOverflow count={overflow} /> : null}
     </Pressable>
   );
-  const right = (
+  const info = local ? null : (
     <View style={{ ...row, justifyContent: 'flex-end' }}>
-      {local ? null : people}
+      {people}
 
-      {local ? null : (
-      <>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t.privacyShort}
@@ -258,9 +272,9 @@ export function BoardHeader({
           {meta ? formatShortCode(meta.shortCode) : '———·———'}
         </Txt>
       </Pressable>
-      </>
-      )}
-
+    </View>
+  );
+  const shareBtn = (
       <Pressable
         ref={tourRef('share')}
         accessibilityRole="button"
@@ -296,7 +310,6 @@ export function BoardHeader({
           {t.share}
         </Txt>
       </Pressable>
-    </View>
   );
   const titleEl = (
     <View
@@ -349,16 +362,27 @@ export function BoardHeader({
           {titleEl}
           {left}
           <View style={{ flex: 1 }} />
-          {right}
+          {info}
+          {shareBtn}
         </View>
       ) : (
         <>
           <View style={{ ...row, gap: 8 }}>
             {titleEl}
             <View style={{ flex: 1 }} />
-            {left}
+            {info}
           </View>
-          <View style={{ ...row, gap: 8, justifyContent: 'flex-end' }}>{right}</View>
+          <View style={{ ...row, gap: 8 }}>
+            <View style={row}>
+              {settingsBtn}
+              {newChip}
+            </View>
+            <View style={{ flex: 1 }} />
+            <View style={row}>
+              {moreBtn}
+              {shareBtn}
+            </View>
+          </View>
         </>
       )}
     </View>

@@ -41,6 +41,14 @@ export const API_BASE_URL: string = process.env.EXPO_PUBLIC_API_URL
 export const WS_URL: string =
   process.env.EXPO_PUBLIC_WS_URL ?? withDevHost(extra.wsUrl ?? 'ws://localhost:3000/ws');
 
+/**
+ * The web app, where share links and the QR code point (`/b/<code>`). Not the
+ * API host: the server has no `/b/` route, a link there opened an error page.
+ */
+export const WEB_BASE_URL: string = (
+  process.env.EXPO_PUBLIC_WEB_URL ?? 'https://shareboard-web.vercel.app'
+).replace(/\/$/, '');
+
 /** Tunables shared by the realtime layer. Documented in docs/07-websockets. */
 export const REALTIME = {
   /** Flush the local op outbox at most this often (ms). */

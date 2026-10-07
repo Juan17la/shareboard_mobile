@@ -30,6 +30,7 @@ import {
   headsOf,
   canRound,
   isLineLike,
+  pickHit,
   setBoxLookup,
   shapeHit,
   toLocal,
@@ -1139,8 +1140,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     elementAt(at, radius, among = get().visibleElements()) {
-      const hits = hitTest(among, at, radius);
-      return hits.length ? (among.find((el) => el.id === hits[hits.length - 1]) ?? null) : null;
+      const id = pickHit(among, hitTest(among, at, radius), at, radius);
+      return id ? (among.find((el) => el.id === id) ?? null) : null;
     },
 
     updateShape(id, patch) {
@@ -1487,8 +1488,8 @@ export function coveringFigure(
   const hits = hitTest(visible, at, radius);
   if (!hits.length) return null;
   const chosen = new Set(selected.map((el) => el.id));
-  // Hits come in paint order: the last one is what is drawn on top here.
-  const top = hits[hits.length - 1];
+  // What a press here picks: the topmost, seen through any hollow shape.
+  const top = pickHit(visible, hits, at, radius)!;
   if (chosen.has(top)) return null;
   const figure = visible.find((el) => el.id === top) ?? null;
   const onSelection = hits.some((id) => chosen.has(id));
