@@ -7,6 +7,34 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Documentation in `docs/`: a user guide (getting started, every feature,
+  troubleshooting), the architecture, the data model, the REST and WebSocket
+  protocol, server and client internals, building and releasing.
+
+### Fixed
+
+- Turning the phone closes an open options panel instead of leaving it at the
+  old orientation's size and place.
+- Share links and the QR code point to the web app
+  (`shareboard-web.vercel.app/b/<code>`). They pointed to the server, which
+  answered with an error page instead of opening the board.
+
+### Changed
+
+- A tap inside an empty figure (no fill, no label) selects what is
+  drawn inside or under it instead of the frame. With nothing beneath, the
+  smallest of nested empty frames is picked; its outline still selects it.
+- The header has a Settings button. In portrait the second row holds
+  Settings and "+ Crear / Unirse" on the left, the menu and Share on the right.
+- The ⋯ menu offers "Replay the tutorial" to people who can edit.
+- A new README about the app itself: what it does, its features and how to
+  install it.
+- Licensed under the PolyForm Noncommercial License 1.0.0 (free for any
+  noncommercial use), replacing the MIT licence left over from the Expo
+  template.
+
 ## [1.4.1-beta] - 2026-10-06
 
 ### Changed

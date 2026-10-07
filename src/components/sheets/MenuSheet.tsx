@@ -10,7 +10,7 @@
 import { Pressable, View } from 'react-native';
 
 import { useBoardStore } from '@/features/board/store';
-import { useColors } from '@/features/session/store';
+import { useColors, useSessionStore } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 
 import { Icon, type IconName } from '../ui/Icon';
@@ -54,6 +54,19 @@ export function MenuSheet({
             { icon: 'people' as const, label: t.sheetPeople, onPress: onOpenPeople },
           ]),
       ...(canEdit ? [{ icon: 'sparkle' as const, label: t.sheetAi, onPress: onOpenAi }] : []),
+      // The tutorial only runs for editors, so a viewer has nothing to replay.
+      ...(canEdit
+        ? [
+            {
+              icon: 'cursor' as const,
+              label: t.tourReplay,
+              onPress: () => {
+                useSessionStore.getState().setTutorialDone(false);
+                onClose();
+              },
+            },
+          ]
+        : []),
   ];
 
   return (
