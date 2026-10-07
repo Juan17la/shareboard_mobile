@@ -1240,4 +1240,18 @@ assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rec
   assert.equal(arrow.headEnd, cfg.headEnd, 'the preview keeps the heads');
 }
 
+// --- a press looks through the hollow middle of an empty shape ---------------
+{
+  const inner = box('in', 40, 40, 20, 20, 1);
+  const frame = box('frame', 0, 0, 100, 100, 2);
+  useBoardStore.getState().hydrate({ meta, elements: [inner, frame], participants: [you], you, seq: 0 });
+  const at = (x, y) => s().elementAt({ x, y }, 6)?.id ?? null;
+  assert.equal(at(50, 50), 'in', 'the box under an empty frame is picked through it');
+  assert.equal(at(20, 20), 'frame', 'with nothing beneath, the empty frame is still picked');
+  assert.equal(at(1, 50), 'frame', 'its outline is on top');
+  const solid = { ...frame, fill: '#ff0000' };
+  useBoardStore.getState().hydrate({ meta, elements: [inner, solid], participants: [you], you, seq: 0 });
+  assert.equal(at(50, 50), 'frame', 'a filled shape covers what is under it');
+}
+
 console.log('geometry: ok');
