@@ -7,6 +7,8 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.4.2-beta] - 2026-10-07
+
 ### Added
 
 - Documentation in `docs/`: a user guide (getting started, every feature,
