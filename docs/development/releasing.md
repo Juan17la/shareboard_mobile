@@ -47,9 +47,8 @@ They live in `git_scripts/` in the workspace folder (not in any repository).
    server URL in the EAS `beta` profile. Merged into `main`, tagged
    `v<version>`, merged back into `develop`.
 4. Pushes branches and tags. Pushing `main` deploys the server (Render) and the
-   web (Vercel). The tag triggers `.github/workflows/release.yml`, which re-runs
-   the checks and publishes a GitHub pre-release with the changelog section as
-   notes.
+   web (Vercel). Each repository then gets a GitHub pre-release, created with
+   `gh`, whose notes are that version's changelog section.
 5. Waits until the server's `/health` reports the new `version` (the app is
    built against the new server). `WAIT=0` skips this.
 6. Builds the APK locally with Gradle (`BUILD=local`, default) or on EAS
