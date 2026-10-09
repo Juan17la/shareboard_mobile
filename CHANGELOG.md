@@ -7,6 +7,8 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.5.0-beta] - 2026-10-09
+
 ### Changed
 
 - Every figure offers text options (size, font, and alignment on the closed
