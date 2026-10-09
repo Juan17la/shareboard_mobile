@@ -181,11 +181,22 @@ export function contentBounds(elements: BoardElement[]): Bounds | null {
       case 'shape': {
         if (!isLineLike(el)) {
           growTurned(shapeBounds(el), el.strokeWidth / 2, el.rotation ?? 0, grow);
-          break;
+        } else {
+          const pad = el.strokeWidth / 2;
+          grow(el.from.x, el.from.y, pad);
+          grow(el.to.x, el.to.y, pad);
         }
-        const pad = el.strokeWidth / 2;
-        grow(el.from.x, el.from.y, pad);
-        grow(el.to.x, el.to.y, pad);
+        // A label can stand outside its figure (a line's floats off the line,
+        // a long word keeps its own line): framing and exports keep it in.
+        if (el.text) {
+          const size = el.fontSize ?? SHAPE_TEXT_SIZE;
+          const lines = labelLines(el, size);
+          const at = labelPlacement(el, size, lines.length);
+          const w = Math.max(...lines.map((line) => measureWidth(line, { fontSize: size, font: el.font })));
+          const x0 = at.align === 'left' ? at.x : at.align === 'right' ? at.x - w : at.x - w / 2;
+          const h = lines.length * size * TEXT_LINE_HEIGHT;
+          growTurned({ x: x0, y: at.y - (size * TEXT_LINE_HEIGHT) / 2, width: w, height: h }, 0, el.rotation ?? 0, grow);
+        }
         break;
       }
       case 'text':
