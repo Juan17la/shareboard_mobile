@@ -151,8 +151,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   );
   const canEdit = useBoardStore((s) => s.canEditNow());
   const haptics = useSessionStore((s) => s.settings.haptics);
-  const drawToShape = useSessionStore((s) => s.settings.drawToShape);
-  const setSetting = useSessionStore((s) => s.setSetting);
   const dark = useDark();
   const { width, height } = useWindowDimensions();
 
@@ -465,24 +463,6 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   </Section>
                 ) : null}
   
-                {show('drawToShape') ? (
-                  <Section title={t.pencil}>
-                    {([false, true] as const).map((on) => (
-                      <MiniButton
-                        key={String(on)}
-                        label={on ? t.penShape : t.penFree}
-                        active={drawToShape === on}
-                        onPress={() => {
-                          nudge();
-                          setSetting('drawToShape', on);
-                        }}
-                      >
-                        <Icon name={on ? 'pencil-shape' : 'pencil'} size={18} color={drawToShape === on ? '#FFFFFF' : c.text} />
-                      </MiniButton>
-                    ))}
-                  </Section>
-                ) : null}
-
                 {show('dash') ? (
                   <Section title={t.secStroke}>
                     {DASHES.map((dash) => (
@@ -828,8 +808,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
                   <ToolButton
                     key={entry.labelKey}
                     ref={entry.labelKey === 'pencil' || entry.labelKey === 'select' || entry.labelKey === 'shapes' ? tourRef(entry.labelKey) : undefined}
-                    // The pencil shows which pencil it is: freehand, or draw to shape.
-                    icon={entry.tool === 'pen' && drawToShape ? 'pencil-shape' : entry.icon}
+                    icon={entry.icon}
                     label={t[entry.labelKey]}
                     active={isActive(entry)}
                     size={buttonSize}
@@ -911,7 +890,6 @@ type Opt =
   | 'color'
   | 'border'
   | 'width'
-  | 'drawToShape'
   | 'corners'
   | 'dash'
   | 'sides'
@@ -930,15 +908,15 @@ type Opt =
  * Keys are tools, shape kinds and `stroke` (a selected pencil line).
  */
 const OPTIONS: Partial<Record<string, Opt[]>> = {
-  pen: ['color', 'width', 'drawToShape'],
+  pen: ['color', 'width'],
   stroke: ['color', 'width'],
   eraser: ['width'],
   fill: ['color'],
-  rectangle: ['fill', 'color', 'width', 'corners', 'dash', 'align'],
-  ellipse: ['fill', 'border', 'dash'],
-  triangle: ['fill', 'color', 'width', 'corners', 'dash'],
-  polygon: ['fill', 'color', 'width', 'corners', 'dash', 'sides'],
-  line: ['color', 'width', 'dash'],
+  rectangle: ['fill', 'color', 'width', 'corners', 'dash', 'label', 'align'],
+  ellipse: ['fill', 'border', 'dash', 'label', 'align'],
+  triangle: ['fill', 'color', 'width', 'corners', 'dash', 'label', 'align'],
+  polygon: ['fill', 'color', 'width', 'corners', 'dash', 'sides', 'label', 'align'],
+  line: ['color', 'width', 'dash', 'label'],
   arrow: ['color', 'dash', 'tail', 'head', 'route', 'label'],
   text: ['color', 'textSize', 'font', 'style', 'align'],
 };

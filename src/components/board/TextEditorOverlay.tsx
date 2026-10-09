@@ -4,10 +4,9 @@
  * What is typed is painted by the board itself, in place — a figure's label
  * centred and wrapped inside the figure, a text in its own font and turn — so
  * it looks exactly as it will once committed. The input over it only holds the
- * caret and the selection: same box, font and line height, glyphs clear. Committing on blur (and on
- * return) is what makes tapping elsewhere on the board finish the text
+ * caret and the selection: same box, font and line height, glyphs clear. Committing on blur is what makes tapping elsewhere on the board finish the text
  * naturally; an empty value deletes the element the tap created, so nothing
- * is left behind. No confirm button: return or a tap outside is the finish.
+ * is left behind. No confirm button: return breaks the line, a tap outside is the finish.
  */
 import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, TextInput, View } from 'react-native';
@@ -182,9 +181,8 @@ export function TextEditorOverlay({
         value={value}
         onChangeText={setValue}
         onBlur={commit}
-        // Return finishes the text (like web's Enter) instead of adding a line.
-        submitBehavior="blurAndSubmit"
-        onSubmitEditing={commit}
+        // Return breaks the line; tapping outside finishes the text.
+        submitBehavior="newline"
         placeholder={t.typeHere}
         placeholderTextColor={c.borderDashed}
         accessibilityLabel={t.text}
