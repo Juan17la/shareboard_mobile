@@ -31,7 +31,6 @@ import {
   dashIntervals,
   elementBounds,
   endAngles,
-  groupHandles,
   handlesOf,
   headsOf,
   isLineLike,
@@ -186,7 +185,7 @@ function ShapeLabel({ el }: { el: ShapeElement }) {
  * it lifts. Plain nodes, placed with the elements they frame, so a dragged
  * frame and the thing it frames are always in the same frame of the same render.
  */
-export const HANDLE_SIZE = 12;
+export const HANDLE_SIZE = 14;
 
 /** How opaque an element someone else holds is painted. */
 export const HELD_ALPHA = 0.45;
@@ -199,6 +198,8 @@ export function DashedBox({
   scale,
   angle = 0,
   color,
+  corners = false,
+  edge = false,
 }: {
   b: Bounds;
   scale: number;
@@ -206,9 +207,29 @@ export function DashedBox({
   angle?: number;
   /** The accent unless given: a holder's presence colour. */
   color?: string;
+  /** Thick brackets on the four corners: where a drag resizes. */
+  corners?: boolean;
+  /** A thick bar on the right edge's middle: a text's wrap width. */
+  edge?: boolean;
 }) {
   const c = useColors();
   const k = 1 / scale;
+  // The brackets sit on the frame's own rect, drawn in the same group, so they
+  // can only ever be on its corners.
+  const x0 = b.x - 4 * k;
+  const y0 = b.y - 4 * k;
+  const x1 = b.x + b.width + 4 * k;
+  const y1 = b.y + b.height + 4 * k;
+  const arm = Math.min(14 * k, (x1 - x0) / 2, (y1 - y0) / 2);
+  const ym = (y0 + y1) / 2;
+  const d = [
+    corners
+      ? `M${x0} ${y0 + arm}V${y0}H${x0 + arm}M${x1 - arm} ${y0}H${x1}V${y0 + arm}` +
+        `M${x1} ${y1 - arm}V${y1}H${x1 - arm}M${x0 + arm} ${y1}H${x0}V${y1 - arm}`
+      : '',
+    edge ? `M${x1} ${ym - arm * 0.6}V${ym + arm * 0.6}` : '',
+  ].join('');
+  const brackets = useSvgPath(d || null);
   return (
     <Group
       transform={angle ? [{ rotate: angle }] : undefined}
@@ -225,6 +246,9 @@ export function DashedBox({
       >
         <DashPathEffect intervals={[5 * k, 4 * k]} />
       </Rect>
+      {brackets ? (
+        <Path path={brackets} color={color ?? c.accent} style="stroke" strokeWidth={4 * k} strokeCap="round" strokeJoin="round" />
+      ) : null}
     </Group>
   );
 }
@@ -255,7 +279,7 @@ export function SelectionFrame({
         <Group>
           <Line p1={knobStem} p2={knob} color={c.accent} strokeWidth={hair} />
           <Circle cx={knob.x} cy={knob.y} r={half + k} color={c.background} />
-          <Circle cx={knob.x} cy={knob.y} r={half + k} color={c.accent} style="stroke" strokeWidth={hair} />
+          <Circle cx={knob.x} cy={knob.y} r={half + k} color={c.accent} style="stroke" strokeWidth={2 * k} />
         </Group>
       ) : null}
       {line ? (
@@ -274,9 +298,9 @@ export function SelectionFrame({
         </>
       ) : one && canRotate(one) ? (
         // One turnable element is framed along its own (turned) box.
-        <DashedBox b={boxOf(one)} scale={scale} angle={rotationOf(one)} />
+        <DashedBox b={boxOf(one)} scale={scale} angle={rotationOf(one)} corners edge={one.kind === 'text'} />
       ) : (
-        <DashedBox b={b} scale={scale} />
+        <DashedBox b={b} scale={scale} corners={!one} />
       )}
       {/* A curve's pull at each end: a round handle on a stem out of the end it
           shapes — drag it to change which way the line leaves, and how hard. */}
@@ -300,20 +324,14 @@ export function SelectionFrame({
           <Rect x={-half} y={-half} width={2 * half} height={2 * half} color={c.accent} style="stroke" strokeWidth={hair} />
         </Group>
       ) : null}
-      {(one ? handlesOf(one) : groupHandles(elements)).map((h, i) =>
-        line ? (
-          <Group key={i}>
-            <Circle cx={h.x} cy={h.y} r={half + k} color={c.accent} />
-            <Circle cx={h.x} cy={h.y} r={half + k} color={c.background} style="stroke" strokeWidth={hair} />
-          </Group>
-        ) : (
-          // Round, like a line's ends: a ring says "drag me" where a square corner did not.
-          <Group key={i}>
-            <Circle cx={h.x} cy={h.y} r={half + k} color={c.background} />
-            <Circle cx={h.x} cy={h.y} r={half + k} color={c.accent} style="stroke" strokeWidth={2 * k} />
-          </Group>
-        ),
-      )}
+      {line
+        ? handlesOf(line).map((h, i) => (
+            <Group key={i}>
+              <Circle cx={h.x} cy={h.y} r={half + k} color={c.accent} />
+              <Circle cx={h.x} cy={h.y} r={half + k} color={c.background} style="stroke" strokeWidth={hair} />
+            </Group>
+          ))
+        : null}
     </Group>
   );
 }

@@ -28,6 +28,7 @@ import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react
 import { Pressable, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
@@ -1171,6 +1172,7 @@ export function BoardCanvas({
 
             {selected.length || liveMarquee || anchors || linked.length || held.size ? (
               <ScreenOverlays
+                camera={camera}
                 shift={movingIds ? dragTransform : undefined}
                 selected={selected}
                 marquee={liveMarquee}
@@ -1240,6 +1242,7 @@ function GridLayer({
  * UI thread, and a move through `shift`. Mounted only while one of them shows.
  */
 function ScreenOverlays({
+  camera,
   shift,
   selected,
   marquee,
@@ -1248,6 +1251,7 @@ function ScreenOverlays({
   held,
   elements,
 }: {
+  camera: SharedValue<Camera>;
   /** While the selection is carried: its offset, which its frame follows. */
   shift?: DerivedValue<Transforms3d>;
   selected: BoardElement[];
@@ -1259,7 +1263,16 @@ function ScreenOverlays({
   held: ReadonlyMap<string, Participant>;
   elements: BoardElement[];
 }) {
-  const scale = useBoardStore((s) => s.camera.scale);
+  // The zoom the frames are drawn at is the live camera's, not the store's,
+  // which only settles when a gesture ends: sized from a stale one, the
+  // dashed box and its handles part ways (the handles "far from the corners").
+  const [scale, setScale] = useState(() => camera.get().scale);
+  useAnimatedReaction(
+    () => camera.get().scale,
+    (next, prev) => {
+      if (next !== prev) scheduleOnRN(setScale, next);
+    },
+  );
   return (
     <>
       {held.size

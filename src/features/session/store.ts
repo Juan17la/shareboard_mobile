@@ -200,7 +200,7 @@ export const useSessionStore = create<SessionState>()(
           avatar,
           nickColor: avatarColor(avatar),
           theme: saved.theme === 'dark' ? 'dark' : 'light',
-          settings: { ...DEFAULT_SETTINGS, ...(saved.settings ?? {}) },
+          settings: { ...DEFAULT_SETTINGS, ...(saved.settings ?? {}), drawToShape: false },
           // Saved before the walkthrough existed: someone who has used the app already, not to be walked through it.
           tutorialDone: saved.tutorialDone ?? persisted != null,
         };

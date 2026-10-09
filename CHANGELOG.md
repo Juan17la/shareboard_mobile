@@ -7,6 +7,24 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.5.0-beta] - 2026-10-09
+
+### Changed
+
+- Every figure offers text options (size, font, and alignment on the closed
+  shapes) in the options dropdown.
+- Return in the text editor breaks the line; tapping outside finishes.
+- A selected box shows thick brackets on its corners (and a bar on a text's
+  right edge) instead of round dots, drawn on the dashed frame itself; lines
+  keep their end dots. The frame follows the live zoom.
+- Draw-to-shape is no longer an option of the pencil.
+- Fit-to-content leaves room for the header and the toolbars.
+
+### Fixed
+
+- A figure's label that stands outside its figure (a line's label, a long word)
+  is no longer cut by fit-to-content or by exports.
+
 ## [1.4.2-beta] - 2026-10-07
 
 ### Added
