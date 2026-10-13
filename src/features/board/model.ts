@@ -281,6 +281,7 @@ export const LIMITS = {
   maxSides: 12,
   maxNicknameLength: 40,
   maxBoardNameLength: 80,
+  minPasswordLength: 8,
   /** #RRGGBB, or #RRGGBBAA for the translucent fills the shape tool paints. */
   colorPattern: /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/,
 } as const;

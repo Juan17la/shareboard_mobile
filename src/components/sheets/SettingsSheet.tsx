@@ -38,11 +38,13 @@ export function SettingsSheet({
   onClose,
   onAskClear,
   onAskDelete,
+  onOpenAccount,
 }: {
   open: boolean;
   onClose: () => void;
   onAskClear: () => void;
   onAskDelete: () => void;
+  onOpenAccount: () => void;
 }) {
   const c = useColors();
   const t = useT();
@@ -56,6 +58,7 @@ export function SettingsSheet({
   const nickColor = useSessionStore((s) => s.nickColor);
   const avatar = useSessionStore((s) => s.avatar);
   const setNickname = useSessionStore((s) => s.setNickname);
+  const account = useSessionStore((s) => s.account);
   const [nick, setNick] = useState(nickname);
   // Saved when the field is left, not per keystroke: a new nickname rejoins the
   // board, which reloaded it on every character typed.
@@ -131,6 +134,25 @@ export function SettingsSheet({
       tall
     >
       <View style={{ gap: 9 }}>
+        <SheetRow
+          title={account ? `@${account.username}` : t.accountGuest}
+          description={account ? t.sheetAccount : t.accountGuestDesc}
+          accessibilityLabel={t.sheetAccount}
+          onPress={() => {
+            commitNick();
+            onOpenAccount();
+          }}
+          right={
+            account ? (
+              <Icon name="chevron" size={14} color={c.textTertiary} />
+            ) : (
+              <Txt weight="extrabold" size={13} tone="accent">
+                {t.signIn}
+              </Txt>
+            )
+          }
+        />
+
         {/* Who you are on a board: the name beside your cursor and its icon. */}
         <SectionLabel>{t.nickPlaceholder}</SectionLabel>
         <GlassPanel level="row" radius={18} border={c.borderField}>
