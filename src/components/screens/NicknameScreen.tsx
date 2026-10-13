@@ -1,10 +1,11 @@
 /**
  * "What should we call you?" — the identity step before a board opens.
  *
- * There are no accounts, so this name and colour *are* the user as far as the
- * board is concerned: they label the cursor other people watch move and the
- * avatar in the header. Both are remembered per install, so a returning user
- * sees their own name already filled in and one tap gets them through.
+ * This name and icon are the user as far as the board is concerned: they label
+ * the cursor other people watch move and the avatar in the header. Both are
+ * remembered per install, so a returning user sees their own name already
+ * filled in and one tap gets them through. It is also the welcome screens'
+ * second step, where it starts empty rather than on the stand-in guest name.
  */
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
@@ -31,9 +32,12 @@ const backdropScene = (size: SceneSize) => (
 export function NicknameScreen({
   landscape,
   onContinue,
+  blank = false,
 }: {
   landscape: boolean;
   onContinue: (nickname: string) => void;
+  /** Start with an empty field instead of the stored name. */
+  blank?: boolean;
 }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
@@ -42,7 +46,7 @@ export function NicknameScreen({
   const nickColor = useSessionStore((s) => s.nickColor);
   const avatar = useSessionStore((s) => s.avatar);
 
-  const [draft, setDraft] = useState(storedNickname);
+  const [draft, setDraft] = useState(blank ? '' : storedNickname);
   const ready = draft.trim().length > 0;
 
   // The wash, handed to the glass panels so they can blur it; and how far the
@@ -91,7 +95,7 @@ export function NicknameScreen({
                   maxLength={LIMITS.maxNicknameLength}
                   autoCapitalize="words"
                   autoCorrect={false}
-                  autoFocus={!storedNickname}
+                  autoFocus={blank || !storedNickname}
                   returnKeyType="go"
                   onSubmitEditing={() => ready && onContinue(draft.trim())}
                   style={{
