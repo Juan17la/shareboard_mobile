@@ -1,6 +1,9 @@
 # Getting started
 
-Shareboard needs no account and no sign-up. Open it and draw.
+Open Shareboard and draw: no sign-up is needed for that. The first time, three
+short welcome screens ask your name and offer an account — you need one to
+**share** a board (and it keeps your boards on every device), so you can skip it
+with **Not now** and sign in later from Settings → Account.
 
 ## 1. Open Shareboard
 

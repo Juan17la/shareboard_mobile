@@ -41,11 +41,24 @@ dispositivo alcanza la máquina de desarrollo sin configurar nada.
 
 # Identidad y sesiones
 
-No hay cuentas. La identidad se maneja así:
+Las cuentas son opcionales: se puede dibujar y entrar a pizarras ajenas como
+invitado, pero **crear una pizarra en vivo (compartir) exige una cuenta**.
 
-* **`userId`** — UUID v4 generado en el dispositivo la primera vez y guardado en
-  `AsyncStorage` (`src/features/session/store.ts`). Es el identificador con el que
-  el servidor asocia presencia y permisos.
+* **`userId`** — el identificador con el que el servidor asocia presencia y
+  permisos. Un invitado usa un UUID v4 generado en el dispositivo (`guestId`,
+  guardado en `AsyncStorage`, `src/features/session/store.ts`). Con sesión
+  iniciada es el id de la cuenta, `usr_…`; al cerrar sesión vuelve al `guestId`.
+* **Cuenta** — usuario (3-24 de `a-z 0-9 . _`, sin distinguir mayúsculas) y
+  contraseña (8-128, guardada con scrypt). `POST /auth/register` y
+  `POST /auth/login` devuelven `{ token, account }`.
+* **`sessionToken`** — token firmado (HMAC, 30 días) que prueba la cuenta. Va
+  como `Authorization: Bearer` en toda petición que no lleve un `boardToken`.
+  El servidor **rechaza cualquier `userId` `usr_…` sin su `sessionToken`**
+  (`AUTH_REQUIRED`): sin eso, cualquiera podría entrar como el creador y saltarse
+  el PIN. Un `userId` de invitado no prueba nada, como antes.
+* **PIN** — no se le pide al creador (con sesión) ni a una cuenta que ya entró
+  a esa pizarra desde que se fijó su PIN (`members` en la pizarra). Un PIN nuevo
+  vacía `members`: se le vuelve a pedir a todos. A un invitado se le pide siempre.
 * **`nickname`** — texto corto (máx. 24) que el usuario elige. Se pide una sola
   vez y se reutiliza. Debe ser único **dentro de una misma pizarra**.
 * **`boardToken`** — token de vida corta devuelto por `POST /boards/:id/join`.
@@ -61,7 +74,8 @@ socket para el mismo par, cierra el anterior con el código `4001` (ver
 **Cabeceras estándar en REST**
 
 * `X-User-Id: <userId>` en toda petición que represente a un usuario.
-* `Authorization: Bearer <boardToken>` en acciones de dueño (renombrar, permisos).
+* `Authorization: Bearer <boardToken>` en acciones de dueño (renombrar, permisos);
+  en las demás, `Authorization: Bearer <sessionToken>` si hay sesión iniciada.
 * `Content-Type: application/json` en peticiones con cuerpo.
 
 # Referencia de endpoints REST
@@ -72,7 +86,12 @@ Rutas relativas a `API_BASE_URL`. Una función por endpoint en
 | Acción | Método y ruta | Cuerpo | Respuesta | Quién |
 |---|---|---|---|---|
 | Salud | `GET /health` | — | `{ ok: true }` | público |
-| Crear pizarra | `POST /boards` | `CreateBoardRequest` | `201 BoardMeta` | cualquiera |
+| Registrarse | `POST /auth/register` | `{ username, password, nickname, avatar?, deviceId? }` | `201 { token, account }` | cualquiera |
+| Iniciar sesión | `POST /auth/login` | `{ username, password, deviceId? }` | `200 { token, account }` | cualquiera |
+| Mi cuenta | `GET /me` | — | `200 { id, username, nickname, avatar? }` | cuenta |
+| Mis pizarras | `GET /me/boards` | — | `200 { boards: MyBoard[] }` | cuenta |
+| Quitar de mis pizarras | `DELETE /me/boards/:id` | — | `204` (no la propia: esa se elimina) | cuenta |
+| Crear pizarra | `POST /boards` | `CreateBoardRequest` | `201 BoardMeta` | cuenta (`creatorId` = la cuenta) |
 | Obtener pizarra | `GET /boards/:id` | — | `200 BoardMeta` | cualquiera |
 | Resolver código | `GET /boards/code/:code` | — | `200 { boardId }` | cualquiera |
 | Entrar (join) | `POST /boards/:id/join` | `JoinBoardRequest` | `200 JoinBoardResponse` | cualquiera |
@@ -80,7 +99,10 @@ Rutas relativas a `API_BASE_URL`. Una función por endpoint en
 | Permisos | `PATCH /boards/:id/permissions` | `UpdatePermissionsRequest` | `200 BoardMeta` | creador |
 | Eliminar | `DELETE /boards/:id` | — | `204` (los demás reciben `error BOARD_NOT_FOUND` y cierre `4004`) | creador |
 | Snapshot | `GET /boards/:id/snapshot` | — | `200 BoardSnapshot` | miembro |
-| Importar | `POST /boards/import` | `{ snapshot, creatorId }` | `201 BoardMeta` | cualquiera |
+| Importar | `POST /boards/import` | `{ snapshot }` | `201 BoardMeta` (creador: la cuenta) | cuenta |
+
+`deviceId` en registro e inicio de sesión es el `guestId` del dispositivo: las
+pizarras que creó como invitado pasan a la cuenta.
 
 **Tipos** (ver `src/services/api/types.ts` y `src/features/board/model.ts`):
 
@@ -90,7 +112,13 @@ CreateBoardRequest = {
   access: 'public' | 'private';
   editPolicy: 'everyone' | 'selected' | 'creator-only';
   pin?: string;                 // requerido si access === 'private'
-  creatorId: string;            // userId del dispositivo
+  creatorId: string;            // id de la cuenta con sesión iniciada
+}
+
+MyBoard = {
+  id: string; shortCode: string; name: string;
+  access: 'public' | 'private'; hasPin: boolean;
+  role: 'creator' | 'member'; updatedAt: number;
 }
 
 JoinBoardRequest = { boardId: string; userId: string; nickname: string; pin?: string }
@@ -113,13 +141,14 @@ UpdatePermissionsRequest = {
 
 ```
 POST /boards
-X-User-Id: 6b1c…-uuid
-{ "name": "Sprint 12", "access": "public", "editPolicy": "everyone", "creatorId": "6b1c…-uuid" }
+X-User-Id: usr_3f9a…
+Authorization: Bearer <sessionToken>
+{ "name": "Sprint 12", "access": "public", "editPolicy": "everyone", "creatorId": "usr_3f9a…" }
 
 201
 { "id": "brd_ab12…", "shortCode": "K7M2QX", "name": "Sprint 12",
   "access": "public", "editPolicy": "everyone", "editors": [],
-  "creatorId": "6b1c…-uuid", "hasPin": false,
+  "creatorId": "usr_3f9a…", "hasPin": false,
   "createdAt": 1735820000000, "updatedAt": 1735820000000 }
 ```
 
@@ -145,6 +174,9 @@ Todas las respuestas 4xx/5xx usan el mismo sobre:
 | `VALIDATION` | 400 | cuerpo o parámetros inválidos |
 | `PIN_REQUIRED` | 401 | la pizarra es privada y falta el PIN |
 | `PIN_INVALID` | 401 | PIN incorrecto |
+| `AUTH_REQUIRED` | 401 | hace falta una cuenta (compartir), o el `sessionToken` falta, es inválido o caducó |
+| `LOGIN_INVALID` | 401 | usuario o contraseña incorrectos |
+| `USERNAME_TAKEN` | 409 | el usuario ya existe |
 | `FORBIDDEN` | 403 | el usuario no puede realizar la acción (p. ej. no es el creador) |
 | `BOARD_NOT_FOUND` | 404 | id o código inexistente |
 | `NICKNAME_TAKEN` | 409 | el nickname ya está en uso en esa pizarra |
@@ -179,6 +211,8 @@ Para universal/app links en producción hay que publicar
 * **Crear pizarra**: limitar por IP (p. ej. 10/hora) para evitar spam de códigos.
 * **Join / PIN**: limitar intentos de PIN por `(ip, boardId)` (p. ej. 5/min) para
   frenar fuerza bruta.
+* **Cuentas**: 10 registros/hora por IP; 10 intentos de inicio de sesión por
+  minuto por IP y por usuario.
 * **CORS**: el backend debe permitir el origen de la app web para REST y WS.
 * Ver también los límites de contenido en `docs/05-model-date` (`LIMITS`).
 
@@ -197,6 +231,11 @@ PERMISSIONS   PATCH /boards/:id/permissions
 DELETE        DELETE /boards/:id
 SNAPSHOT      GET   /boards/:id/snapshot
 IMPORT        POST  /boards/import
+REGISTER      POST  /auth/register
+LOGIN         POST  /auth/login
+ME            GET   /me
+MY_BOARDS     GET   /me/boards
+FORGET_BOARD  DELETE /me/boards/:id
 ```
 
 El WebSocket y su protocolo están en `docs/07-websockets` y

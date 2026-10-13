@@ -13,11 +13,13 @@ Production server: `https://shareboard-server.onrender.com` (WebSocket at
 
 ## Identity and authentication
 
-There are no accounts and no passwords. Three credentials exist:
+Accounts are optional; sharing (creating a live board) needs one. Four
+credentials exist:
 
 | Credential | What it is | Sent as |
 |------------|------------|---------|
-| **User id** | A UUID each device generates once and keeps | `X-User-Id` header, and in join bodies |
+| **User id** | A guest's UUID, generated once per device; or the account's `usr_…` id | `X-User-Id` header, and in join bodies |
+| **Session token** | Issued by `POST /auth/register` / `POST /auth/login`, valid 30 days, proves the account | `Authorization: Bearer …` on every other call (create, import, join, `/me`) |
 | **PIN** | 4 digits, only for private boards | In the join body |
 | **Board token** | Issued by `POST /boards/:id/join`, valid 12 hours, for one board | `?token=` on the WebSocket URL; `Authorization: Bearer …` on owner and member routes |
 
@@ -28,6 +30,12 @@ time), the expiry, and that the token belongs to the board in the URL.
 Permissions are always re-evaluated from the board's current settings, never
 taken from the token's `role`.
 
+The session token has the same shape, with the payload
+`{ kind: 'session', userId, exp }`. An account id (`usr_…`) is only accepted
+next to its session token: a guest id proves nothing, but an account id has to,
+because the creator and the board's `members` (accounts that got in since the
+PIN was last set) skip the PIN. Passwords are hashed with scrypt, like PINs.
+
 ## REST API
 
 Base URL: the server root. All bodies are JSON.
@@ -35,15 +43,20 @@ Base URL: the server root. All bodies are JSON.
 | Method and path | Auth | Purpose | Answer |
 |-----------------|------|---------|--------|
 | `GET /health` | — | Liveness, database and version | `{ ok, db, version }`; 503 if MongoDB is down |
-| `POST /boards` | `X-User-Id` | Create a board `{ name, access, editPolicy, pin?, creatorId }` | 201 + `BoardMeta` |
+| `POST /auth/register` | — | `{ username, password, nickname, avatar?, deviceId? }`; the guest `deviceId`'s boards move to the account | 201 + `{ token, account }` |
+| `POST /auth/login` | — | `{ username, password, deviceId? }` | `{ token, account }` |
+| `GET /me` | session | The account | `{ id, username, nickname, avatar? }` |
+| `GET /me/boards` | session | "My whiteboards": boards it made or got into | `{ boards: [{ id, shortCode, name, access, hasPin, role, updatedAt }] }` |
+| `DELETE /me/boards/:id` | session | Take a joined board off the list | 204 |
+| `POST /boards` | session | Create a board `{ name, access, editPolicy, pin?, creatorId }` (`creatorId` = the account) | 201 + `BoardMeta` |
 | `GET /boards/:id` | — | Board metadata | `BoardMeta` |
 | `GET /boards/code/:code` | — | Resolve a short code | `{ boardId }` |
-| `POST /boards/:id/join` | — | Join `{ userId, nickname, pin?, color?, avatar? }` | `{ boardToken, meta, you }` |
+| `POST /boards/:id/join` | session for an account id | Join `{ userId, nickname, pin?, color?, avatar? }`; no PIN for the creator or a member | `{ boardToken, meta, you }` |
 | `PATCH /boards/:id` | creator token | Rename `{ name }` | `BoardMeta` |
 | `PATCH /boards/:id/permissions` | creator token | `{ access?, editPolicy?, editors?, pin? }`; `pin: null` removes it | `BoardMeta` |
 | `DELETE /boards/:id` | creator token | Delete the board, disconnect everyone | 204 |
 | `GET /boards/:id/snapshot` | board token | Server-side export | `BoardSnapshot` |
-| `POST /boards/import` | `X-User-Id` | New board from `{ snapshot, creatorId }` | 201 + `BoardMeta` |
+| `POST /boards/import` | session | New board from `{ snapshot }`, made by the account | 201 + `BoardMeta` |
 | `POST /boards/:id/ai` | board token, edit rights | Draw with AI `{ prompt, at, preview: true }` | `{ reply, elements }` |
 | `POST /ai` | `X-User-Id` | Draw with AI for an offline board `{ prompt, at }` | `{ reply, elements }` |
 
@@ -60,6 +73,9 @@ Every error, REST or WebSocket, has the same shape:
 | `VALIDATION` | 400 | A field is missing, of the wrong type, or the board is full |
 | `PIN_REQUIRED` | 401 | Private board, no PIN given |
 | `PIN_INVALID` | 401 | Wrong PIN |
+| `AUTH_REQUIRED` | 401 | Sharing needs an account, or the session token is missing, bad or expired |
+| `LOGIN_INVALID` | 401 | Wrong username or password |
+| `USERNAME_TAKEN` | 409 | Username already registered |
 | `FORBIDDEN` | 403 | Not the creator, no edit rights, or a bad token |
 | `BOARD_NOT_FOUND` | 404 | Unknown board, code or route |
 | `NICKNAME_TAKEN` | 409 | Someone on the board uses that name |
