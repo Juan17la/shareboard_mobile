@@ -176,19 +176,21 @@ export function BoardHeader({
   const moreBtn = (
     <IconButton icon="more" label={t.boardMenu} onPress={onOpenMenu} size={30} iconSize={17} />
   );
-  // Landscape only: portrait reaches export through the share sheet.
+  const exportBtn = (
+    <IconButton
+      icon="download"
+      label={t.exportImage}
+      onPress={onOpenExport}
+      size={30}
+      iconSize={16}
+    />
+  );
   const left = (
     <View style={{ ...row, flexShrink: 1 }}>
       {settingsBtn}
       {moreBtn}
       {newChip}
-      <IconButton
-        icon="download"
-        label={t.exportImage}
-        onPress={onOpenExport}
-        size={30}
-        iconSize={16}
-      />
+      {exportBtn}
     </View>
   );
   const people = (
@@ -373,13 +375,12 @@ export function BoardHeader({
             {info}
           </View>
           <View style={{ ...row, gap: 8 }}>
+            {moreBtn}
+            <View style={{ flex: 1 }} />
             <View style={row}>
               {settingsBtn}
               {newChip}
-            </View>
-            <View style={{ flex: 1 }} />
-            <View style={row}>
-              {moreBtn}
+              {exportBtn}
               {shareBtn}
             </View>
           </View>
