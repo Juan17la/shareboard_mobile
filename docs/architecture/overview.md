@@ -63,10 +63,12 @@ in step by hand. A fix to one is ported to the other.
 
 ## Key design decisions
 
-**No accounts.** Each device generates a random, persistent user id (a UUID)
-the first time it runs. The id identifies a person for presence,
-roles and "who created this board". A private board is protected by a PIN,
-not by a login. This keeps the entry cost at zero: open the link, draw.
+**Accounts only for sharing.** Each device generates a random, persistent user
+id (a UUID) the first time it runs, and a guest draws and joins boards with it:
+the entry cost stays at zero. Sharing a board needs an account (username and
+password), whose `usr_…` id replaces the device's while signed in. A private
+board is protected by a PIN; its creator, and accounts that already got in, are
+not asked for it again.
 
 **The server is the authority, the clients are optimistic.** A client never
 waits for the server to show a change, but the server decides what is real:
