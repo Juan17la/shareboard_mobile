@@ -121,12 +121,9 @@ export function ShareSheet({
           </Pressable>
         </GlassPanel>
 
-        <View style={{ flexDirection: 'row', gap: 9 }}>
+        <View style={{ flexDirection: 'row', gap: 7 }}>
           <ShortcutTile icon="whatsapp" label={t.shareWhatsApp} onPress={sendWhatsApp} />
           <ShortcutTile icon="share" label={t.shareMore} onPress={sendMore} />
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 9 }}>
           <ShortcutTile icon="image" label={t.exportImage} onPress={onOpenExport} />
           <ShortcutTile icon="lock" label={t.permissions} onPress={onOpenPrivacy} />
         </View>
@@ -201,10 +198,10 @@ function ShortcutTile({
           accessibilityRole="button"
           accessibilityLabel={label}
           onPress={onPress}
-          style={{ alignItems: 'center', gap: 6, paddingVertical: 14, paddingHorizontal: 8 }}
+          style={{ alignItems: 'center', gap: 4, paddingVertical: 9, paddingHorizontal: 3 }}
         >
-          <Icon name={icon} size={20} color={c.text} />
-          <Txt weight="bold" size={11.5}>
+          <Icon name={icon} size={17} color={c.text} />
+          <Txt weight="bold" size={10} numberOfLines={1}>
             {label}
           </Txt>
         </Pressable>
