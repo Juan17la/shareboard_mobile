@@ -32,9 +32,17 @@ const json = async (path, body, headers = {}) => {
 };
 
 // One board per run; `POST /boards` allows 10 an hour, so pass BOARD_ID to reuse one.
-const boardId =
-  process.env.BOARD_ID ??
-  (await json('/boards', { name: 'socket check', access: 'public', editPolicy: 'everyone', creatorId: userId })).id;
+// Making a board needs an account, so a throwaway one makes it; the check itself joins as a guest.
+async function newBoard() {
+  const { token, account } = await json('/auth/register', {
+    username: `check_${Date.now().toString(36)}`,
+    password: 'socket check',
+    nickname: 'socket check',
+  });
+  const body = { name: 'socket check', access: 'public', editPolicy: 'everyone', creatorId: account.id };
+  return (await json('/boards', body, { Authorization: `Bearer ${token}` })).id;
+}
+const boardId = process.env.BOARD_ID ?? (await newBoard());
 const { boardToken } = await json(`/boards/${boardId}/join`, { userId, nickname: 'socket check' }, { 'X-User-Id': userId });
 
 const conn = new WebSocketConnection({ boardId, token: boardToken, userId, nickname: 'socket check' });

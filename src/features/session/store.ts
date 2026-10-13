@@ -3,8 +3,14 @@
  * (nickname + colour), the app preferences from the settings sheet, and a short
  * list of recently opened boards. Persisted to AsyncStorage.
  *
- * There are no accounts (docs/01-introduction). The `userId` is the identity the
- * backend keys presence and permissions on — never the IP.
+ * Accounts are optional. A guest is the `userId` this install made up; signing
+ * in swaps it for the account's (`usr_…`), and signing out swaps it back. The
+ * `userId` is the identity the backend keys presence and permissions on —
+ * never the IP. Sharing a board needs an account (docs/02).
+ *
+ * The account's session token is kept in AsyncStorage with the rest: app-private
+ * storage, unencrypted. It expires after 30 days; `expo-secure-store` would
+ * hold it in the keystore if that ever matters more than one dependency.
  *
  * One thing lives here that looks like it belongs to the board: `pins`. A
  * board's PIN never leaves the server (`BoardMeta` only carries `hasPin`), so
@@ -44,8 +50,22 @@ export interface AppSettings {
   drawToShape: boolean;
 }
 
+/** The signed-in account. */
+export interface Account {
+  id: string;
+  username: string;
+  /** Session token, sent as `Authorization: Bearer` (services/api/client.ts). */
+  token: string;
+}
+
 interface SessionState {
+  /** The id requests go out as: the account's when signed in, else `guestId`. */
   userId: string;
+  /** This install's own id, used while nobody is signed in. */
+  guestId: string;
+  account: Account | null;
+  /** The welcome screens have been through (or skipped). */
+  onboarded: boolean;
   nickname: string;
   /** Preferred presence colour; the server may still assign a different one. */
   nickColor: string;
@@ -64,6 +84,9 @@ interface SessionState {
   hydrated: boolean;
 
   setNickname(nickname: string): void;
+  signIn(account: Account, profile: { nickname: string; avatar?: string }): void;
+  signOut(): void;
+  setOnboarded(): void;
   setAvatar(avatar: string): void;
   setTheme(theme: Theme): void;
   toggleTheme(): void;
@@ -100,10 +123,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
   drawToShape: false,
 };
 
+const firstId = newUserId();
+
 export const useSessionStore = create<SessionState>()(
   persist(
     (set) => ({
-      userId: newUserId(),
+      userId: firstId,
+      guestId: firstId,
+      account: null,
+      onboarded: false,
       nickname: '',
       nickColor: Avatars[0].color,
       avatar: Avatars[0].icon,
@@ -117,6 +145,25 @@ export const useSessionStore = create<SessionState>()(
 
       setNickname(nickname) {
         set({ nickname: nickname.trim().slice(0, LIMITS.maxNicknameLength) });
+      },
+
+      /** The account's name and icon come along, so it looks the same on every device. */
+      signIn(account, profile) {
+        set({
+          account,
+          userId: account.id,
+          nickname: profile.nickname.slice(0, LIMITS.maxNicknameLength),
+          ...(profile.avatar ? { avatar: profile.avatar, nickColor: avatarColor(profile.avatar) } : null),
+        });
+      },
+
+      /** Back to this install's guest id; the boards opened as the account go with it. */
+      signOut() {
+        set((s) => ({ account: null, userId: s.guestId, recent: [], pins: {} }));
+      },
+
+      setOnboarded() {
+        set({ onboarded: true });
       },
 
       /** The icon brings its colour along: one choice, not two. */
@@ -179,6 +226,9 @@ export const useSessionStore = create<SessionState>()(
       storage: createJSONStorage(() => storageBackend()),
       partialize: (s) => ({
         userId: s.userId,
+        guestId: s.guestId,
+        account: s.account,
+        onboarded: s.onboarded,
         nickname: s.nickname,
         nickColor: s.nickColor,
         avatar: s.avatar,
@@ -201,14 +251,17 @@ export const useSessionStore = create<SessionState>()(
           nickColor: avatarColor(avatar),
           theme: saved.theme === 'dark' ? 'dark' : 'light',
           settings: { ...DEFAULT_SETTINGS, ...(saved.settings ?? {}), drawToShape: false },
+          // Saved before accounts: the id it had was the guest one.
+          guestId: saved.guestId ?? saved.userId ?? current.guestId,
+          account: saved.account ?? null,
+          // Saved before the welcome screens existed: someone who has used the app already.
+          onboarded: saved.onboarded ?? persisted != null,
           // Saved before the walkthrough existed: someone who has used the app already, not to be walked through it.
           tutorialDone: saved.tutorialDone ?? persisted != null,
         };
       },
       onRehydrateStorage: () => () => {
-        // Nobody is asked their name before they can draw: until they pick one
-        // in Settings, a guest name stands in (the identity screen is left for
-        // a clash with someone's name on the board).
+        // The welcome screens ask for a name; until then a guest name stands in.
         const { nickname, lang } = useSessionStore.getState();
         useSessionStore.setState({
           hydrated: true,
