@@ -35,12 +35,15 @@ export function ShareSheet({
   link,
   onOpenExport,
   onOpenPrivacy,
+  onNeedAccount,
 }: {
   open: boolean;
   onClose: () => void;
   link: string;
   onOpenExport: () => void;
   onOpenPrivacy: () => void;
+  /** Sharing the offline board needs an account; a guest is sent to sign in. */
+  onNeedAccount: () => void;
 }) {
   const c = useColors();
   const t = useT();
@@ -63,7 +66,9 @@ export function ShareSheet({
     toast(message);
   };
 
-  if (local) return <LocalShare open={open} onClose={onClose} onOpenExport={onOpenExport} />;
+  if (local) {
+    return <LocalShare open={open} onClose={onClose} onOpenExport={onOpenExport} onNeedAccount={onNeedAccount} />;
+  }
 
   return (
     <Sheet open={open} title={t.sheetShare} onClose={onClose} closeLabel={t.close}>
@@ -136,9 +141,20 @@ export function ShareSheet({
  * The offline board has no code yet (plans/34): sharing makes a live copy of
  * it and opens that, where Share has its code and link. The offline board stays as it is — a private copy, never merged with the live one.
  */
-function LocalShare({ open, onClose, onOpenExport }: { open: boolean; onClose: () => void; onOpenExport: () => void }) {
+function LocalShare({
+  open,
+  onClose,
+  onOpenExport,
+  onNeedAccount,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onOpenExport: () => void;
+  onNeedAccount: () => void;
+}) {
   const t = useT();
   const userId = useSessionStore((s) => s.userId);
+  const signedIn = useSessionStore((s) => s.account !== null);
   const [busy, setBusy] = useState(false);
   const [sharedAs, setSharedAs] = useState<string | undefined>();
   useEffect(() => {
@@ -166,10 +182,15 @@ function LocalShare({ open, onClose, onOpenExport }: { open: boolean; onClose: (
   return (
     <Sheet open={open} title={t.sheetShare} onClose={onClose} closeLabel={t.close}>
       <View style={{ gap: 12 }}>
+        {/* A guest is asked to sign in first: a live board belongs to an account. */}
         <Txt size={13} leading={1.45} tone="secondary">
-          {t.shareLocalBody}
+          {signedIn ? t.shareLocalBody : t.signInToShareBody}
         </Txt>
-        <Button label={t.shareLocalCta} icon="share" loading={busy} fullWidth onPress={() => void promote()} />
+        {signedIn ? (
+          <Button label={t.shareLocalCta} icon="share" loading={busy} fullWidth onPress={() => void promote()} />
+        ) : (
+          <Button label={t.signInToShare} icon="user" fullWidth onPress={onNeedAccount} />
+        )}
         {sharedAs ? (
           <Button label={t.openShared} icon="link" variant="secondary" fullWidth onPress={() => go(sharedAs)} />
         ) : null}
