@@ -7,6 +7,18 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Welcome screens on first launch: what Shareboard does, your name and icon,
+  then create an account or sign in ("Not now" skips it).
+- Accounts: sign in, create an account or sign out from Settings → Account.
+  "My whiteboards" lists every board the account made or joined, on any device,
+  and a private one opens without its PIN again.
+
+### Changed
+
+- Sharing a board (or creating or importing one) asks a guest to sign in first.
+
 ## [1.5.0-beta] - 2026-10-09
 
 ### Changed
