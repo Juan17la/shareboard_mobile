@@ -12,6 +12,29 @@ import type {
   UserId,
 } from '@/features/board/model';
 
+export interface AccountProfile {
+  id: UserId;
+  username: string;
+  nickname: string;
+  avatar?: string;
+}
+
+export interface SignedIn {
+  token: string;
+  account: AccountProfile;
+}
+
+/** One row of "My whiteboards". */
+export interface MyBoard {
+  id: string;
+  shortCode: string;
+  name: string;
+  access: BoardAccess;
+  hasPin: boolean;
+  role: 'creator' | 'member';
+  updatedAt: number;
+}
+
 export interface CreateBoardRequest {
   name: string;
   access: BoardAccess;

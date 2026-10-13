@@ -28,6 +28,8 @@ import {
   DotsThreeIcon,
   DownloadSimpleIcon,
   EraserIcon,
+  EyeIcon,
+  EyeSlashIcon,
   GearSixIcon,
   SlidersHorizontalIcon,
   HandIcon,
@@ -56,6 +58,7 @@ import {
   TrashIcon,
   TriangleIcon,
   UploadSimpleIcon,
+  UserCircleIcon,
   UsersIcon,
   WarningIcon,
   XCircleIcon,
@@ -120,7 +123,10 @@ export type IconName =
   | 'to-front'
   | 'moon'
   | 'sun'
-  | 'sparkle';
+  | 'sparkle'
+  | 'user'
+  | 'eye'
+  | 'eye-slash';
 
 /** `bold` for the small marks (chevrons, the cross) so they hold up at 15px. */
 const GLYPHS: Record<IconName, [PhosphorIcon, IconWeight?]> = {
@@ -176,6 +182,9 @@ const GLYPHS: Record<IconName, [PhosphorIcon, IconWeight?]> = {
   moon: [MoonIcon],
   sun: [SunIcon],
   sparkle: [SparkleIcon],
+  user: [UserCircleIcon],
+  eye: [EyeIcon],
+  'eye-slash': [EyeSlashIcon],
 };
 
 export interface IconProps {

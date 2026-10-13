@@ -9,8 +9,12 @@
  *
  * There is no screen behind it: the app opens on the last whiteboard, and the
  * menu is where a new one, an old one, a code or a file is reached from. The
- * identity step only appears when a name clashes with someone's on the board
- * (everyone starts with a guest name, changed in the settings).
+ * welcome screens come first, once per install; after them the identity step
+ * only appears when a name clashes with someone's on the board.
+ *
+ * A live board is a shared one, so making one (new, imported, or the offline
+ * board shared) needs an account: a guest is shown the account sheet instead,
+ * and brought back to where they were once signed in.
  */
 import { useCanvasRef } from '@shopify/react-native-skia';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -28,7 +32,9 @@ import { Toolbar } from '@/components/board/Toolbar';
 import { Tutorial } from '@/components/board/Tutorial';
 import { BoardHeader } from '@/components/header/BoardHeader';
 import { NicknameScreen } from '@/components/screens/NicknameScreen';
+import { Onboarding } from '@/components/screens/Onboarding';
 import { PinScreen } from '@/components/screens/PinScreen';
+import { AccountSheet } from '@/components/sheets/AccountSheet';
 import { AiSheet } from '@/components/sheets/AiSheet';
 import { BoardsSheet } from '@/components/sheets/BoardsSheet';
 import { ExportSheet } from '@/components/sheets/ExportSheet';
@@ -67,7 +73,8 @@ type SheetName =
   | 'settings'
   | 'ai'
   | 'join'
-  | 'boards';
+  | 'boards'
+  | 'account';
 type ConfirmName = 'clear' | 'delete';
 
 /**
@@ -93,6 +100,9 @@ function BoardScreen({ id }: { id: string }) {
   const forgetBoard = useSessionStore((s) => s.forgetBoard);
   const userId = useSessionStore((s) => s.userId);
   const haptics = useSessionStore((s) => s.settings.haptics);
+  const hydrated = useSessionStore((s) => s.hydrated);
+  const onboarded = useSessionStore((s) => s.onboarded);
+  const signedIn = useSessionStore((s) => s.account !== null);
 
   const meta = useBoardStore((s) => s.meta);
   const clearBoard = useBoardStore((s) => s.clearBoard);
@@ -103,7 +113,15 @@ function BoardScreen({ id }: { id: string }) {
   const [codeCopied, setCodeCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const sync = useBoardSync(id);
+  // Where to go back to once signed in, and why the account sheet is asking.
+  const [afterSignIn, setAfterSignIn] = useState<SheetName | null>(null);
+  const askAccount = (from: SheetName | null) => {
+    setAfterSignIn(from);
+    setSheet('account');
+  };
+
+  // Nothing connects while the welcome screens are up: the name is still being chosen.
+  const sync = useBoardSync(id, { paused: hydrated && !onboarded });
 
   // What the glass panels blur: the canvas itself, via throttled snapshots.
   const canvasRef = useCanvasRef();
@@ -124,6 +142,11 @@ function BoardScreen({ id }: { id: string }) {
 
   const handleImportSnapshot = useCallback(
     async (snapshot: BoardSnapshot) => {
+      if (!useSessionStore.getState().account) {
+        setAfterSignIn('import');
+        setSheet('account');
+        return;
+      }
       // Always a new board, never a paste into this one — importing must not be
       // able to overwrite something other people are working on.
       const created = await importSnapshot(
@@ -138,6 +161,10 @@ function BoardScreen({ id }: { id: string }) {
   const [creating, setCreating] = useState(false);
   /** A fresh, empty whiteboard — public, anyone with the code can draw; the access button changes that. */
   async function createNew(name = '') {
+    if (!signedIn) {
+      askAccount('join');
+      return;
+    }
     setCreating(true);
     const request = {
       name: name || t.newBoardName,
@@ -199,6 +226,8 @@ function BoardScreen({ id }: { id: string }) {
 
   // --- gates -------------------------------------------------------------
 
+  if (hydrated && !onboarded) return <Onboarding landscape={landscape} />;
+
   if (sync.phase === 'need-nickname') {
     return (
       <NicknameScreen
@@ -213,7 +242,16 @@ function BoardScreen({ id }: { id: string }) {
   }
 
   if (sync.phase === 'error') {
-    return <BoardError t={t} message={sync.error} creating={creating} onNew={() => void createNew()} />;
+    return (
+      <BoardError
+        t={t}
+        message={sync.error}
+        creating={creating}
+        signedIn={signedIn}
+        // A guest cannot make a live board; their own offline one is always there.
+        onNew={() => (signedIn ? void createNew() : router.replace('/'))}
+      />
+    );
   }
 
   if (sync.phase === 'loading' || !nickname) {
@@ -262,6 +300,7 @@ function BoardScreen({ id }: { id: string }) {
         link={link}
         onOpenExport={() => setSheet('export')}
         onOpenPrivacy={() => setSheet('privacy')}
+        onNeedAccount={() => askAccount('share')}
       />
       <PeopleSheet open={sheet === 'people'} onClose={() => setSheet(null)} />
       <AiSheet open={sheet === 'ai'} onClose={() => setSheet(null)} />
@@ -299,6 +338,13 @@ function BoardScreen({ id }: { id: string }) {
         onClose={() => setSheet(null)}
         onAskClear={() => setConfirm('clear')}
         onAskDelete={() => setConfirm('delete')}
+        onOpenAccount={() => askAccount(null)}
+      />
+      <AccountSheet
+        open={sheet === 'account'}
+        onClose={() => setSheet(null)}
+        reason={afterSignIn ? t.signInToShareBody : undefined}
+        onSignedIn={() => setSheet(afterSignIn)}
       />
 
       <ConfirmDialog
@@ -324,11 +370,13 @@ function BoardError({
   t,
   message,
   creating,
+  signedIn,
   onNew,
 }: {
   t: Strings;
   message: string | null;
   creating: boolean;
+  signedIn: boolean;
   onNew: () => void;
 }) {
   return (
@@ -343,7 +391,13 @@ function BoardError({
             {message}
           </Txt>
         ) : null}
-        <Button label={t.newWhiteboard} icon="plus" variant="secondary" loading={creating} onPress={onNew} />
+        <Button
+          label={signedIn ? t.newWhiteboard : t.localBoardName}
+          icon={signedIn ? 'plus' : 'pencil'}
+          variant="secondary"
+          loading={creating}
+          onPress={onNew}
+        />
       </View>
     </View>
   );

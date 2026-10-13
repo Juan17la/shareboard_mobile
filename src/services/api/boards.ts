@@ -1,15 +1,18 @@
 /**
  * Board REST API — one function per endpoint in docs/02-backend-connection.
  *
- * Auth model: no accounts. The device generates a persistent `userId` and
- * sends it as `X-User-Id`; `POST /boards/:id/join` returns a short-lived
- * `boardToken` that owner-only calls (rename, permissions, snapshot) send as
- * `Authorization: Bearer`.
+ * Auth model: every request carries the user's id as `X-User-Id` — a guest id
+ * this install made up, or the account's. Signed in, the session token goes
+ * along as `Authorization: Bearer` (client.ts; it is what lets the server
+ * believe an account id). `POST /boards/:id/join` returns a short-lived
+ * `boardToken` that owner-only calls (rename, permissions, snapshot) send instead.
  */
 import type { BoardElement, BoardMeta, BoardSnapshot, Point, UserId } from '@/features/board/model';
 
 import { request } from './client';
 import type {
+  MyBoard,
+  SignedIn,
   CreateBoardRequest,
   JoinBoardRequest,
   JoinBoardResponse,
@@ -68,3 +71,22 @@ export const updatePermissions = (boardId: string, patch: UpdatePermissionsReque
 /** Import always creates a new board. -> 201 BoardMeta */
 export const importSnapshot = (snapshot: BoardSnapshot, creatorId: UserId) =>
   request<BoardMeta>('POST', '/boards/import', { body: { snapshot, creatorId }, userId: creatorId });
+
+/** `deviceId`: the guest id used until now, whose boards the account takes over. -> 201 */
+export const register = (body: {
+  username: string;
+  password: string;
+  nickname: string;
+  avatar?: string;
+  deviceId: UserId;
+}) => request<SignedIn>('POST', '/auth/register', { body });
+
+/** errors: 401 LOGIN_INVALID, 429 */
+export const login = (body: { username: string; password: string; deviceId: UserId }) =>
+  request<SignedIn>('POST', '/auth/login', { body });
+
+/** Every board the signed-in account made or has got into, newest first. */
+export const getMyBoards = async () => (await request<{ boards: MyBoard[] }>('GET', '/me/boards')).boards;
+
+/** Takes a board off the account's list (not the creator's own). */
+export const forgetMyBoard = (boardId: string) => request<void>('DELETE', `/me/boards/${id(boardId)}`);

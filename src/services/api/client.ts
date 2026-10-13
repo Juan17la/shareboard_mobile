@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '@/constants/config';
+import { useSessionStore } from '@/features/session/store';
 
 import type { ApiErrorBody } from './types';
 
@@ -17,7 +18,7 @@ export interface RequestOptions {
   body?: unknown;
   /** The caller's persistent user id -> `X-User-Id`. */
   userId?: string;
-  /** Board token from `join` -> `Authorization: Bearer`. */
+  /** Board token from `join` -> `Authorization: Bearer`; else the account's session token. */
   token?: string;
   signal?: AbortSignal;
 }
@@ -34,7 +35,8 @@ export async function request<T>(
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
   if (opts.userId) headers['X-User-Id'] = opts.userId;
-  if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
+  const token = opts.token ?? useSessionStore.getState().account?.token;
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   let res: Response;
   try {
