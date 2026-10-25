@@ -34,7 +34,9 @@ import {
   SlidersHorizontalIcon,
   HandIcon,
   HexagonIcon,
+  HighlighterIcon,
   ImageIcon,
+  LayoutIcon,
   LineSegmentIcon,
   LinkIcon,
   LockSimpleIcon,
@@ -42,8 +44,8 @@ import {
   MagnifyingGlassIcon,
   MinusIcon,
   MoonIcon,
+  NoteBlankIcon,
   PaintBucketIcon,
-  PencilRulerIcon,
   PencilSimpleIcon,
   PencilSimpleLineIcon,
   PlusIcon,
@@ -52,9 +54,12 @@ import {
   SelectionSlashIcon,
   ShareNetworkIcon,
   ShapesIcon,
+  SmileyIcon,
   SparkleIcon,
   SunIcon,
+  TargetIcon,
   TextTIcon,
+  TimerIcon,
   TrashIcon,
   TriangleIcon,
   UploadSimpleIcon,
@@ -99,8 +104,6 @@ export type IconName =
   | 'warning'
   | 'hand'
   | 'pencil'
-  /** The pencil in "draw to shape" mode: it straightens what it draws. */
-  | 'pencil-shape'
   | 'eraser'
   | 'shapes'
   | 'text'
@@ -126,7 +129,14 @@ export type IconName =
   | 'sparkle'
   | 'user'
   | 'eye'
-  | 'eye-slash';
+  | 'eye-slash'
+  | 'sticky'
+  | 'highlighter'
+  | 'laser'
+  | 'vote'
+  | 'smiley'
+  | 'timer'
+  | 'template';
 
 /** `bold` for the small marks (chevrons, the cross) so they hold up at 15px. */
 const GLYPHS: Record<IconName, [PhosphorIcon, IconWeight?]> = {
@@ -158,7 +168,6 @@ const GLYPHS: Record<IconName, [PhosphorIcon, IconWeight?]> = {
   warning: [WarningIcon],
   hand: [HandIcon],
   pencil: [PencilSimpleIcon],
-  'pencil-shape': [PencilRulerIcon],
   eraser: [EraserIcon],
   shapes: [ShapesIcon],
   text: [TextTIcon],
@@ -185,6 +194,13 @@ const GLYPHS: Record<IconName, [PhosphorIcon, IconWeight?]> = {
   user: [UserCircleIcon],
   eye: [EyeIcon],
   'eye-slash': [EyeSlashIcon],
+  sticky: [NoteBlankIcon],
+  highlighter: [HighlighterIcon],
+  laser: [TargetIcon],
+  vote: [CircleIcon, 'fill'],
+  smiley: [SmileyIcon],
+  timer: [TimerIcon],
+  template: [LayoutIcon],
 };
 
 export interface IconProps {
