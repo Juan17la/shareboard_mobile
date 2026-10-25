@@ -7,6 +7,8 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.7.0-beta] - 2026-10-25
+
 ### Added
 
 - Sticky notes, vote dots, highlighter, laser pointer, Lock / Unlock in the hold menu, templates, reactions and a class timer (same as the web app).
