@@ -147,7 +147,7 @@ imports, so it runs under Node in the checks:
 
 - **Strokes:** point simplification before sending, and Catmull-Rom smoothing
   converted to Bézier curves for drawing.
-- **Camera:** zoom around a point (25 %–600 %), fit to content.
+- **Camera:** zoom around a point (10 %–2,000 %), fit to content.
 - **Hit testing:** what is under the pointer, taking stroke width, hollow
   versus filled figures and rotation into account.
 - **Handles:** resize, rotate, group resize (several elements scale from their
