@@ -92,7 +92,7 @@ function systemTypefaces(): Typefaces {
   return { sans: faces, serif: faces, mono: faces, hand: faces };
 }
 
-const useTypefaces = create<Typefaces>(systemTypefaces);
+export const useTypefaces = create<Typefaces>(systemTypefaces);
 
 // Once per app, from the moment the board code is loaded; each typeface
 // arrives on its own, and one that fails keeps the system face.

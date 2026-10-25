@@ -90,7 +90,7 @@ function turned(el: BoardElement, inner: string): string {
 function elementSvg(el: BoardElement, ground: string): string {
   switch (el.kind) {
     case 'stroke':
-      return `<path d="${strokeToSvgPath(el.points)}" fill="none" stroke="${el.color}" stroke-width="${el.width}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      return `<path d="${strokeToSvgPath(el.points)}" fill="none" stroke="${el.color}" stroke-width="${el.width}" stroke-linecap="round" stroke-linejoin="round"${el.tool === 'highlighter' ? ' stroke-opacity="0.4" style="mix-blend-mode:multiply"' : ''}/>`;
     case 'shape':
       return shapeSvg(el, ground) + labelSvg(el);
     case 'text': {
@@ -116,6 +116,8 @@ function shapeSvg(el: ShapeElement, ground: string): string {
   const { x, y, width: w, height: h } = shapeBounds(el);
   const outline = dashIntervals(el.dash, el.strokeWidth);
   const paint = `fill="${el.fill ?? 'none'}" stroke="${el.stroke}" stroke-width="${el.strokeWidth}" stroke-linejoin="round"${outline ? ` stroke-linecap="round" stroke-dasharray="${outline.join(' ')}"` : ''}`;
+  // A sticky note: paper, no outline (the board's drop shadow is left out).
+  if (el.sticky) return `<rect x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}" fill="${el.fill ?? '#FFE58A'}"/>`;
   if (el.shape === 'rectangle') {
     const rx = el.rounded ? cornerRadius(w, h) : 0;
     return `<rect x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}" rx="${r(rx)}" ${paint}/>`;

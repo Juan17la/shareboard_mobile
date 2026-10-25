@@ -8,9 +8,10 @@
  * right here rather than a route, so the board stays visible underneath.
  *
  * There is no screen behind it: the app opens on the last whiteboard, and the
- * menu is where a new one, an old one, a code or a file is reached from. The
- * welcome screens come first, once per install; after them the identity step
- * only appears when a name clashes with someone's on the board.
+ * menu is where a new one, an old one, a code or a file is reached from.
+ * Nothing comes before the first stroke: the identity step appears the first
+ * time a live board opens (shared or joined), then only when a name clashes
+ * with someone's on the board.
  *
  * A live board is a shared one, so making one (new, imported, or the offline
  * board shared) needs an account: a guest is shown the account sheet instead,
@@ -18,8 +19,7 @@
  */
 import { useCanvasRef } from '@shopify/react-native-skia';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -27,12 +27,12 @@ import { BoardCanvas } from '@/components/board/BoardCanvas';
 import { ConnectionBanner } from '@/components/board/ConnectionBanner';
 import { useBoardMirror } from '@/components/board/BoardMirror';
 import { BottomControls } from '@/components/board/BottomControls';
+import { ReactionStream, TimerPill } from '@/components/board/ClassControls';
 import { PERF_HUD, PerfHud } from '@/components/board/PerfHud';
 import { Toolbar } from '@/components/board/Toolbar';
 import { Tutorial } from '@/components/board/Tutorial';
 import { BoardHeader } from '@/components/header/BoardHeader';
 import { NicknameScreen } from '@/components/screens/NicknameScreen';
-import { Onboarding } from '@/components/screens/Onboarding';
 import { PinScreen } from '@/components/screens/PinScreen';
 import { AccountSheet } from '@/components/sheets/AccountSheet';
 import { AiSheet } from '@/components/sheets/AiSheet';
@@ -41,6 +41,7 @@ import { ExportSheet } from '@/components/sheets/ExportSheet';
 import { ImportSheet } from '@/components/sheets/ImportSheet';
 import { JoinSheet } from '@/components/sheets/JoinSheet';
 import { MenuSheet } from '@/components/sheets/MenuSheet';
+import { TemplatesSheet } from '@/components/sheets/TemplatesSheet';
 import { PeopleSheet } from '@/components/sheets/PeopleSheet';
 import { PrivacySheet } from '@/components/sheets/PrivacySheet';
 import { SettingsSheet } from '@/components/sheets/SettingsSheet';
@@ -57,6 +58,7 @@ import { fill, type Strings } from '@/features/i18n/strings';
 import { useT } from '@/features/i18n/store';
 import type { BoardSnapshot } from '@/features/board/model';
 import { useBoardStore } from '@/features/board/store';
+import { isLocalId } from '@/features/board/local';
 import { useSessionStore, useColors } from '@/features/session/store';
 import { useBoardSync } from '@/hooks/use-board-sync';
 import { createBoard, deleteBoard, importSnapshot } from '@/services/api/boards';
@@ -72,6 +74,7 @@ type SheetName =
   | 'menu'
   | 'settings'
   | 'ai'
+  | 'templates'
   | 'join'
   | 'boards'
   | 'account';
@@ -110,8 +113,6 @@ function BoardScreen({ id }: { id: string }) {
   const [sheet, setSheet] = useState<SheetName | null>(null);
   const [confirm, setConfirm] = useState<ConfirmName | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [codeCopied, setCodeCopied] = useState(false);
-  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Where to go back to once signed in, and why the account sheet is asking.
   const [afterSignIn, setAfterSignIn] = useState<SheetName | null>(null);
@@ -120,25 +121,12 @@ function BoardScreen({ id }: { id: string }) {
     setSheet('account');
   };
 
-  // Nothing connects while the welcome screens are up: the name is still being chosen.
-  const sync = useBoardSync(id, { paused: hydrated && !onboarded });
+  // A live board waits for a name, asked once; the offline board needs none.
+  const sync = useBoardSync(id, { paused: hydrated && !onboarded && !isLocalId(id) });
 
   // What the glass panels blur: the canvas itself, via throttled snapshots.
   const canvasRef = useCanvasRef();
   const mirror = useBoardMirror(canvasRef);
-
-  useEffect(() => () => {
-    if (copyTimer.current) clearTimeout(copyTimer.current);
-  }, []);
-
-  const copyCode = useCallback(async () => {
-    if (!meta) return;
-    await Clipboard.setStringAsync(meta.shortCode);
-    setCodeCopied(true);
-    toast(t.toastCopied);
-    if (copyTimer.current) clearTimeout(copyTimer.current);
-    copyTimer.current = setTimeout(() => setCodeCopied(false), 1500);
-  }, [meta, t]);
 
   const handleImportSnapshot = useCallback(
     async (snapshot: BoardSnapshot) => {
@@ -226,13 +214,30 @@ function BoardScreen({ id }: { id: string }) {
 
   // --- gates -------------------------------------------------------------
 
-  if (hydrated && !onboarded) return <Onboarding landscape={landscape} />;
+  // An account is registered under the name, so one not chosen yet is asked first.
+  if (sheet === 'account' && !onboarded) {
+    return (
+      <NicknameScreen
+        landscape={landscape}
+        blank
+        onCancel={() => setSheet(null)}
+        onContinue={(name) => {
+          useSessionStore.getState().setNickname(name);
+          useSessionStore.getState().setOnboarded();
+        }}
+      />
+    );
+  }
 
   if (sync.phase === 'need-nickname') {
     return (
       <NicknameScreen
         landscape={landscape}
-        onContinue={(name) => sync.submitNickname(name)}
+        blank={!onboarded}
+        onContinue={(name) => {
+          sync.submitNickname(name);
+          useSessionStore.getState().setOnboarded();
+        }}
       />
     );
   }
@@ -261,33 +266,26 @@ function BoardScreen({ id }: { id: string }) {
   // --- the board ----------------------------------------------------------
 
   const link = meta ? boardShareLink(WEB_BASE_URL, meta.shortCode) : '';
-  // Portrait: 6 + 34 (title row) + 6 + 30 (action strip) + 6; landscape is the
-  // one row: 6 + 34 + 4. Plus a little run-out for the scrim's fade so the
-  // header never sits on its edge.
-  const headerHeight = insets.top + (landscape ? 50 : 92);
+  // One header row in either orientation: 4 + 48 (chip and buttons) + 4, plus the top inset.
+  const headerHeight = insets.top + 56;
 
   return (
     <GlassScene render={mirror} style={{ backgroundColor: c.background }}>
-      <BoardCanvas onCursorMove={sync.sendCursor} canvasRef={canvasRef} />
+      <BoardCanvas onCursorMove={sync.sendCursor} onPreview={sync.sendPreview} canvasRef={canvasRef} />
 
       <BoardHeader
-        landscape={landscape}
-        codeCopied={codeCopied}
-        onCopyCode={copyCode}
         onOpenPeople={() => setSheet('people')}
         onOpenMenu={() => setSheet('menu')}
-        onOpenSettings={() => setSheet('settings')}
-        onOpenNew={() => setSheet('join')}
-        onOpenPrivacy={() => setSheet('privacy')}
         onOpenShare={() => setSheet('share')}
-        onOpenExport={() => setSheet('export')}
       />
 
       <Toolbar landscape={landscape} />
-      <BottomControls top={headerHeight + 6} onOpenAi={() => setSheet('ai')} />
-      <ConnectionBanner top={headerHeight + 50} onRetry={sync.retry} />
+      <BottomControls top={headerHeight + 6} onReact={sync.sendReact} onTimer={sync.sendTimer} />
+      <TimerPill top={headerHeight + 6} />
+      <ReactionStream bottom={Math.max(insets.bottom, 16) + 140} />
+      <ConnectionBanner top={headerHeight + 54} onRetry={sync.retry} />
       {PERF_HUD ? <PerfHud /> : null}
-      <Tutorial />
+      <Tutorial offerTop={headerHeight + 54} />
 
       <ToastHost
         bottom={Math.max(insets.bottom, 16) + 128}
@@ -304,6 +302,7 @@ function BoardScreen({ id }: { id: string }) {
       />
       <PeopleSheet open={sheet === 'people'} onClose={() => setSheet(null)} />
       <AiSheet open={sheet === 'ai'} onClose={() => setSheet(null)} />
+      <TemplatesSheet open={sheet === 'templates'} onClose={() => setSheet(null)} />
       <PrivacySheet
         open={sheet === 'privacy'}
         onClose={() => setSheet(null)}
@@ -320,11 +319,14 @@ function BoardScreen({ id }: { id: string }) {
         open={sheet === 'menu'}
         onClose={() => setSheet(null)}
         onOpenBoards={() => setSheet('boards')}
+        onOpenNew={() => setSheet('join')}
         onOpenSettings={() => setSheet('settings')}
         onOpenImport={() => setSheet('import')}
+        onOpenExport={() => setSheet('export')}
         onOpenPrivacy={() => setSheet('privacy')}
         onOpenPeople={() => setSheet('people')}
         onOpenAi={() => setSheet('ai')}
+        onOpenTemplates={() => setSheet('templates')}
       />
       <BoardsSheet open={sheet === 'boards'} onClose={() => setSheet(null)} currentId={id} />
       <JoinSheet

@@ -6,7 +6,7 @@
  * this device and its edits are written back there.
  *
  * Returns a `phase` the screen uses to gate UI (nickname prompt, PIN prompt,
- * loading, ready, error) plus `sendCursor` for the canvas. Full sequence in
+ * loading, ready, error) plus `sendCursor` and `sendPreview` for the canvas. Full sequence in
  * docs/06-loading-exporting and docs/07-websockets.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -23,6 +23,8 @@ import { ApiError } from '@/services/api/client';
 import { getBoard, joinBoard } from '@/services/api/boards';
 import { TAB_ID, WebSocketConnection } from '@/services/realtime/socket';
 import type { BoardElement, Participant, Point } from '@/features/board/model';
+import type { Preview, Reaction } from '@/services/realtime/protocol';
+import { pushLaser } from '@/components/board/laser';
 import { throttle } from '@/utils/throttle';
 
 /** Errors that end the session even once the board is open. */
@@ -37,8 +39,14 @@ export interface BoardSync {
   submitPin(pin: string): void;
   /** Save a nickname and (re)connect with it — also the retry after a clash. */
   submitNickname(nickname: string): void;
-  /** Broadcast the local cursor (throttled). */
-  sendCursor(at: Point): void;
+  /** Broadcast the local cursor (throttled); `laser` while it is the laser pointer. */
+  sendCursor(at: Point, laser?: boolean): void;
+  /** Float an emoji up everyone's screen, this one's included. */
+  sendReact(emoji: Reaction): void;
+  /** Start a countdown of `ms` for everyone, or stop it (`null`). */
+  sendTimer(ms: number | null): void;
+  /** Broadcast what is being drawn or dragged (throttled); `null` when the gesture is over. */
+  sendPreview(preview: Preview | null): void;
   /** Reconnect now, after the socket gave up on its own. */
   retry(): void;
   /** The board is gone (deleted, or its server forgot it): the caller should let it go. */
@@ -144,6 +152,7 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
           you: msg.you,
           seq: msg.seq,
         });
+        useBoardStore.getState().setTimerLeft(msg.timerLeft ?? null);
         // A reconnect starts with no hold on the server: claim the selection again.
         const now = useBoardStore.getState();
         conn.send({ type: 'select', boardId, ids: now.canEditNow() ? now.selectedIds : [] });
@@ -177,7 +186,11 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
           });
         }
         moves[msg.from] = msg.at;
+        if (msg.laser) pushLaser(msg.from, msg.at);
       });
+      conn.on('react', (msg) => useBoardStore.getState().addReaction(msg.from, msg.emoji));
+      conn.on('timer', (msg) => useBoardStore.getState().setTimerLeft(msg.left));
+      conn.on('preview', (msg) => useBoardStore.getState().setPreview(msg.from, msg.preview));
       conn.on('permissions', (msg) => useBoardStore.getState().setMeta(msg.meta, msg.you));
       conn.on('resync', (msg) => useBoardStore.getState().resync(msg.elements, msg.seq));
       conn.on('error', (msg) => {
@@ -250,6 +263,9 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
     };
   }, [sessionHydrated, nickname, paused, boardId, connect]);
 
+  /** Whether the others are shown a preview of ours; `ending` waits for the outbox (`sendPreview`). */
+  const previewShown = useRef<'no' | 'yes' | 'ending'>('no');
+
   // Drain the store outbox onto the wire.
   useEffect(() => {
     if (isLocalId(boardId)) {
@@ -286,6 +302,11 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
       const batch = useBoardStore.getState().drainOutbox();
       // One frame per chunk: a paste of a few photos would overflow the server's frame cap.
       if (batch) for (const ops of splitOps(batch.ops)) conn.send({ type: 'op', boardId, ops, seq: batch.seq });
+      // The preview these ops replace ends after them, so it never blinks out first.
+      if (previewShown.current === 'ending') {
+        previewShown.current = 'no';
+        conn.send({ type: 'preview', boardId, preview: null });
+      }
     }, REALTIME.outboxFlushMs);
 
     const unsub = useBoardStore.subscribe((state, prev) => {
@@ -337,11 +358,37 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
     };
   }, [boardId]);
 
-  // Throttled cursor broadcaster, rebuilt per board.
-  const cursorSenderRef = useRef<((at: Point) => void) | null>(null);
+  // What is being drawn or dragged, for the others to watch: throttled to ~30
+  // a second. The `null` that ends it waits for the ops still queued (the
+  // stroke or the drop it became), so on the others' screens the preview gives
+  // way to the real thing instead of vanishing a moment before it lands.
+  const previewSenderRef = useRef<((preview: Preview | null) => void) | null>(null);
   useEffect(() => {
-    const send = throttle((at: Point) => {
-      connRef.current?.send({ type: 'cursor', boardId, at });
+    const send = throttle((preview: Preview | null) => {
+      const conn = connRef.current;
+      if (!conn || conn.getState() !== 'online') return;
+      if (preview) {
+        previewShown.current = 'yes';
+        conn.send({ type: 'preview', boardId, preview });
+      } else if (previewShown.current === 'yes') {
+        // Ops still queued: the flush sends the end after them.
+        previewShown.current = useBoardStore.getState().outbox.length ? 'ending' : 'no';
+        if (previewShown.current === 'no') conn.send({ type: 'preview', boardId, preview: null });
+      }
+    }, REALTIME.previewThrottleMs);
+    previewSenderRef.current = send;
+    return () => {
+      send.cancel();
+      previewSenderRef.current = null;
+    };
+  }, [boardId]);
+  const sendPreview = useCallback((preview: Preview | null) => previewSenderRef.current?.(preview), []);
+
+  // Throttled cursor broadcaster, rebuilt per board.
+  const cursorSenderRef = useRef<((at: Point, laser?: boolean) => void) | null>(null);
+  useEffect(() => {
+    const send = throttle((at: Point, laser?: boolean) => {
+      connRef.current?.send({ type: 'cursor', boardId, at, ...(laser ? { laser: true } : null) });
     }, REALTIME.cursorThrottleMs);
     cursorSenderRef.current = send;
     return () => {
@@ -349,7 +396,25 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
       cursorSenderRef.current = null;
     };
   }, [boardId]);
-  const sendCursor = useCallback((at: Point) => cursorSenderRef.current?.(at), []);
+  const sendCursor = useCallback((at: Point, laser?: boolean) => cursorSenderRef.current?.(at, laser), []);
+
+  // Off the server (the offline board, or a dropped socket) both stay on this screen.
+  const sendReact = useCallback(
+    (emoji: Reaction) => {
+      const conn = connRef.current;
+      if (conn?.getState() === 'online') conn.send({ type: 'react', boardId, emoji });
+      else useBoardStore.getState().addReaction(userId, emoji);
+    },
+    [boardId, userId],
+  );
+  const sendTimer = useCallback(
+    (ms: number | null) => {
+      const conn = connRef.current;
+      if (conn?.getState() === 'online') conn.send({ type: 'timer', boardId, ms });
+      else useBoardStore.getState().setTimerLeft(ms);
+    },
+    [boardId],
+  );
 
   const submitPin = useCallback(
     (pin: string) => {
@@ -374,5 +439,5 @@ export function useBoardSync(boardId: string, options: BoardSyncOptions = {}): B
 
   const retry = useCallback(() => connRef.current?.retry(), []);
 
-  return { phase, error, submitPin, submitNickname, sendCursor, retry, notFound };
+  return { phase, error, submitPin, submitNickname, sendCursor, sendPreview, sendReact, sendTimer, retry, notFound };
 }

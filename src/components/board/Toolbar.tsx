@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Circle, Path as SvgPath, Rect, Svg } from 'react-native-svg';
 import { useShallow } from 'zustand/shallow';
 
-import { StrokeSizes, inkFor } from '@/constants/theme';
+import { DrawingPalette, StickyColors, StrokeSizes, inkFor } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
 import {
   dashIntervals,
@@ -57,6 +57,7 @@ import {
   useBoardStore,
 } from '@/features/board/store';
 import { useSessionStore, useColors, useDark } from '@/features/session/store';
+import { useBackToClose } from '@/hooks/use-back-to-close';
 import { tick } from '@/utils/haptics';
 
 import { StepperButton } from '../ui/Button';
@@ -84,7 +85,8 @@ type LabelKey =
   | 'shapeArrow'
   | 'shapes'
   | 'text'
-  | 'fill';
+  | 'fill'
+  | 'sticky';
 
 interface ToolEntry {
   tool: ToolType;
@@ -94,7 +96,7 @@ interface ToolEntry {
 }
 
 /** The popovers the strip's boxes open. */
-type Box = 'settings' | 'kind';
+type Box = 'settings';
 
 const FONT_LABELS = {
   sans: 'fontSans',
@@ -113,8 +115,18 @@ const SHAPES: ToolEntry[] = [
   { tool: 'shape', shape: 'arrow', icon: 'arrow', labelKey: 'shapeArrow' },
 ];
 
+/** The highlighter's colour when the pen still has the default ink. */
+const HIGHLIGHT = DrawingPalette[3];
+
+/** What the pencil can draw, in the strip's order. */
+const PEN_KINDS = [
+  { kind: 'pen', icon: 'pencil', labelKey: 'penPen' },
+  { kind: 'highlighter', icon: 'highlighter', labelKey: 'penHighlighter' },
+  { kind: 'laser', icon: 'laser', labelKey: 'penLaser' },
+] as const;
+
 /**
- * One row of seven, in the order a hand reaches for them: the cursor first
+ * One row of eight, in the order a hand reaches for them: the cursor first
  * (it is the tool in hand by default — it looks, picks up, moves the board),
  * the hand, then the marks. The six shape kinds fold into one button so the
  * row fits a phone; the strip above offers the kind.
@@ -125,6 +137,7 @@ const TOOLS: ToolEntry[] = [
   { tool: 'pen', icon: 'pencil', labelKey: 'pencil' },
   { tool: 'eraser', icon: 'eraser', labelKey: 'eraser' },
   { tool: 'shape', icon: 'shapes', labelKey: 'shapes' },
+  { tool: 'sticky', icon: 'sticky', labelKey: 'sticky' },
   { tool: 'text', icon: 'text', labelKey: 'text' },
   { tool: 'fill', icon: 'fill', labelKey: 'fill' },
 ];
@@ -174,6 +187,8 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     setEndsPage(null);
   }
   if (!open && box) setBox(null);
+  // Back folds the marker grid, then the dropdown, before it leaves the board.
+  useBackToClose(endsPage !== null || box !== null, () => (endsPage ? setEndsPage(null) : setBox(null)));
 
   const nudge = () => tick(haptics);
 
@@ -214,9 +229,10 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
   const showFill = show('fill');
   // A circle's border colour is its main colour too: the colours stay on the strip, the rest goes in the dropdown.
   const showColor = show('color') || show('border');
-  // With the shapes tool in hand, the strip is where the kind is chosen.
+  // With the shapes tool in hand, the strip lists every kind, one tap each.
   const kinds: ShapeKind[] = shapeTool && !selected.length ? SHAPES.map((e) => e.shape!) : [];
-  const hasSettings = [...opts].some((o) => o !== 'color');
+  // The strip's own buttons (colour, the pen's kinds, the notes' papers) are not settings.
+  const hasSettings = [...opts].some((o) => !STRIP_OPTS.includes(o));
   // The cursor with nothing selected, and the hand, have nothing to offer: an
   // empty strip is noise, whatever asked for it.
   const hasOptions = opts.size > 0 || kinds.length > 0;
@@ -277,6 +293,9 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
       config.align,
     valign: first((el) => (el.kind === 'shape' ? (el.valign ?? 'middle') : undefined)) ?? config.valign,
     rounded: first((el) => (el.kind === 'shape' && canRound(el.shape) ? !!el.rounded : undefined)) ?? config.rounded,
+    stickyColor:
+      first((el) => (el.kind === 'shape' && el.sticky ? el.fill?.slice(0, 7).toUpperCase() : undefined)) ??
+      config.stickyColor,
   };
   const fontSize = cur.fontSize;
   // The board ink flips on the dark theme (`inkFor`); the swatches follow it.
@@ -294,11 +313,11 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
     dotted: 'dashDotted',
   };
 
-  // The row is seven tools: seven children, six gaps, inside the panel's padding and border and the screen's own gutter.
+  // The row is eight tools: eight children, seven gaps, inside the panel's padding and border and the screen's own gutter.
   // On a narrow phone the buttons shrink so the row fits instead of clipping.
   const gap = landscape ? 3 : 4;
-  const chrome = insets.left + insets.right + 16 + 2 * (landscape ? 5 : 6) + 2 + 6 * gap;
-  const buttonSize = Math.min(landscape ? 34 : 44, Math.floor((width - chrome) / 7));
+  const chrome = insets.left + insets.right + 16 + 2 * (landscape ? 5 : 6) + 2 + (TOOLS.length - 1) * gap;
+  const buttonSize = Math.min(landscape ? 34 : 44, Math.floor((width - chrome) / TOOLS.length));
   const buttonRadius = buttonSize < 40 ? 12 : 14;
   const rows = [TOOLS];
 
@@ -607,44 +626,10 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
 
   const bottomGap = Math.max(insets.bottom, landscape ? 10 : 16);
   // Room for the dropdown: what is left between the header and the strip above the tool bar.
-  const popMax = Math.max(120, height - bottomGap - lowerHeight - 8 - (insets.top + (landscape ? 50 : 92)) - 8);
+  const popMax = Math.max(120, height - bottomGap - lowerHeight - 8 - (insets.top + 56) - 8);
 
   return (
     <>
-      {open && hasOptions && box === 'kind' && kinds.length ? (
-        // The figure's own, smaller dropdown: just the kinds.
-        <View
-          pointerEvents="box-none"
-          style={{
-            position: 'absolute',
-            left: insets.left,
-            right: insets.right,
-            bottom: bottomGap + lowerHeight + 8,
-            alignItems: 'flex-start',
-            paddingHorizontal: 8,
-          }}
-        >
-          <GlassPanel level="panel" radius={14} style={panelShadow}>
-            <Dense.Provider value>
-              <View style={{ gap: 6, padding: 6, alignItems: 'flex-start' }}>
-                <View style={{ flexDirection: 'row', gap: 5 }}>
-                  {kinds.map((kind) => (
-                    <MiniButton
-                      key={kind}
-                      label={t[SHAPES.find((e) => e.shape === kind)!.labelKey]}
-                      active={cur.shape === kind}
-                      onPress={() => pickKind(kind)}
-                    >
-                      <Icon name={kind} size={18} color={cur.shape === kind ? '#FFFFFF' : c.text} />
-                    </MiniButton>
-                  ))}
-                </View>
-              </View>
-            </Dense.Provider>
-          </GlassPanel>
-        </View>
-      ) : null}
-
       {open && hasOptions && box === 'settings' ? (
         // Its own layer, sitting on top of the strip and tool bar: it can grow
         // and scroll but never moves them.
@@ -737,13 +722,63 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
         {open && hasOptions ? (
           <GlassPanel level="panel" radius={16} style={[panelShadow, { alignSelf: 'flex-start', maxWidth: '100%' }]}>
             <View ref={tourRef('options')} style={{ ...stripStyle, justifyContent: 'flex-start' }}>
-              {kinds.length ? (
+              {kinds.map((kind) => (
                 <MiniButton
-                  label={t[SHAPES.find((e) => e.shape === cur.shape)?.labelKey ?? 'shapes']}
-                  active={box === 'kind'}
-                  onPress={() => toggle('kind')}
+                  key={kind}
+                  label={t[SHAPES.find((e) => e.shape === kind)!.labelKey]}
+                  active={cur.shape === kind}
+                  onPress={() => pickKind(kind)}
                 >
-                  <Icon name={cur.shape} size={18} color={box === 'kind' ? '#FFFFFF' : c.text} />
+                  <Icon name={kind} size={18} color={cur.shape === kind ? '#FFFFFF' : c.text} />
+                </MiniButton>
+              ))}
+
+              {show('penKind')
+                ? PEN_KINDS.map((entry) => (
+                    <MiniButton
+                      key={entry.kind}
+                      label={t[entry.labelKey]}
+                      active={config.pen === entry.kind}
+                      onPress={() => {
+                        nudge();
+                        // A highlighter in the default ink would only grey things out: it starts amber.
+                        setConfig({
+                          pen: entry.kind,
+                          ...(entry.kind === 'highlighter' && config.color === DrawingPalette[0] ? { color: HIGHLIGHT } : null),
+                        });
+                      }}
+                    >
+                      <Icon name={entry.icon} size={18} color={config.pen === entry.kind ? '#FFFFFF' : c.text} />
+                    </MiniButton>
+                  ))
+                : null}
+
+              {show('stickyColor')
+                ? StickyColors.map((paper) => (
+                    <MiniButton
+                      key={paper}
+                      label={`${t.stickyColor} ${paper}`}
+                      active={!config.vote && cur.stickyColor === paper}
+                      onPress={() => {
+                        nudge();
+                        setConfig({ stickyColor: paper, vote: false });
+                      }}
+                    >
+                      <ColorSwatch color={paper} />
+                    </MiniButton>
+                  ))
+                : null}
+
+              {show('vote') ? (
+                <MiniButton
+                  label={t.voteDot}
+                  active={config.vote}
+                  onPress={() => {
+                    nudge();
+                    setConfig({ vote: !config.vote });
+                  }}
+                >
+                  <Icon name="vote" size={14} color={config.vote ? '#FFFFFF' : c.text} />
                 </MiniButton>
               ) : null}
 
@@ -886,6 +921,9 @@ const Dense = createContext(false);
 
 /** One option; `style` is bold, italic and underline together. Same table as the web toolbar. */
 type Opt =
+  | 'penKind'
+  | 'stickyColor'
+  | 'vote'
   | 'fill'
   | 'color'
   | 'border'
@@ -908,7 +946,9 @@ type Opt =
  * Keys are tools, shape kinds and `stroke` (a selected pencil line).
  */
 const OPTIONS: Partial<Record<string, Opt[]>> = {
-  pen: ['color', 'width'],
+  pen: ['penKind', 'color', 'width'],
+  sticky: ['stickyColor', 'vote'],
+  note: ['stickyColor'],
   stroke: ['color', 'width'],
   eraser: ['width'],
   fill: ['color'],
@@ -920,7 +960,9 @@ const OPTIONS: Partial<Record<string, Opt[]>> = {
   arrow: ['color', 'dash', 'tail', 'head', 'route', 'label'],
   text: ['color', 'textSize', 'font', 'style', 'align'],
 };
-const optionsKey = (el: BoardElement) => (el.kind === 'shape' ? el.shape : el.kind);
+const optionsKey = (el: BoardElement) => (el.kind === 'shape' ? (el.sticky ? 'note' : el.shape) : el.kind);
+/** Options shown as buttons on the strip itself rather than in its settings dropdown. */
+const STRIP_OPTS: Opt[] = ['color', 'penKind', 'stickyColor', 'vote'];
 
 /**
  * Stroke width as a slider with one stop per size: a track with four dots drawn

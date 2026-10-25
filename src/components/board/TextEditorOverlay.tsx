@@ -13,9 +13,11 @@ import { Keyboard, Platform, Pressable, TextInput, View } from 'react-native';
 
 import { inkFor } from '@/constants/theme';
 import { useColors, useDark } from '@/features/session/store';
+import { useBackToClose } from '@/hooks/use-back-to-close';
 import { useT } from '@/features/i18n/store';
 import {
   boxOf,
+  fitSticky,
   isLineLike,
   labelLines,
   labelPlacement,
@@ -63,13 +65,16 @@ export function TextEditorOverlay({
     else updateShape(element.id, { text: value.trim() });
     onClose();
   };
+  // The first Back hides the keyboard (Android's own); the next one finishes the text.
+  useBackToClose(true, commit);
 
   // The canvas paints the draft (`onDraft`) exactly as it will look; this
   // input lies over it in the same font, size, line height and turn, with its
   // own glyphs invisible — only the caret and the selection show.
   const s = camera.scale;
-  const draft = { ...element, text: value } as TextElement | ShapeElement;
-  const fontSize = (element.fontSize ?? SHAPE_TEXT_SIZE) * s;
+  // A sticky note's label shrinks as it fills, as the board paints it.
+  const draft = fitSticky({ ...element, text: value } as TextElement | ShapeElement);
+  const fontSize = (draft.fontSize ?? SHAPE_TEXT_SIZE) * s;
   const step = fontSize * TEXT_LINE_HEIGHT;
   let box: { x: number; y: number; width: number; height: number };
   let paddingTop = 0;
