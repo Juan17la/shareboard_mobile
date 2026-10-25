@@ -31,7 +31,7 @@ export interface ButtonProps extends Omit<PressableProps, 'children' | 'style'> 
 function foreground(c: Palette, variant: ButtonVariant): string {
   switch (variant) {
     case 'secondary':
-      return c.text;
+      return c.accentText;
     case 'ghost':
       return c.textSecondary;
     case 'dashed':
@@ -74,12 +74,14 @@ function container(
         borderColor: 'rgba(150,10,20,0.45)',
         ...(disabled ? null : Shadow.danger),
       };
+    // Tinted, the Apple way: the accent at low strength with accent type, so
+    // it reads as a button without competing with the filled primary.
     case 'secondary':
       return {
         ...base,
-        backgroundColor: c.glassTintSolid,
+        backgroundColor: pressed ? c.accentSoft : c.accentSofter,
         borderWidth: 1,
-        borderColor: c.borderStrong,
+        borderColor: 'rgba(0,113,227,0.30)',
       };
     case 'dashed':
       return {
@@ -90,7 +92,7 @@ function container(
         borderRadius: Radius.lg,
       };
     default:
-      return base;
+      return { ...base, backgroundColor: pressed ? c.surfaceSelected : 'transparent' };
   }
 }
 
@@ -146,7 +148,7 @@ export function IconButton({
   icon,
   label,
   onPress,
-  size = 36,
+  size = 40,
   iconSize = 18,
   color: tint,
   disabled,
@@ -174,6 +176,8 @@ export function IconButton({
       disabled={disabled}
       onPress={onPress}
       onLongPress={() => tip(label)}
+      // Small variants (the sheet's close) still get a 44pt target.
+      hitSlop={Math.max(0, Math.ceil((44 - size) / 2))}
       style={({ pressed }) => ({
         width: size,
         height: size,
@@ -182,7 +186,7 @@ export function IconButton({
         justifyContent: 'center',
         borderRadius: radius,
         borderWidth: 1,
-        borderColor: c.border,
+        borderColor: c.borderStrong,
         backgroundColor: pressed ? c.surfaceSelected : background,
         opacity: disabled ? 0.4 : 1,
       })}
@@ -209,6 +213,7 @@ export function StepperButton({
       accessibilityLabel={label}
       onPress={onPress}
       onLongPress={() => tip(label)}
+      hitSlop={9}
       style={({ pressed }) => ({
         width: 26,
         height: 26,

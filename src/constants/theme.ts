@@ -41,8 +41,8 @@ export const Colors = {
   /** Hairlines and control borders. */
   border: 'rgba(60,60,67,0.10)',
   borderStrong: 'rgba(60,60,67,0.14)',
-  /** The edge of a text field: clearly there on a white or a frosted ground. */
-  borderField: 'rgba(60,60,67,0.34)',
+  /** The edge of a text field: 3:1 against a white or a frosted ground, so a field is seen as one. */
+  borderField: 'rgba(60,60,67,0.58)',
   borderDashed: 'rgba(60,60,67,0.22)',
 
   // Frosted-panel recipe. `BlurView` supplies the blur; these are the tint and
@@ -82,7 +82,7 @@ export const Palettes: Record<Theme, Palette> = {
     dangerBright: '#FF453A',
     border: 'rgba(235,235,245,0.10)',
     borderStrong: 'rgba(235,235,245,0.16)',
-    borderField: 'rgba(235,235,245,0.36)',
+    borderField: 'rgba(235,235,245,0.5)',
     borderDashed: 'rgba(235,235,245,0.26)',
     glassTint: 'rgba(28,28,30,0.55)',
     glassTintSolid: 'rgba(44,44,46,0.72)',
@@ -131,6 +131,12 @@ export const DrawingPalette = [
   '#8E4EC6', // purple
   '#FF8FAB', // pink
 ] as const;
+
+/** Sticky note papers: pale enough that the default ink reads on them, light or dark board. */
+export const StickyColors = ['#FFE58A', '#FFC2D1', '#B8E2FF', '#C6F0C2', '#E3D3FF', '#FFD3A8'] as const;
+
+/** The ink a sticky note is written in: always dark, since the paper is always light. */
+export const STICKY_INK = '#1B2030';
 
 /** Stroke widths offered by the size picker. */
 export const StrokeSizes = [2, 5, 10, 20] as const;

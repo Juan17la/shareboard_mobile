@@ -11,13 +11,14 @@
  * else (including the Skia canvas) and what makes Android's back gesture close
  * the sheet rather than leave the board.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Animated,
   Dimensions,
   Easing,
   Keyboard,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -51,7 +52,7 @@ export function Sheet({
   onClose: () => void;
   children: ReactNode;
   closeLabel?: string;
-  /** Up to 92% of the screen instead of 78%, for sheets with a preview (AI). */
+  /** Up to 92% of the screen instead of 82%, for sheets with a preview (AI). */
   tall?: boolean;
   /**
    * The whole height of the screen, and no scroll view: the children fill the
@@ -63,6 +64,20 @@ export function Sheet({
   const { height } = useWindowDimensions();
   const c = useColors();
   const [anim] = useState(() => new Animated.Value(0));
+  // Dragging the handle or the title row down dismisses the sheet, as the handle promises.
+  const [drag] = useState(() => new Animated.Value(0));
+  const pan = useMemo(() => {
+    const settle = () => Animated.spring(drag, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+    return PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 6 && g.dy > Math.abs(g.dx),
+      onPanResponderMove: (_, g) => drag.setValue(Math.max(0, g.dy)),
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 90 || (g.dy > 24 && g.vy > 0.6)) onClose();
+        else settle();
+      },
+      onPanResponderTerminate: settle,
+    });
+  }, [drag, onClose]);
   // The keyboard covers the bottom of the window (nothing resizes it: the app
   // draws edge to edge), so a sheet with an input lifts itself above it. The
   // window's own height says whether it was resized after all, so the two
@@ -86,9 +101,10 @@ export function Sheet({
   const covered = windowHeight ? Math.max(0, Dimensions.get('screen').height - windowHeight) : 0;
   const lift = Math.max(0, keyboard - covered);
   const room = (windowHeight || height) - lift - insets.top - 16;
-  const fit = full ? room : Math.min(height * (tall ? 0.92 : 0.78), room);
+  const fit = full ? room : Math.min(height * (tall ? 0.92 : 0.82), room);
 
   useEffect(() => {
+    drag.setValue(0);
     if (!open) {
       anim.setValue(0);
       return;
@@ -99,7 +115,7 @@ export function Sheet({
       easing: Easing.bezier(0.22, 0.9, 0.26, 1),
       useNativeDriver: true,
     }).start();
-  }, [open, anim]);
+  }, [open, anim, drag]);
 
   return (
     <Modal
@@ -130,6 +146,7 @@ export function Sheet({
             style={{
               transform: [
                 { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) },
+                { translateY: drag },
               ],
               opacity: anim,
               maxHeight: fit,
@@ -162,6 +179,7 @@ export function Sheet({
               }}
             >
               <NoGlassScene>
+              <View {...pan.panHandlers}>
               <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 2 }}>
                 <View
                   style={{
@@ -195,6 +213,7 @@ export function Sheet({
                   iconSize={15}
                   radius={10}
                 />
+              </View>
               </View>
 
               {full ? (
