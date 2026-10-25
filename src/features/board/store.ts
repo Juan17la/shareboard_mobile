@@ -18,15 +18,18 @@
  */
 import { create } from 'zustand';
 
-import { DrawingPalette, StrokeSizes } from '@/constants/theme';
-import type { Op } from '@/services/realtime/protocol';
+import { DrawingPalette, STICKY_INK, StickyColors, StrokeSizes } from '@/constants/theme';
+import type { Op, Preview, Reaction } from '@/services/realtime/protocol';
 import { shortId } from '@/utils/id';
 
 import {
   boxOf,
   contentBounds,
   elementBounds,
+  fitSticky,
   followLinks,
+  STICKY_SIZE,
+  STICKY_TEXT_SIZE,
   headsOf,
   canRound,
   isLineLike,
@@ -65,17 +68,22 @@ import {
 } from './model';
 import { applyOps, invertOps, restoreDeleted, visibleSorted, type ElementMap } from './ops';
 
-/** Zoom bounds. Matches the design's 25%–600% range. */
-export const MIN_ZOOM = 0.25;
-export const MAX_ZOOM = 6;
+/** Zoom bounds: 10 %–2,000 %, wide enough to fit a big board on screen. */
+export const MIN_ZOOM = 0.1;
+export const MAX_ZOOM = 20;
 /** One tap of the zoom buttons. */
 export const ZOOM_STEP = 1.2;
 
 /** `local`: the offline board (`features/board/local.ts`) — no server, and every edit is kept. */
 export type ConnectionStatus = 'idle' | 'connecting' | 'online' | 'offline' | 'local';
 
-/** Whether an edit can be made now: one that could never reach the server is refused. */
-export const writable = (connection: ConnectionStatus) => connection === 'online' || connection === 'local';
+/**
+ * Whether an edit can be made now. Offline or reconnecting, a live board keeps
+ * taking edits: they wait in the outbox, the reconnect's hydrate lays them over
+ * the server's board and sends them (a refused batch comes back as `resync`).
+ * Only a board not opened yet (`idle`) has nowhere to put them.
+ */
+export const writable = (connection: ConnectionStatus) => connection !== 'idle';
 
 export interface Camera {
   x: number;
@@ -83,9 +91,20 @@ export interface Camera {
   scale: number;
 }
 
+/** What the pencil draws: ink, a translucent highlight, or a laser trail that fades and is never kept. */
+export type PenKind = 'pen' | 'highlighter' | 'laser';
+
+/** How much wider a highlighter is than the pen at the same size. */
+export const HIGHLIGHTER_SCALE = 4;
+
 export interface ToolConfig {
   color: string;
   width: number;
+  pen: PenKind;
+  /** The paper of new sticky notes (`StickyColors`). */
+  stickyColor: string;
+  /** The sticky tool drops a vote dot, in your colour, instead of a note. */
+  vote: boolean;
   /** How opaque a newly drawn enclosed shape's fill is, 0 to 100; 0 is outline only. */
   fillOpacity: number;
   /** The fill's colour; null is the line's own. */
@@ -172,6 +191,11 @@ export interface LiveEdit {
  * bound to a shape among them. Shared by the canvas (preview) and the commit,
  * so what was seen is exactly what is sent.
  */
+/** What the drag does to one of the elements it carries. */
+function editPatch(el: BoardElement, edit: LiveEdit): Partial<BoardElement> {
+  return edit.mode === 'move' ? translate(el, edit.dx, edit.dy) : { ...(edit.patches?.[el.id] ?? edit.patch) };
+}
+
 export function editPatches(
   elements: BoardElement[],
   edit: LiveEdit,
@@ -180,8 +204,7 @@ export function editPatches(
   const out: { id: ElementId; patch: Partial<BoardElement> }[] = [];
   const after = elements.map((el) => {
     if (!moved.has(el.id)) return el;
-    const patch: Partial<BoardElement> =
-      edit.mode === 'move' ? translate(el, edit.dx, edit.dy) : { ...(edit.patches?.[el.id] ?? edit.patch) };
+    const patch = editPatch(el, edit);
     // A line carried away from what it was bound to lets go; carried together
     // with it (a group, a marquee) it keeps the link.
     if (edit.mode === 'move' && el.kind === 'shape' && isLineLike(el)) {
@@ -199,6 +222,32 @@ export function editPatches(
   }
   return out;
 }
+
+/**
+ * The others' previews as elements to draw over the board: what each one
+ * drags, patched as their lift will commit it, and what each one draws.
+ */
+export function previewElements(
+  elements: BoardElement[],
+  previews: Record<UserId, Preview>,
+): BoardElement[] {
+  const out: BoardElement[] = [];
+  let byId: Map<ElementId, BoardElement> | null = null;
+  for (const { el, edit } of Object.values(previews)) {
+    if (edit) {
+      byId ??= new Map(elements.map((e) => [e.id, e]));
+      for (const { id, patch } of editPatches(elements, edit)) {
+        const at = byId.get(id);
+        if (at) out.push({ ...at, ...patch } as BoardElement);
+      }
+    }
+    if (el) out.push({ ...el, z: Number.MAX_SAFE_INTEGER });
+  }
+  return out;
+}
+
+/** Nobody's preview: what a new session, a dropped socket or a reset starts from. */
+const NO_PREVIEWS = { previews: {}, peerDrafts: [] };
 
 /**
  * A figure drawn with the shape tool, dressed in the tool's options. Shared by
@@ -288,6 +337,14 @@ interface BoardState {
    * that lists who is here a new array. Seeded from the list's own `cursor`s.
    */
   cursors: Record<UserId, Point>;
+  /** What the others are drawing or dragging right now, by who (`Preview`). Never stored. */
+  previews: Record<UserId, Preview>;
+  /** `previews` as elements (`previewElements`), worked out once per message rather than per render. */
+  peerDrafts: BoardElement[];
+  /** When the board's countdown ends, on this device's clock; null when none runs. */
+  timerEndsAt: number | null;
+  /** Reactions floating up the screen right now, oldest first. */
+  reactions: { id: string; emoji: Reaction; who: string; color: string }[];
   connection: ConnectionStatus;
   serverSeq: number;
   /**
@@ -337,11 +394,6 @@ interface BoardState {
   /** The cursor tool's rubber band, in board coordinates. */
   liveMarquee: { from: Point; to: Point } | null;
   /**
-   * The pen stroke under the finger, read as the figure it was meant to be
-   * after a hold (`recognizeSketch`). Lifting draws that figure instead.
-   */
-  liveSketch: Sketch | null;
-  /**
    * What the eraser has passed over in this stroke: hidden at once, deleted
    * together when the finger lifts (`commitErase`) — one undo step and one
    * message for a whole scrub rather than one per element.
@@ -374,6 +426,12 @@ interface BoardState {
   setRemoteCursor(userId: UserId, at: Point): void;
   /** Several cursors in one update — what arrived since the last frame. */
   moveCursors(moves: Record<UserId, Point>): void;
+  /** What a peer is drawing or dragging now; `null` when they are done. */
+  setPreview(userId: UserId, preview: Preview | null): void;
+  /** The countdown as a server message gives it: how long it still runs, or null when stopped. */
+  setTimerLeft(left: number | null): void;
+  /** Someone reacted: the emoji floats up for a few seconds, with their name. */
+  addReaction(userId: UserId, emoji: Reaction): void;
 
   setTool(tool: ToolType): void;
   /**
@@ -402,7 +460,6 @@ interface BoardState {
   setLiveShape(shape: { from: Point; to: Point } | null): void;
   setLiveEdit(edit: LiveEdit | null): void;
   setLiveMarquee(box: { from: Point; to: Point } | null): void;
-  setLiveSketch(sketch: Sketch | null): void;
   /** Turns the drag into ops: one per element touched, all in one undo step. */
   commitEdit(edit: LiveEdit): void;
 
@@ -415,6 +472,14 @@ interface BoardState {
    * figure is one undo.
    */
   finishFigure(id: ElementId, patch: { from: Point; to: Point }): void;
+  /** A sticky note centred on `at`, in the chosen paper; returns its id so its text can be typed. */
+  addSticky(at: Point): ElementId | null;
+  /** A vote dot in this participant's colour, centred on `at`. */
+  addVote(at: Point): void;
+  /** Locks the selection (it can't be picked, moved or erased) and lets go of it. */
+  lockSelection(): void;
+  /** Unlocks one element and selects it. */
+  unlock(id: ElementId): void;
   /** Returns the new id so the caller can select it for resizing. */
   addShape(
     shape: ShapeKind,
@@ -430,7 +495,10 @@ interface BoardState {
   selectedElements(): BoardElement[];
   /** The selected shape, when exactly one shape is selected and still on the board. */
   selectedShape(): ShapeElement | null;
-  /** The topmost element under `at`, `radius` board units around it — of `among`, or of everything visible. */
+  /**
+   * The topmost element under `at`, `radius` board units around it — of
+   * `among`, or of everything visible and not locked.
+   */
   elementAt(at: Point, radius: number, among?: BoardElement[]): BoardElement | null;
   /** Applies an options-strip change to every selected element, by kind. */
   restyle(patch: Partial<ToolConfig>): void;
@@ -514,6 +582,9 @@ interface BoardState {
 const DEFAULT_CONFIG: ToolConfig = {
   color: DrawingPalette[0],
   width: StrokeSizes[1],
+  pen: 'pen',
+  stickyColor: StickyColors[0],
+  vote: false,
   // The second of each: a new figure comes out lightly filled, medium stroke.
   fillOpacity: FILL_WASH,
   fillColor: null,
@@ -538,8 +609,51 @@ const DEFAULT_CONFIG: ToolConfig = {
 
 const DEFAULT_CAMERA: Camera = { x: 0, y: 0, scale: 1 };
 
+/** The longest countdown: three hours, a long college class (the server's cap too). */
+export const MAX_TIMER_MS = 3 * 60 * 60_000;
+
+/** Minutes and seconds as typed, in ms: null unless it is a whole time from 1 s to `MAX_TIMER_MS`. */
+export function customMs(min: string, sec: string): number | null {
+  const m = min.trim() === '' ? 0 : Number(min);
+  const s = sec.trim() === '' ? 0 : Number(sec);
+  if (!Number.isInteger(m) || !Number.isInteger(s) || m < 0 || s < 0 || s > 59) return null;
+  const ms = (m * 60 + s) * 1000;
+  return ms > 0 && ms <= MAX_TIMER_MS ? ms : null;
+}
+
+/** How long a reaction floats on screen. */
+const REACTION_MS = 3000;
+/** A vote dot's radius, in board units. */
+const VOTE_RADIUS = 12;
+
 const clampWidth = (w: number) =>
   Math.max(LIMITS.minStrokeWidth, Math.min(LIMITS.maxStrokeWidth, w));
+
+/** A stroke or figure only previewed: never on the board, so no real id or author. */
+const DRAFT: ElementBase = { id: 'draft', createdBy: 'draft', createdAt: 0, updatedAt: 0, z: 0 };
+
+/**
+ * What this client is drawing or dragging, for the others to watch: the drag
+ * itself, or the stroke or figure not on the board yet; `null` for nothing.
+ * The whole stroke goes ~30 times a second, so its points are rounded.
+ */
+export function previewOf(
+  config: ToolConfig,
+  edit: LiveEdit | null,
+  stroke: number[],
+  shape: { from: Point; to: Point; fromLink?: Link | null; toLink?: Link | null } | null,
+): Preview | null {
+  if (edit) return { edit };
+  if (stroke.length >= 4) {
+    const points = stroke.slice(0, LIMITS.maxStrokePoints * 2).map((v) => Math.round(v * 100) / 100);
+    const pen =
+      config.pen === 'highlighter'
+        ? { width: clampWidth(config.width * HIGHLIGHTER_SCALE), tool: 'highlighter' as const }
+        : { width: clampWidth(config.width) };
+    return { el: { ...DRAFT, kind: 'stroke', points, color: config.color, ...pen } };
+  }
+  return shape ? { el: shapeElement(config.shape, shape, config, DRAFT) } : null;
+}
 
 /** The cursors a participant list carries, by user. */
 function cursorsOf(participants: Participant[]): Record<UserId, Point> {
@@ -553,12 +667,9 @@ export const useBoardStore = create<BoardState>((set, get) => {
   setBoxLookup((id) => {
     const el = get().elements[id];
     if (!el || el.deleted) return undefined;
-    const box = elementBounds(el);
-    // A shape being carried is where the finger has it, not where it was.
+    // A shape being carried or resized is where the finger has it, not where it was.
     const live = get().liveEdit;
-    return live?.mode === 'move' && live.ids.includes(id)
-      ? { ...box, x: box.x + live.dx, y: box.y + live.dy }
-      : box;
+    return elementBounds(live?.ids.includes(id) ? ({ ...el, ...editPatch(el, live) } as BoardElement) : el);
   });
   /**
    * `how` is what the change does to history: `push` is a step of its own;
@@ -567,8 +678,6 @@ export const useBoardStore = create<BoardState>((set, get) => {
    * (a text added and left empty never happened).
    */
   function commitLocal(ops: Op[], how: 'push' | 'merge' | 'replace' = 'push') {
-    // Offline, an edit would only ever exist on this screen — and vanish on
-    // the reconnect's hydrate. Refusing it is what makes the banner honest.
     if (ops.length === 0 || !writable(get().connection)) return;
     const { elements, undoStack, outbox, clientSeq } = get();
     const last = undoStack[undoStack.length - 1];
@@ -655,6 +764,9 @@ export const useBoardStore = create<BoardState>((set, get) => {
     you: null,
     participants: [],
     cursors: {},
+    ...NO_PREVIEWS,
+    timerEndsAt: null,
+    reactions: [],
     connection: 'idle',
     serverSeq: 0,
     boardToken: null,
@@ -676,7 +788,6 @@ export const useBoardStore = create<BoardState>((set, get) => {
     liveShape: null,
     liveEdit: null,
     liveMarquee: null,
-    liveSketch: null,
     liveErased: [],
 
     outbox: [],
@@ -703,6 +814,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         you,
         participants,
         cursors: cursorsOf(participants),
+        ...NO_PREVIEWS,
         elements: map,
         zCounter: maxZ,
         serverSeq: seq,
@@ -726,6 +838,9 @@ export const useBoardStore = create<BoardState>((set, get) => {
         you: null,
         participants: [],
         cursors: {},
+        ...NO_PREVIEWS,
+        timerEndsAt: null,
+        reactions: [],
         connection: 'idle',
         boardToken: null,
         elements: {},
@@ -745,13 +860,13 @@ export const useBoardStore = create<BoardState>((set, get) => {
         liveShape: null,
         liveEdit: null,
         liveMarquee: null,
-        liveSketch: null,
         liveErased: [],
       });
     },
 
     setConnection(status) {
-      set({ connection: status });
+      // Off the socket, nobody's preview is coming to an end any more: drop them.
+      set({ connection: status, ...(status === 'online' ? null : NO_PREVIEWS) });
     },
 
     setParticipants(list) {
@@ -764,6 +879,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
         cursors: cursorsOf(list),
         ...(selectedIds.length !== get().selectedIds.length ? { selectedIds } : null),
       });
+      // Whoever left took their preview with them.
+      for (const userId in get().previews) if (!list.some((p) => p.userId === userId)) get().setPreview(userId, null);
     },
 
     setMeta(meta, you) {
@@ -787,6 +904,29 @@ export const useBoardStore = create<BoardState>((set, get) => {
         if (at) (next ??= { ...cursors })[p.userId] = at;
       }
       if (next) set({ cursors: next });
+    },
+
+    setTimerLeft(left) {
+      set({ timerEndsAt: left ? Date.now() + left : null });
+    },
+
+    addReaction(userId, emoji) {
+      const who = get().participants.find((p) => p.userId === userId) ?? (get().you?.userId === userId ? get().you : null);
+      const id = shortId();
+      // ponytail: at most 12 on screen; a burst past that drops the oldest.
+      set((s) => ({
+        reactions: [...s.reactions.slice(-11), { id, emoji, who: who?.nickname ?? '', color: who?.color ?? '#888888' }],
+      }));
+      setTimeout(() => set((s) => ({ reactions: s.reactions.filter((r) => r.id !== id) })), REACTION_MS);
+    },
+
+    setPreview(userId, preview) {
+      const previews = { ...get().previews };
+      if (preview) previews[userId] = preview;
+      else if (previews[userId]) delete previews[userId];
+      else return;
+      const visible = Object.values(get().elements).filter((el) => !el.deleted);
+      set({ previews, peerDrafts: previewElements(visible, previews) });
     },
 
     finishCreate(ids) {
@@ -866,6 +1006,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
           }
           if (patch.fontSize !== undefined) p.fontSize = patch.fontSize;
           if (patch.font !== undefined) p.font = patch.font;
+          if (patch.stickyColor !== undefined && el.sticky) p.fill = patch.stickyColor;
           if (shape === 'polygon' && (patch.sides !== undefined || shape !== el.shape)) {
             p.sides = patch.sides ?? get().config.sides;
             // Choosing a corner count turns a hand-drawn polygon into the regular one.
@@ -1048,10 +1189,6 @@ export const useBoardStore = create<BoardState>((set, get) => {
       set({ liveMarquee });
     },
 
-    setLiveSketch(liveSketch) {
-      set({ liveSketch });
-    },
-
     commitEdit(edit) {
       if (!get().canEditNow()) return;
       const now = Date.now();
@@ -1078,10 +1215,68 @@ export const useBoardStore = create<BoardState>((set, get) => {
         // Two numbers per point, so the cap is doubled.
         points: points.slice(0, LIMITS.maxStrokePoints * 2),
         color: config.color,
-        width: clampWidth(config.width),
+        ...(config.pen === 'highlighter'
+          ? { width: clampWidth(config.width * HIGHLIGHTER_SCALE), tool: 'highlighter' as const }
+          : { width: clampWidth(config.width) }),
       };
       commitLocal([{ t: 'add', el }]);
       return el.id;
+    },
+
+    addSticky(at) {
+      if (!get().canEditNow()) return null;
+      const half = STICKY_SIZE / 2;
+      const el: ShapeElement = {
+        ...baseFields(),
+        kind: 'shape',
+        shape: 'rectangle',
+        sticky: true,
+        from: { x: at.x - half, y: at.y - half },
+        to: { x: at.x + half, y: at.y + half },
+        stroke: STICKY_INK,
+        strokeWidth: 1,
+        fill: get().config.stickyColor,
+        fontSize: STICKY_TEXT_SIZE,
+        ...(get().config.font !== 'sans' ? { font: get().config.font } : null),
+      };
+      commitLocal([{ t: 'add', el }]);
+      return el.id;
+    },
+
+    addVote(at) {
+      if (!get().canEditNow()) return;
+      const color = get().you?.color ?? DrawingPalette[0];
+      const r = VOTE_RADIUS;
+      commitLocal([
+        {
+          t: 'add',
+          el: {
+            ...baseFields(),
+            kind: 'shape',
+            shape: 'ellipse',
+            from: { x: at.x - r, y: at.y - r },
+            to: { x: at.x + r, y: at.y + r },
+            stroke: color,
+            strokeWidth: 2,
+            fill: color,
+          },
+        },
+      ]);
+    },
+
+    lockSelection() {
+      const sel = get().selectedElements();
+      if (!sel.length || !get().canEditNow()) return;
+      const now = Date.now();
+      commitLocal(sel.map((el) => ({ t: 'update', id: el.id, patch: { locked: true }, updatedAt: now })));
+      set({ selectedIds: [] });
+    },
+
+    unlock(id) {
+      if (!get().elements[id]?.locked || !get().canEditNow()) return;
+      commitLocal([{ t: 'update', id, patch: { locked: null } as unknown as Partial<BoardElement>, updatedAt: Date.now() }]);
+      if (get().tool !== 'select') get().setTool('select');
+      get().select(id);
     },
 
     addSketch(sketch) {
@@ -1113,15 +1308,16 @@ export const useBoardStore = create<BoardState>((set, get) => {
     select(ids) {
       // What someone else holds cannot be picked up (first come, first served).
       const held = heldByOthers(get().participants, get().you);
-      const wanted = (ids === null ? [] : Array.isArray(ids) ? ids : [ids]).filter(
-        (id) => !held.has(id),
-      );
       const { elements } = get();
+      // Nor what is locked: it stays put until someone unlocks it.
+      const wanted = (ids === null ? [] : Array.isArray(ids) ? ids : [ids]).filter(
+        (id) => !held.has(id) && !elements[id]?.locked,
+      );
       const groups = new Set(wanted.map((id) => elements[id]?.group).filter(Boolean));
       const all = new Set(wanted);
       if (groups.size) {
         for (const el of get().visibleElements())
-          if (el.group && groups.has(el.group) && !held.has(el.id)) all.add(el.id);
+          if (el.group && groups.has(el.group) && !held.has(el.id) && !el.locked) all.add(el.id);
       }
       const next = [...all];
       // Tapping empty board (or the same thing again) keeps the selection it
@@ -1141,7 +1337,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
       return sel.length === 1 && sel[0].kind === 'shape' ? sel[0] : null;
     },
 
-    elementAt(at, radius, among = get().visibleElements()) {
+    elementAt(at, radius, among = get().visibleElements().filter((el) => !el.locked)) {
       const id = pickHit(among, hitTest(among, at, radius), at, radius);
       return id ? (among.find((el) => el.id === id) ?? null) : null;
     },
@@ -1153,6 +1349,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
       if (clean.text !== undefined) clean.text = clean.text.slice(0, LIMITS.maxTextLength);
       // A fill only makes sense on a shape that encloses something.
       if (clean.shape && !isFillable(clean.shape)) clean.fill = null;
+      // A sticky note's words shrink to stay inside it.
+      if (current.sticky && clean.text !== undefined) clean.fontSize = fitSticky({ ...current, ...clean }).fontSize;
       commitLocal([
         {
           t: 'update',
@@ -1175,7 +1373,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
       const held = heldByOthers(get().participants, get().you);
       for (let i = visible.length - 1; i >= 0; i--) {
         const el = visible[i];
-        if (el.kind !== 'shape' || !isFillable(el.shape) || held.has(el.id)) continue;
+        if (el.kind !== 'shape' || !isFillable(el.shape) || held.has(el.id) || el.locked) continue;
         const minX = Math.min(el.from.x, el.to.x);
         const maxX = Math.max(el.from.x, el.to.x);
         const minY = Math.min(el.from.y, el.to.y);
@@ -1268,7 +1466,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
       if (!get().canEditNow()) return;
       const { liveErased } = get();
       const held = heldByOthers(get().participants, get().you);
-      const hits = hitTest(get().visibleElements(), at, radius).filter(
+      const hits = hitTest(get().visibleElements().filter((el) => !el.locked), at, radius).filter(
         (id) => !held.has(id) && !liveErased.includes(id),
       );
       if (hits.length) set({ liveErased: [...liveErased, ...hits] });

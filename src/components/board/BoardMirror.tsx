@@ -105,7 +105,6 @@ export function useBoardMirror(canvasRef: RefObject<CanvasRef | null>) {
         s.camera !== prev.camera ||
         s.liveStroke !== prev.liveStroke ||
         s.liveShape !== prev.liveShape ||
-        s.liveSketch !== prev.liveSketch ||
         s.liveErased !== prev.liveErased
       ) {
         schedule();

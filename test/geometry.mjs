@@ -17,6 +17,8 @@ import {
   boxOf,
   contentBounds,
   handlesOf,
+  labelButtonOf,
+  rotateHandleOf,
   polygonPoints,
   roundedPolygonPath,
   labelPlacement,
@@ -55,10 +57,13 @@ import {
   groupHandles,
   resizeGroup,
 } from '../src/features/board/geometry.ts';
-import { coveringFigure, editPatches, shapeElement, fillColorOf, fillOpacityOf, fillWith, parseHex, useBoardStore } from '../src/features/board/store.ts';
+import { coveringFigure, customMs, editPatches, previewElements, previewOf, shapeElement, fillColorOf, fillOpacityOf, fillWith, parseHex, useBoardStore, writable } from '../src/features/board/store.ts';
 import { decodeClip, encodeClip } from '../src/features/board/clip.ts';
 import { splitOps } from '../src/features/board/ops.ts';
 import { toSvg } from '../src/features/board/svg.ts';
+import { stickyFontSize } from '../src/features/board/geometry.ts';
+import { TEMPLATES, templateElements } from '../src/features/board/templates.ts';
+import { STRINGS } from '../src/features/i18n/strings.ts';
 
 const base = (id, z) => ({ id, createdBy: 'u', createdAt: 0, updatedAt: 0, z });
 const box = (id, x, y, w, h, z = 1) => ({
@@ -1253,5 +1258,134 @@ assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rec
   useBoardStore.getState().hydrate({ meta, elements: [inner, solid], participants: [you], you, seq: 0 });
   assert.equal(at(50, 50), 'frame', 'a filled shape covers what is under it');
 }
+
+// The label button sits clear of the rotate knob and the corner handles: below
+// all of their hit areas (18 px at most), at any zoom and any turn.
+{
+  const shapes = [box('LB', 0, 0, 200, 100), box('LB', 0, 0, 4, 4), { ...base('LL', 1), kind: 'shape', shape: 'line', from: { x: 0, y: 0 }, to: { x: 200, y: 100 }, stroke: '#000000', strokeWidth: 2, fill: null }];
+  for (const scale of [0.1, 0.5, 1, 4]) {
+    for (const rotation of [0, 0.4, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
+      for (const el of shapes) {
+        const turned = { ...el, rotation };
+        const at = labelButtonOf(turned, scale);
+        const knob = rotateHandleOf(turned, scale);
+        for (const h of [...handlesOf(turned), ...(knob ? [knob] : [])]) {
+          assert.ok(at.y - 18 / scale > h.y, `label button clear of a handle (scale ${scale}, turn ${rotation})`);
+        }
+      }
+    }
+  }
+}
+
+// --- live previews and offline edits (U2, U3) --------------------------------
+{
+  // Offline or reconnecting, a live board still takes edits (they wait in the outbox).
+  assert.ok(writable('offline') && writable('connecting') && writable('online') && writable('local'));
+  assert.ok(!writable('idle'), 'not before the board is open');
+  const config = useBoardStore.getState().config;
+  const edit = { ids: ['B'], mode: 'move', handle: -1, start: { x: 0, y: 0 }, dx: 10, dy: 0, patch: null };
+  assert.equal(previewOf(config, null, [1], null), null, 'nothing drawn yet');
+  assert.deepEqual(previewOf(config, edit, [1, 2, 3, 4], null), { edit }, 'a drag wins');
+  const stroke = previewOf(config, null, [1.234567, 2, 3, 4], null).el;
+  assert.equal(stroke.kind, 'stroke');
+  assert.deepEqual(stroke.points, [1.23, 2, 3, 4], 'points rounded for the wire');
+  assert.equal(previewOf(config, null, [], { from: { x: 0, y: 0 }, to: { x: 5, y: 5 } }).el.kind, 'shape');
+  // What a peer drags is drawn moved, its bound arrow following; what they draw comes on top.
+  const drafts = previewElements([A, B, arrow], { p1: { edit }, p2: { el: stroke } });
+  assert.deepEqual(drafts.map((el) => el.id), ['B', 'L', 'draft']);
+  assert.deepEqual(drafts[0].from, { x: 310, y: 0 });
+  assert.equal(drafts[2].z, Number.MAX_SAFE_INTEGER);
+  // The store keeps them until the peer is done, leaves, or the socket drops.
+  const s = useBoardStore.getState();
+  useBoardStore.setState({ elements: { A, B, L: arrow }, participants: [{ userId: 'p1' }] });
+  s.setPreview('p1', { edit });
+  assert.deepEqual(useBoardStore.getState().peerDrafts.map((el) => el.id), ['B', 'L']);
+  s.setPreview('p1', null);
+  assert.equal(useBoardStore.getState().peerDrafts.length, 0);
+  s.setPreview('p1', { edit });
+  s.setConnection('offline');
+  assert.equal(useBoardStore.getState().peerDrafts.length, 0, 'dropped with the socket');
+  s.setConnection('online');
+  s.setPreview('p1', { edit });
+  s.setParticipants([]);
+  assert.equal(useBoardStore.getState().peerDrafts.length, 0, 'gone with whoever left');
+  useBoardStore.getState().reset();
+}
+
+// --- sticky notes, lock, vote, templates (brainstorm round) ----------------
+{
+  const note = { kind: 'shape', shape: 'rectangle', from: { x: 0, y: 0 }, to: { x: 200, y: 200 }, sticky: true };
+  assert.equal(stickyFontSize({ ...note, text: 'Hi' }), 28, 'a short note keeps the starting size');
+  const long = stickyFontSize({ ...note, text: 'word '.repeat(80) });
+  assert.ok(long < 28 && long >= 10, 'a long note shrinks, never under the minimum');
+  const lines = labelLines({ ...note, text: 'word '.repeat(80) }, long);
+  assert.ok(lines.length * long * TEXT_LINE_HEIGHT <= 200 - 12 || long === 10, 'and then fits');
+
+  useBoardStore.getState().hydrate({ meta, elements: [A, B], participants: [you], you, seq: 0 });
+  useBoardStore.getState().setConnection('online');
+  const st = () => useBoardStore.getState();
+  const id = st().addSticky({ x: 2000, y: 2000 });
+  assert.equal(st().elements[id].sticky, true);
+  st().updateShape(id, { text: 'word '.repeat(80) });
+  assert.ok(st().elements[id].fontSize < 28, 'committed text is fitted');
+  // Locked: not selectable, not erasable, not under the pointer; unlocking brings it back.
+  st().select('A');
+  st().lockSelection();
+  assert.equal(st().elements.A.locked, true);
+  assert.deepEqual(st().selectedIds, []);
+  st().select(['A', 'B']);
+  assert.deepEqual(st().selectedIds, ['B']);
+  assert.equal(st().elementAt({ x: 20, y: 90 }, 6)?.id ?? null, null);
+  st().eraseAt({ x: 20, y: 90 }, 12);
+  assert.ok(!st().liveErased.includes('A'));
+  st().unlock('A');
+  assert.equal(st().elements.A.locked, undefined);
+  assert.deepEqual(st().selectedIds, ['A']);
+  // A vote dot is a small circle in your colour.
+  st().addVote({ x: 5, y: 5 });
+  const dot = Object.values(st().elements).at(-1);
+  assert.equal(dot.shape, 'ellipse');
+  assert.equal(dot.fill, you.color);
+  // Highlighter strokes are marked and wider.
+  st().setConfig({ pen: 'highlighter', width: 5 });
+  st().select(null);
+  const hlId = st().addStroke([0, 0, 10, 10]);
+  const hl = st().elements[hlId];
+  assert.equal(hl.tool, 'highlighter');
+  assert.equal(hl.width, 20);
+  st().setConfig({ pen: 'pen' });
+  // Every template pastes; its columns stay locked and out of the selection.
+  for (const { key } of TEMPLATES) {
+    const els = templateElements(key, STRINGS.en);
+    assert.ok(els.length > 1, key);
+    const before = Object.keys(st().elements).length;
+    st().paste({ x: 0, y: 0 }, els);
+    assert.equal(Object.keys(st().elements).length, before + els.length, key);
+    assert.ok(st().selectedIds.every((sid) => !st().elements[sid].locked), key);
+    for (const el of els) {
+      if (el.kind === 'shape' && el.fromLink) assert.ok(els.some((o) => o.id === el.fromLink.id), `${key}: arrow bound inside`);
+    }
+  }
+  useBoardStore.getState().reset();
+}
+
+// --- a figure is its inside and its outline, not its bounding box -----------
+{
+  const fig = (shape, extra = {}) => ({ id: shape, kind: 'shape', shape, from: { x: 0, y: 0 }, to: { x: 100, y: 100 }, stroke: '#000000', strokeWidth: 2, z: 1, ...extra });
+  for (const shape of ['ellipse', 'triangle']) {
+    assert.equal(Number(shapeHit(fig(shape), { x: 4, y: 4 }, 3)), 0, `${shape}: its box's empty corner is beside it`);
+    assert.equal(Number(shapeHit(fig(shape), { x: 50, y: 70 }, 3)), 1, `${shape}: inside`);
+  }
+  assert.equal(Number(shapeHit(fig('ellipse'), { x: 101, y: 50 }, 3)), 1, 'ellipse: on its outline');
+  assert.equal(Number(shapeHit(fig('rectangle'), { x: 4, y: 4 }, 3)), 1, 'rectangle: its corner is its own');
+  assert.equal(Number(shapeHit(fig('rectangle'), { x: 110, y: 50 }, 3)), 0, 'rectangle: outside');
+}
+
+// --- a custom countdown ----------------------------------------------------
+assert.equal(customMs('2', '30'), 150_000);
+assert.equal(customMs('', '45'), 45_000);
+assert.equal(customMs('60', '0'), 3_600_000);
+assert.equal(customMs('180', '0'), 3 * 3_600_000, 'a three-hour class');
+for (const [m, sec] of [['0', '0'], ['180', '1'], ['181', '0'], ['1', '60'], ['1.5', '0'], ['-1', '10'], ['a', '1']]) assert.equal(customMs(m, sec), null, `${m}:${sec}`);
 
 console.log('geometry: ok');

@@ -9,10 +9,18 @@
  * board space anyway.
  *
  * They follow the camera's shared value on the UI thread, so neither the canvas
- * nor React renders to move them.
+ * nor React renders to move them. Positions arrive ~22 times a second, so each
+ * one glides to the next (`GLIDE`) instead of stepping.
  */
+import { useEffect } from 'react';
 import { View } from 'react-native';
-import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
 
 import { elementBounds } from '@/features/board/geometry';
 import type { BoardElement, Participant, Point } from '@/features/board/model';
@@ -30,6 +38,9 @@ function useAtBoardPoint(camera: SharedValue<Camera>, at: Point, dx = 0, dy = 0)
 }
 
 const PLACED = { position: 'absolute', left: 0, top: 0 } as const;
+
+/** About one update's gap, so a moving cursor is always on its way to the next point. */
+const GLIDE = { duration: 60, easing: Easing.linear };
 
 export function PeerCursors({ camera }: { camera: SharedValue<Camera> }) {
   const participants = useBoardStore((s) => s.participants);
@@ -63,7 +74,16 @@ function PeerCursor({
   at: Point;
   camera: SharedValue<Camera>;
 }) {
-  const follow = useAtBoardPoint(camera, at);
+  const x = useSharedValue(at.x);
+  const y = useSharedValue(at.y);
+  useEffect(() => {
+    x.set(withTiming(at.x, GLIDE));
+    y.set(withTiming(at.y, GLIDE));
+  }, [at, x, y]);
+  const follow = useAnimatedStyle(() => {
+    const c = camera.get();
+    return { transform: [{ translateX: x.get() * c.scale + c.x }, { translateY: y.get() * c.scale + c.y }] };
+  });
   return (
     <Animated.View
       style={[PLACED, { flexDirection: 'row', alignItems: 'flex-start', gap: 2 }, follow]}

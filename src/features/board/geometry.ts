@@ -304,6 +304,38 @@ export function labelLines(
   return textLines({ text, fontSize, font: el.font, width: Math.max(fontSize, inner) });
 }
 
+/** A new sticky note's side, and the label size it starts at before shrinking to fit. */
+export const STICKY_SIZE = 200;
+export const STICKY_TEXT_SIZE = 28;
+
+/**
+ * The label size that fits a sticky note's text inside it: the starting size,
+ * shrunk until every line (wrapped, and each word whole) fits the box. Never
+ * under the smallest size the board takes.
+ */
+export function stickyFontSize(
+  el: Pick<ShapeElement, 'shape' | 'from' | 'to' | 'text' | 'font'>,
+): number {
+  const b = shapeBounds(el);
+  const width = b.width - LABEL_PAD * 2;
+  const height = b.height - LABEL_PAD * 2;
+  let size = STICKY_TEXT_SIZE;
+  while (size > LIMITS.minFontSize) {
+    const lines = labelLines(el, size);
+    const fits =
+      lines.length * size * TEXT_LINE_HEIGHT <= height &&
+      lines.every((line) => measureWidth(line, { fontSize: size, font: el.font }) <= width);
+    if (fits) break;
+    size = Math.max(LIMITS.minFontSize, Math.floor(size * 0.9));
+  }
+  return size;
+}
+
+/** The element with a sticky note's label sized to fit; anything else as it is. */
+export function fitSticky<T extends BoardElement>(el: T): T {
+  return el.kind === 'shape' && el.sticky ? { ...el, fontSize: stickyFontSize(el) } : el;
+}
+
 /**
  * Where a figure's label is drawn: the x it is anchored at with its alignment,
  * and the y of the middle of its first line. A line's label is always centred
@@ -572,6 +604,18 @@ export function rotateHandleOf(el: BoardElement, scale: number): Point | null {
   if (!canRotate(el)) return null;
   const b = boxOf(el);
   return toWorld(el, { x: b.x + b.width / 2, y: b.y - 24 / scale });
+}
+
+/**
+ * Where the label button's top middle sits: 24 screen px below the lowest of
+ * the figure and its rotate knob — clear of every handle's hit area (≤ 18 px),
+ * whatever the zoom or the turn.
+ */
+export function labelButtonOf(el: BoardElement, scale: number): Point {
+  const b = elementBounds(el);
+  const knob = rotateHandleOf(el, scale);
+  const bottom = Math.max(b.y + b.height, knob ? knob.y : -Infinity);
+  return { x: b.x + b.width / 2, y: bottom + 24 / scale };
 }
 
 /** The rotation a drag of the knob to `p` implies; within 4° of a 15° step it snaps there. */
@@ -1049,23 +1093,52 @@ export function shapeHit(el: ShapeElement, at: Point, pad: number): boolean {
     }
     return false;
   }
-  return inBox(toLocal(el, at), shapeBounds(el), pad);
+  // A figure is its inside and its outline, not its bounding box: a click in an
+  // ellipse's or a triangle's empty corner is a click beside it.
+  const p = toLocal(el, at);
+  const outline = outlinePoints(el);
+  return insidePolygon(p, outline) || outlineDistance(p, outline) <= pad + el.strokeWidth / 2;
+}
+
+/** A figure's outline (`outlineOf`) as points: an ellipse as a many-sided polygon. */
+function outlinePoints(el: ShapeElement): Point[] {
+  const o = outlineOf(el);
+  if (!('ellipse' in o)) return o.poly;
+  const { x, y, width, height } = o.ellipse;
+  const n = 48;
+  return Array.from({ length: n }, (_, k) => ({
+    x: x + (width / 2) * (1 + Math.cos((k / n) * Math.PI * 2)),
+    y: y + (height / 2) * (1 + Math.sin((k / n) * Math.PI * 2)),
+  }));
+}
+
+/** Whether `p` is inside the closed polygon `pts` (even-odd rule). */
+function insidePolygon(p: Point, pts: Point[]): boolean {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i];
+    const b = pts[j];
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/** How far `p` is from the closed polygon's outline. */
+function outlineDistance(p: Point, pts: Point[]): number {
+  let best = Infinity;
+  for (let i = 0; i < pts.length; i++) best = Math.min(best, segmentDistance(pts[i], pts[(i + 1) % pts.length], p));
+  return best;
 }
 
 /**
  * Whether `at` is in the empty middle of an unfilled, unlabelled shape: on the
  * board only its outline is drawn there, so a press there looks through it.
  */
-// ponytail: the middle is the box shrunk past the outline, so an ellipse's or a
-// triangle's box corners still count as its body; test the real outline if that bites.
 export function hollowAt(el: BoardElement, at: Point, pad: number): boolean {
-  return (
-    el.kind === 'shape' &&
-    isFillable(el.shape) &&
-    !el.fill &&
-    !el.text &&
-    inBox(toLocal(el, at), shapeBounds(el), -(pad + el.strokeWidth))
-  );
+  if (el.kind !== 'shape' || !isFillable(el.shape) || el.fill || el.text) return false;
+  const p = toLocal(el, at);
+  const outline = outlinePoints(el);
+  return insidePolygon(p, outline) && outlineDistance(p, outline) > pad + el.strokeWidth;
 }
 
 /**
@@ -2059,8 +2132,7 @@ function openSketch(p: Point[]): Sketch | null {
  * than `minSize` across, it is left alone.
  */
 export function recognizeSketch(flat: number[], minSize: number): Sketch | null {
-  // At most ~200 points, however long the stroke: "draw to shape" reads it
-  // again every few frames while the pen moves.
+  // At most ~200 points, however long the stroke.
   const raw = flatToPoints(flat);
   const step = Math.ceil(raw.length / 200);
   const p = step > 1 ? raw.filter((_, i) => i % step === 0 || i === raw.length - 1) : raw;

@@ -8,6 +8,7 @@
  * is too small for a pasted photo or two.
  */
 import { File, Paths } from 'expo-file-system';
+import { writeAsStringAsync } from 'expo-file-system/legacy';
 
 import { API_BASE_URL } from '@/constants/config';
 import type { BoardElement, BoardMeta, UserId } from '@/features/board/model';
@@ -41,18 +42,49 @@ export const localMeta = (board: LocalBoard, userId: UserId): BoardMeta => ({
 
 const boardFile = () => new File(Paths.document, 'local-board.json');
 
+// The board as last read or written. Only this module writes the file, so after
+// the first read it never has to be parsed again: an edit's save is one write,
+// not a read, a parse and a write of the whole board.
+let current: LocalBoard | undefined;
+
+const PERF_LOG = process.env.EXPO_PUBLIC_PERF_HUD === '1';
+
 export async function loadLocal(): Promise<LocalBoard | undefined> {
+  if (current) return current;
   const file = boardFile();
   if (!file.exists) return undefined;
   try {
-    return JSON.parse(await file.text()) as LocalBoard;
+    const t0 = PERF_LOG ? performance.now() : 0;
+    current = JSON.parse(await file.text()) as LocalBoard;
+    if (PERF_LOG) console.log(`local load: ${current.elements.length} elements, ${Math.round(performance.now() - t0)} ms`);
+    return current;
   } catch {
     // A write cut short by the app being killed: start again rather than never open.
     return undefined;
   }
 }
 
-const saveLocal = (board: LocalBoard) => boardFile().write(JSON.stringify(board));
+// The write itself runs on a native thread, off the JS thread the gestures
+// commit on; only the stringify is ours. One at a time, in order, so an older
+// board never lands after a newer one.
+let writing: Promise<void> = Promise.resolve();
+
+function saveLocal(board: LocalBoard): void {
+  current = board;
+  const t0 = PERF_LOG ? performance.now() : 0;
+  const json = JSON.stringify(board);
+  const t1 = PERF_LOG ? performance.now() : 0;
+  writing = writing
+    .then(() => writeAsStringAsync(boardFile().uri, json))
+    .then(
+      () => {
+        if (PERF_LOG) console.log(`local save: ${board.elements.length} elements, JS ${Math.round(t1 - t0)} ms, written after ${Math.round(performance.now() - t0)} ms`);
+      },
+      // ponytail: a failed write is dropped like before (sync `write` threw into a
+      // fire-and-forget promise); the next edit writes the whole board again.
+      () => {},
+    );
+}
 
 /** The local board, made (empty) the first time it is asked for. */
 export async function ensureLocal(name: string): Promise<LocalBoard> {

@@ -8,6 +8,7 @@ import {
   Path,
   Rect,
   RoundedRect,
+  Shadow,
   Skia,
   useImage,
   usePathValue,
@@ -385,6 +386,15 @@ function ShapeGeometry({ el, ground }: { el: ShapeElement; ground: string }) {
   const outline = dashIntervals(el.dash, el.strokeWidth);
   const dashed = outline ? <DashPathEffect intervals={outline} /> : null;
 
+  if (el.shape === 'rectangle' && el.sticky) {
+    // A sticky note: paper with a soft drop shadow and no outline.
+    return (
+      <Rect x={x} y={y} width={w} height={h} color={el.fill ?? '#FFE58A'}>
+        <Shadow dx={0} dy={3} blur={5} color="rgba(0, 0, 0, 0.18)" />
+      </Rect>
+    );
+  }
+
   if (el.shape === 'rectangle') {
     const r = el.rounded ? cornerRadius(w, h) : 0;
     return (
@@ -599,11 +609,14 @@ export function LiveStroke({
   color,
   width,
   smooth,
+  highlighter = false,
 }: {
   points: SharedValue<number[]>;
   color: string;
   width: number;
   smooth: boolean;
+  /** Drawn as the highlighter will be: translucent. */
+  highlighter?: boolean;
 }) {
   const path = usePathValue((b) => {
     'worklet';
@@ -617,9 +630,13 @@ export function LiveStroke({
       color={color}
       strokeCap="round"
       strokeJoin="round"
+      opacity={highlighter ? HIGHLIGHTER_ALPHA : 1}
     />
   );
 }
+
+/** How opaque a highlighter stroke is painted. */
+const HIGHLIGHTER_ALPHA = 0.4;
 
 /**
  * The box shape under the finger (rectangle, ellipse, triangle, polygon): its
@@ -720,9 +737,11 @@ export function LiveBoxShape({
 function StrokeView({
   el,
   smooth,
+  dark,
 }: {
   el: Extract<BoardElement, { kind: 'stroke' }>;
   smooth: boolean;
+  dark: boolean;
 }) {
   const path = useMemo(
     () => Skia.Path.MakeFromSVGString(strokeToSvgPath(el.points, smooth)),
@@ -737,6 +756,10 @@ function StrokeView({
       color={el.color}
       strokeCap="round"
       strokeJoin="round"
+      // A highlight: translucent, and multiplied on a light board so the ink under it stays crisp.
+      {...(el.tool === 'highlighter'
+        ? { opacity: HIGHLIGHTER_ALPHA, ...(dark ? null : { blendMode: 'multiply' as const }) }
+        : null)}
     />
   );
 }
@@ -768,6 +791,8 @@ export function Anchors({ elements, near, scale }: { elements: BoardElement[]; n
  * the dark theme's text colour (`inkFor`). The element itself is untouched.
  */
 function inked(el: BoardElement): BoardElement {
+  // A sticky note is light paper on either board: its dark ink stays dark.
+  if (el.kind === 'shape' && el.sticky) return el;
   switch (el.kind) {
     case 'stroke':
     case 'text':
@@ -791,7 +816,7 @@ const Painted = memo(function Painted({
 }) {
   switch (el.kind) {
     case 'stroke':
-      return <StrokeView el={el} smooth={smooth} />;
+      return <StrokeView el={el} smooth={smooth} dark={ground === Palettes.dark.background} />;
     case 'shape':
       return <ShapeView el={el} ground={ground} />;
     case 'image':
