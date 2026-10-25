@@ -40,6 +40,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { REALTIME } from '@/constants/config';
 import { Shadow, inkFor } from '@/constants/theme';
 import {
+  fitSticky,
   elbowDragPatch,
   bendHandleOf,
   curveFromDrag,
@@ -52,6 +53,7 @@ import {
   handlesOf,
   isLineLike,
   labelBox,
+  labelButtonOf,
   labelFromDrag,
   labelLines,
   lineLabelCentre,
@@ -70,6 +72,7 @@ import {
   simplify,
 } from '@/features/board/geometry';
 import { LIMITS, SHAPE_TEXT_SIZE, type BoardElement, type Link, type Participant, type Point, type ShapeElement } from '@/features/board/model';
+import type { Preview } from '@/services/realtime/protocol';
 import { visibleSorted } from '@/features/board/ops';
 import {
   MAX_ZOOM,
@@ -78,7 +81,8 @@ import {
   editPatches,
   fillWith,
   heldByOthers,
-  sketchElement,
+  HIGHLIGHTER_SCALE,
+  previewOf,
   shapeElement,
   useBoardStore,
   writable,
@@ -100,7 +104,10 @@ import {
   LiveDotGrid,
   SelectionFrame,
 } from './ElementRenderer';
+import { BoardPictures } from './BoardPictures';
 import { HoldMenu, type HoldSpot } from './HoldMenu';
+import { LaserLayer } from './LaserLayer';
+import { pushLaser } from './laser';
 import { HeldTags, PeerCursors } from './PeerCursors';
 import { TextEditorOverlay } from './TextEditorOverlay';
 import { Txt } from '../ui/Text';
@@ -203,10 +210,20 @@ const HOLD_MS = 500;
 const SKETCH_MS = 500;
 /** Screen pixels a finger may wander and still count as held still. */
 const STILL_PX = 8;
-/** How often "draw to shape" reads the stroke again while the pen moves. */
-const GUESS_MS = 60;
-/** How faint the figure it reads shows over the stroke until the pen lifts. */
-const GUESS_ALPHA = 0.35;
+
+/**
+ * Sends the gesture's preview while it lasts (`startPreview`). Outside the
+ * gesture memo, so a rebuild mid-gesture cannot strand it; one, as only the
+ * board screen's canvas sends previews.
+ */
+let previewTimer: ReturnType<typeof setInterval> | null = null;
+function startPreviewTimer(send: () => void) {
+  previewTimer ??= setInterval(send, REALTIME.previewThrottleMs);
+}
+function stopPreviewTimer() {
+  if (previewTimer) clearInterval(previewTimer);
+  previewTimer = null;
+}
 
 /**
  * Whether this tap on `id` is the second within 300 ms — the cursor tool's
@@ -224,10 +241,14 @@ const isDoubleTap = (() => {
 
 export function BoardCanvas({
   onCursorMove,
+  onPreview,
   canvasRef,
   blur,
 }: {
-  onCursorMove?: (at: Point) => void;
+  /** `laser`: the finger is the laser pointer, and the others draw its trail. */
+  onCursorMove?: (at: Point, laser?: boolean) => void;
+  /** What is being drawn or dragged, for the others; `null` once the gesture is over. */
+  onPreview?: (preview: Preview | null) => void;
   /** Blurs everything drawn, in px: the home screen's out-of-focus board. */
   blur?: number;
   /** Handed out so the glass panels can snapshot the board (`useBoardMirror`). */
@@ -247,7 +268,6 @@ export function BoardCanvas({
 
   const [size, setSize] = useState({ width: 0, height: 0 });
   const liveShape = useBoardStore((s) => s.liveShape);
-  const liveSketch = useBoardStore((s) => s.liveSketch);
   const liveErased = useBoardStore((s) => s.liveErased);
   const canEdit = useBoardStore((s) => s.canEditNow());
   const online = useBoardStore((s) => writable(s.connection));
@@ -274,7 +294,8 @@ export function BoardCanvas({
   const erasing = useMemo(() => new Set(liveErased), [liveErased]);
   const list = useMemo(() => {
     if (editingId && draft !== null) {
-      return sorted.map((el) => (el.id === editingId ? ({ ...el, text: draft } as BoardElement) : el));
+      // A sticky note's words shrink to fit as they are typed.
+      return sorted.map((el) => (el.id === editingId ? fitSticky({ ...el, text: draft } as BoardElement) : el));
     }
     if (!liveEdit) return sorted;
     // The same patches the lift will commit, so the preview is the result —
@@ -299,6 +320,10 @@ export function BoardCanvas({
   const participants = useBoardStore((s) => s.participants);
   const you = useBoardStore((s) => s.you);
   const held = useMemo(() => heldByOthers(participants, you), [participants, you]);
+  // What the others drag is drawn where it is now (`PeerDrafts`), not here. A
+  // string, so a preview message re-renders this only when the set changes.
+  const theirIds = useBoardStore((s) => s.peerDrafts.map((el) => el.id).join(' '));
+  const theirs = useMemo(() => new Set(theirIds.split(' ')), [theirIds]);
 
   // What the cursor is carrying: drawn through the drag offset, not re-rendered.
   const movingIds = useMemo(
@@ -308,6 +333,21 @@ export function BoardCanvas({
         : null,
     [liveEdit],
   );
+
+  // What is still goes to the recorded pictures (`BoardPictures`); what is
+  // dragged, typed, erased or held by someone else is drawn as live nodes over
+  // it for as long as that lasts. `list` is `sorted` with the edited elements
+  // swapped, index for index, so a changed object is an edited one.
+  const [still, astir] = useMemo(() => {
+    const still: BoardElement[] = [];
+    const astir: BoardElement[] = [];
+    list.forEach((el, i) => {
+      if (theirs.has(el.id)) return;
+      const live = el !== sorted[i] || held.has(el.id) || erasing.has(el.id) || movingIds?.has(el.id);
+      (live ? astir : still).push(el);
+    });
+    return [still, astir];
+  }, [list, sorted, theirs, held, erasing, movingIds]);
 
   const selecting = tool === 'select' || tool === 'shape';
   const selected = useMemo(
@@ -330,6 +370,7 @@ export function BoardCanvas({
   // The pen stroke under the finger, as [x, y, ...] in board space: appended to
   // and drawn on the UI thread (`LiveStroke`), committed to the store on lift.
   const pen = useSharedValue<number[]>([]);
+  useEffect(() => stopPreviewTimer, []);
   /** Where the finger last moved on from (screen px) and when: a hold reads as a figure. */
   const penAnchor = useSharedValue({ x: 0, y: 0, at: 0 });
   const penDown = useSharedValue({ x: 0, y: 0 });
@@ -375,13 +416,15 @@ export function BoardCanvas({
   // Who owns a one-finger touch: see `gesture`.
   const panOnly = tool === 'hand' || !canEdit;
   const penOn = tool === 'pen' && canEdit && online;
+  /** What the pencil draws (`PenKind`): a laser draws nothing, a highlighter never turns into a figure. */
+  const penKind = config.pen;
   // A box shape is previewed on the UI thread; a line or an arrow snaps to shapes, which JS does.
   const uiShape = tool === 'shape' && config.shape !== 'line' && config.shape !== 'arrow';
 
   const gesture = useMemo(() => {
     const store = () => useBoardStore.getState();
-    // Viewers and offline clients get no draft: a stroke that cannot be sent
-    // would only ever exist on this screen, and the banner is what says so.
+    // Viewers get no draft, nor a board not open yet; offline is fine (the
+    // outbox waits for the reconnect).
     const editable = () => store().canEditNow() && writable(store().connection);
 
     // A finger landing on the selection drags it rather than drawing: a
@@ -481,7 +524,7 @@ export function BoardCanvas({
       if (hold.timer) clearTimeout(hold.timer);
       hold.timer = null;
     };
-    // A pen stroke held still at its end for 700 ms is made into the figure it
+    // A pen stroke held still at its end for 500 ms (`SKETCH_MS`) is made into the figure it
     // was meant to be — at once, on the board, not as a preview: the stroke
     // gives way to it, and the pen, still down, then resizes it (an outwards
     // pull grows it, a line's tip follows), so moving on never loses the
@@ -501,15 +544,6 @@ export function BoardCanvas({
       if (still.timer) clearTimeout(still.timer);
       still.timer = null;
     };
-    // "Draw to shape" reads the stroke every few frames while the pen moves
-    // and shows the figure it reads, faint, over it (`liveSketch`).
-    const guess = { timer: null as ReturnType<typeof setInterval> | null };
-    const stopGuess = () => {
-      if (guess.timer) clearInterval(guess.timer);
-      guess.timer = null;
-      if (store().liveSketch) store().setLiveSketch(null);
-    };
-    const drawsToShape = () => useSessionStore.getState().settings.drawToShape;
     const watchSketch = () => {
       still.timer = null;
       const { at } = penAnchor.get();
@@ -524,7 +558,6 @@ export function BoardCanvas({
         const sketch = recognizeSketch(pen.get(), 24 / store().camera.scale);
         const id = sketch ? store().addSketch(sketch) : null;
         if (sketch && id) {
-          stopGuess();
           figure.id = id;
           figure.sketch = sketch;
           figure.p0 = penLast.get();
@@ -545,8 +578,26 @@ export function BoardCanvas({
       }
       still.timer = setTimeout(watchSketch, SKETCH_MS);
     };
+    // What is being drawn or dragged goes to the others ~30 times a second
+    // while the gesture lasts, read from wherever it lives: the store, or the
+    // UI thread's values (the pen, a move, a box shape).
+    const previewNow = () => {
+      const s = store();
+      const edit = s.liveEdit?.mode === 'move' && moveLive.get() ? { ...s.liveEdit, ...drag.get() } : s.liveEdit;
+      const box = shapeLive.get() ? { from: shapeFrom.get(), to: shapeTo.get() } : null;
+      return previewOf(s.config, edit, s.tool === 'pen' ? pen.get() : [], s.liveShape ?? box);
+    };
+    const startPreview = () => {
+      if (onPreview) startPreviewTimer(() => onPreview(previewNow()));
+    };
+    /** Called first thing when a gesture ends: the `null` goes after what the end commits. */
+    const stopPreview = () => {
+      stopPreviewTimer();
+      queueMicrotask(() => onPreview?.(null));
+    };
     /** A pen stroke began (JS side of the pen gesture). */
     const penStarted = () => {
+      startPreview();
       still.epoch++;
       still.tested = -1;
       figure.id = null;
@@ -556,13 +607,27 @@ export function BoardCanvas({
       // board back its width the moment the gesture starts.
       store().setRailOpen(false);
       stopSketch();
-      still.timer = setTimeout(watchSketch, SKETCH_MS);
-      stopGuess();
-      if (drawsToShape()) {
-        guess.timer = setInterval(() => {
-          store().setLiveSketch(recognizeSketch(pen.get(), 24 / store().camera.scale));
-        }, GUESS_MS);
+      if (penKind === 'pen') still.timer = setTimeout(watchSketch, SKETCH_MS);
+    };
+    /** The laser moved: a trail here, and (throttled) on everyone else's screen. */
+    let laserSentAt = 0;
+    const laserMoved = (x: number, y: number) => {
+      pushLaser('self', { x, y });
+      const now = nowMs();
+      if (now - laserSentAt < REALTIME.cursorThrottleMs) return;
+      laserSentAt = now;
+      onCursorMove?.({ x, y }, true);
+    };
+    /** A tap or a press with the sticky tool: a note to type into, or a vote dot. */
+    const stickyAt = (p: Point) => {
+      if (store().config.vote) {
+        store().addVote(p);
+        tick(haptics);
+        return;
       }
+      // The sticky tool stays in hand: one note after another is how a brainstorm goes.
+      const id = store().addSticky(p);
+      if (id) setEditingId(id);
     };
     /** The pen moved after it made a figure: the figure follows, once a frame (JS side of the pen gesture). */
     const figureMoved = (x: number, y: number) => {
@@ -585,8 +650,8 @@ export function BoardCanvas({
     };
     /** The pen lifted (or was cancelled): commit what was drawn. */
     const penEnded = (points: number[], success: boolean) => {
+      stopPreview();
       stopSketch();
-      stopGuess();
       penSketch.set(false);
       if (figure.raf) cancelAnimationFrame(figure.raf);
       figure.raf = 0;
@@ -599,19 +664,8 @@ export function BoardCanvas({
         figure.patch = null;
         return;
       }
-      // "Draw to shape" lands the figure the stroke reads as and stays in hand:
-      // drawing figure after figure is what the mode is for.
-      const sketch =
-        success && points.length >= 4 && drawsToShape()
-          ? recognizeSketch(points, 24 / store().camera.scale)
-          : null;
-      const made = sketch ? store().addSketch(sketch) : null;
-      if (made) {
-        pen.set([]);
-        return;
-      }
-      // The pencil stays in hand: many strokes in a row is what it is for.
-      if (success && points.length >= 4) store().addStroke(simplify(points));
+      // The pencil stays in hand: many strokes in a row is what it is for. The laser leaves nothing.
+      if (success && points.length >= 4 && penKind !== 'laser') store().addStroke(simplify(points));
       if (!success) {
         pen.set([]);
         return;
@@ -699,12 +753,15 @@ export function BoardCanvas({
         const p = screenToBoard(down.x, down.y);
         // A hold on a figure picks it (unless it is already part of the
         // selection) and opens the menu for the selection.
-        const hit = store().elementAt(p, 8 / store().camera.scale);
+        const r = 8 / store().camera.scale;
+        const hit = store().elementAt(p, r);
         if (hit && !store().selectedIds.includes(hit.id)) store().select(hit.id);
         else if (!hit) store().select(null);
+        // Off everything that can be picked, a locked element under the finger can be unlocked.
+        const locked = hit ? null : store().elementAt(p, r, store().visibleElements().filter((el) => el.locked));
         hold.open = true;
         tick(haptics);
-        setMenu({ x: down.x, y: down.y, at: p });
+        setMenu({ x: down.x, y: down.y, at: p, locked: locked?.id });
       }, HOLD_MS);
     };
     const drawFinalized = () => {
@@ -753,7 +810,8 @@ export function BoardCanvas({
         if (id) setEditingId(id);
       } else if (t === 'fill') {
         if (store().fillAt(p)) tick(haptics);
-      }
+      } else if (t === 'sticky') stickyAt(p);
+      if (t === 'select' || t === 'shape') startPreview();
       onCursorMove?.(p);
     };
     const drawMoved = (x: number, y: number) => {
@@ -772,6 +830,7 @@ export function BoardCanvas({
       onCursorMove?.(p);
     };
     const drawEnded = (success: boolean, dx: number, dy: number, from: Point, to: Point) => {
+      stopPreview();
       endMove();
       if (hold.open) return;
       if (!success) {
@@ -780,7 +839,6 @@ export function BoardCanvas({
         store().setLiveEdit(null);
         store().setLiveMarquee(null);
         store().setLiveShape(null);
-        store().setLiveSketch(null);
         store().discardErase();
         shapeLive.set(false);
         return;
@@ -913,6 +971,8 @@ export function BoardCanvas({
         store().commitErase();
       } else if (t === 'fill') {
         if (store().fillAt(p)) tick(haptics);
+      } else if (t === 'sticky') {
+        stickyAt(p);
       } else if (t === 'shape') {
         // A tap with the shape tool picks the shape under it (or nothing).
         const hit = shapeAt(store().visibleElements(), p, 8 / store().camera.scale);
@@ -1016,6 +1076,10 @@ export function BoardCanvas({
         const x = (e.x - c.x) / c.scale;
         const y = (e.y - c.y) / c.scale;
         penLast.set({ x, y });
+        if (penKind === 'laser') {
+          scheduleOnRN(laserMoved, x, y);
+          return;
+        }
         if (penSketch.get()) {
           // A figure has been made from the stroke: the pen now sizes it.
           scheduleOnRN(figureMoved, x, y);
@@ -1050,9 +1114,11 @@ export function BoardCanvas({
     return Gesture.Simultaneous(pinch, panCamera, Gesture.Exclusive(primary, tap));
   }, [
     onCursorMove,
+    onPreview,
     haptics,
     panOnly,
     penOn,
+    penKind,
     camera,
     pen,
     penAnchor,
@@ -1098,7 +1164,8 @@ export function BoardCanvas({
           <GridLayer width={size.width} height={size.height} camera={camera} />
 
           <Group transform={transform}>
-            {list.map((el) =>
+            <BoardPictures elements={still} smooth={smooth} dark={dark} width={size.width} height={size.height} camera={camera} />
+            {astir.map((el) =>
               held.has(el.id) || erasing.has(el.id) ? (
                 // Someone else holds it (dimmed, framed in their colour below),
                 // or the eraser is about to take it (fainter).
@@ -1116,29 +1183,16 @@ export function BoardCanvas({
               ),
             )}
 
-            {tool === 'pen' ? (
+            <PeerDrafts held={held} smooth={smooth} dark={dark} />
+
+            {tool === 'pen' && penKind !== 'laser' ? (
               <LiveStroke
                 points={pen}
                 color={dark ? inkFor(config.color, true) : config.color}
-                width={config.width}
+                width={penKind === 'highlighter' ? Math.min(LIMITS.maxStrokeWidth, config.width * HIGHLIGHTER_SCALE) : config.width}
                 smooth={smooth}
+                highlighter={penKind === 'highlighter'}
               />
-            ) : null}
-
-            {/* "Draw to shape": the figure the stroke reads as, faint over it. */}
-            {liveSketch ? (
-              <Group opacity={GUESS_ALPHA}>
-                <ElementRenderer
-                  dark={dark}
-                  el={sketchElement(liveSketch, config, {
-                    id: 'live-sketch',
-                    createdBy: 'local',
-                    createdAt: 0,
-                    updatedAt: 0,
-                    z: Number.MAX_SAFE_INTEGER,
-                  })}
-                />
-              </Group>
             ) : null}
 
             {liveShape ? (
@@ -1187,6 +1241,7 @@ export function BoardCanvas({
         </Canvas>
       </GestureDetector>
 
+      <LaserLayer camera={camera} width={size.width} height={size.height} />
       <PeerCursors camera={camera} />
       <HeldTags elements={list} held={held} camera={camera} />
 
@@ -1219,6 +1274,27 @@ export function BoardCanvas({
       ) : null}
     </View>
   );
+}
+
+/**
+ * What the others are drawing or dragging (`peerDrafts`), over the board. Its
+ * own component, so a preview message re-renders these few, not the board.
+ */
+function PeerDrafts({
+  held,
+  smooth,
+  dark,
+}: {
+  held: ReadonlyMap<string, Participant>;
+  smooth: boolean;
+  dark: boolean;
+}) {
+  const drafts = useBoardStore((s) => s.peerDrafts);
+  return drafts.map((el, i) => (
+    <Group key={`${el.id}:${i}`} opacity={held.has(el.id) ? HELD_ALPHA : 1}>
+      <ElementRenderer el={el} smooth={smooth} dark={dark} />
+    </Group>
+  ));
 }
 
 /** Split out so toggling the grid off does not re-render the element list. */
@@ -1305,7 +1381,7 @@ function ScreenOverlays({
   );
 }
 
-/** The label button, floating just above the selected shape; follows the camera on the UI thread. */
+/** The label button, floating just below the selected shape and its rotate knob; follows the camera on the UI thread. */
 function LabelButton({
   shape,
   label,
@@ -1318,12 +1394,19 @@ function LabelButton({
   onPress: () => void;
 }) {
   const c = useColors();
-  const b = shapeBounds(shape);
-  const at = { x: b.x + b.width / 2, y: b.y };
+  // The knob's gap is in screen px, so the spot follows the live zoom (as `ScreenOverlays` does).
+  const [zoom, setZoom] = useState(() => camera.get().scale);
+  useAnimatedReaction(
+    () => camera.get().scale,
+    (next, prev) => {
+      if (next !== prev) scheduleOnRN(setZoom, next);
+    },
+  );
+  const at = labelButtonOf(shape, zoom);
   const follow = useAnimatedStyle(() => {
     const { x, y, scale } = camera.get();
     return {
-      transform: [{ translateX: at.x * scale + x - 24 }, { translateY: at.y * scale + y - 46 }],
+      transform: [{ translateX: at.x * scale + x - 24 }, { translateY: at.y * scale + y }],
     };
   });
   return (

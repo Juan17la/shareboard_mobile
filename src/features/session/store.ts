@@ -46,8 +46,6 @@ export interface AppSettings {
   smooth: boolean;
   /** Haptic tick when a tool or option is picked. */
   haptics: boolean;
-  /** The pencil turns what is drawn into the figure it was meant to be ("draw to shape"). */
-  drawToShape: boolean;
 }
 
 /** The signed-in account. */
@@ -64,7 +62,7 @@ interface SessionState {
   /** This install's own id, used while nobody is signed in. */
   guestId: string;
   account: Account | null;
-  /** The welcome screens have been through (or skipped). */
+  /** A name has been chosen: asked the first time a live board opens, or brought by an account. */
   onboarded: boolean;
   nickname: string;
   /** Preferred presence colour; the server may still assign a different one. */
@@ -78,7 +76,10 @@ interface SessionState {
   recent: RecentBoard[];
   /** PINs this device chose, by board id. */
   pins: Record<string, string>;
-  /** The first-run walkthrough has been finished or skipped (plans/33). */
+  /**
+   * The walkthrough (plans/33) is not running. False on first run, where it is
+   * only offered, and again when replayed from Settings.
+   */
   tutorialDone: boolean;
   /** True once AsyncStorage has been read back. */
   hydrated: boolean;
@@ -120,7 +121,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   peers: true,
   smooth: true,
   haptics: false,
-  drawToShape: false,
 };
 
 const firstId = newUserId();
@@ -152,6 +152,7 @@ export const useSessionStore = create<SessionState>()(
         set({
           account,
           userId: account.id,
+          onboarded: true,
           nickname: profile.nickname.slice(0, LIMITS.maxNicknameLength),
           ...(profile.avatar ? { avatar: profile.avatar, nickColor: avatarColor(profile.avatar) } : null),
         });
@@ -250,7 +251,7 @@ export const useSessionStore = create<SessionState>()(
           avatar,
           nickColor: avatarColor(avatar),
           theme: saved.theme === 'dark' ? 'dark' : 'light',
-          settings: { ...DEFAULT_SETTINGS, ...(saved.settings ?? {}), drawToShape: false },
+          settings: { ...DEFAULT_SETTINGS, ...(saved.settings ?? {}) },
           // Saved before accounts: the id it had was the guest one.
           guestId: saved.guestId ?? saved.userId ?? current.guestId,
           account: saved.account ?? null,
@@ -261,7 +262,7 @@ export const useSessionStore = create<SessionState>()(
         };
       },
       onRehydrateStorage: () => () => {
-        // The welcome screens ask for a name; until then a guest name stands in.
+        // The name is asked when a live board first opens; until then a guest name stands in.
         const { nickname, lang } = useSessionStore.getState();
         useSessionStore.setState({
           hydrated: true,

@@ -76,7 +76,7 @@ export function AccountSheet({
           <Txt size={13} leading={1.45} tone="secondary">
             {reason ?? t.accountSub}
           </Txt>
-          <AuthForm onDone={onSignedIn ?? onClose} />
+          <AuthForm initialMode="login" onDone={onSignedIn ?? onClose} />
         </View>
       )}
     </Sheet>

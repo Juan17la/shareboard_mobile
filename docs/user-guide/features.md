@@ -7,7 +7,7 @@ offer the same features. Where they differ, it is said.
 - [Tools](#tools)
 - [Selecting and editing](#selecting-and-editing)
 - [Arrows that connect figures](#arrows-that-connect-figures)
-- [Draw to shape](#draw-to-shape)
+- [Hold to shape](#hold-to-shape)
 - [Draw with AI](#draw-with-ai)
 - [Working together](#working-together)
 - [Sharing a board](#sharing-a-board)
@@ -21,7 +21,7 @@ offer the same features. Where they differ, it is said.
 ## The board
 
 - **Infinite canvas.** Draw anywhere; there are no edges and no pages.
-- **Move and zoom.** Two fingers move and pinch-zoom (25 % to 600 %). On a
+- **Move and zoom.** Two fingers move and pinch-zoom (10 % to 2,000 %). On a
   computer: mouse wheel or trackpad to move, **Ctrl + wheel** to zoom, or hold
   **Space** / the right button and drag. The zoom bar has −, +, the zoom level
   (tap to reset to 100 %) and **fit to content**.
@@ -42,10 +42,18 @@ offer the same features. Where they differ, it is said.
 | Eraser | E | Wipe over anything to delete it; erased things fade until you lift |
 | Rectangle, Circle, Triangle, Polygon | R, O, Y, G | Drag to draw a figure |
 | Line, Arrow | L, A | Drag to draw a line or an arrow |
+| Sticky note | N | Tap to add a note and type; long text shrinks to fit. The options choose its colour, or *Vote dot* to drop a dot in your colour |
 | Text | T | Tap to write |
 | Fill | F | Tap a figure to paint its background |
 
 On a phone the figures share one **Shapes** button (S).
+
+The pencil's options switch between **Pen**, **Highlighter** (see-through, the
+ink under it stays readable) and **Laser pointer** (a red trail everyone sees
+for a second; nothing is kept).
+
+**Templates** (in the menu) add a brainstorm, retro, flowchart, Kanban or mind
+map in the middle of the screen, or next to what is already there.
 
 ### Options for each tool
 
@@ -107,18 +115,20 @@ attach to is framed. Move a figure later and its arrows follow it.
   not through it.
 - Plain lines do not attach; only arrows do.
 
-## Draw to shape
+## Hold to shape
 
-Turn it on in the pencil's options (the pencil icon gains a ruler). Then draw
-roughly and Shareboard turns the stroke into a clean figure:
+Draw roughly with the pencil, then keep the pen (or your finger) still at the
+end of the stroke for half a second. Shareboard turns the stroke into a clean
+figure:
 
 - lines and arrows (a small loop at either end becomes the arrowhead),
 - circles and ellipses, rectangles and squares,
 - triangles (right, scalene…), trapezoids, parallelograms and other polygons.
 
-The figure it recognised shows faintly while you draw and lands when you lift.
-Nearly level, upright or diagonal lines snap straight, and nearly symmetric
-figures are made symmetric. A stroke it cannot read stays freehand.
+Keep moving without lifting and the figure grows or shrinks with you; lift
+to place it. Nearly level, upright or diagonal lines snap straight, and nearly
+symmetric figures are made symmetric. A stroke it cannot read, or one you lift
+without holding still, stays freehand.
 
 ## Draw with AI
 
@@ -141,6 +151,12 @@ to 10 requests per minute.
   the list.
 - **No conflicts.** When someone selects an element, it is theirs until they
   let go: nobody else can move or change it at the same moment.
+- **Lock.** Right-click (web) or hold (phone) an element and choose *Lock*: it
+  can't be selected, moved or erased until someone chooses *Unlock* on it.
+  Template columns come locked.
+- **Reactions and a timer.** The smiley in the top-right chip sends an emoji
+  that floats up on everyone's screen; whoever can edit can start a countdown
+  that everyone sees: 1, 3, 5 or 10 minutes, or any time up to 3 hours.
 - **Same person, several devices.** You can have the same board open in two
   tabs, or on your laptop and your phone; each one stays connected.
 - **Connection status.** The header says *Connecting…*, *Reconnecting…* or
@@ -252,11 +268,12 @@ Settings are kept on each device.
 | Ctrl+D | Duplicate |
 | Delete | Delete the selection |
 | Arrow keys | Move the selection |
-| Esc | Deselect |
+| Esc | Deselect; while typing, finish the text (Ctrl+Z takes it back) |
 | Ctrl + / Ctrl − | Zoom |
 | Ctrl+0 | Back to 100 % |
 | Shift+1 | Fit to content |
 | Space + drag, or right button + drag | Move the board |
+| ? | This list of shortcuts |
 
 On macOS use ⌘ instead of Ctrl.
 

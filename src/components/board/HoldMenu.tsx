@@ -7,6 +7,7 @@ import { useBoardStore } from '@/features/board/store';
 import { useT } from '@/features/i18n/store';
 import type { StringKey } from '@/features/i18n/strings';
 import { useColors } from '@/features/session/store';
+import { useBackToClose } from '@/hooks/use-back-to-close';
 
 import { toast } from '../ui/Toast';
 import { GlassPanel } from '../ui/Glass';
@@ -18,6 +19,8 @@ export interface HoldSpot {
   x: number;
   y: number;
   at: Point;
+  /** A locked element under the hold, offered for unlocking. */
+  locked?: string;
 }
 
 const FILL = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as const;
@@ -49,7 +52,10 @@ export function HoldMenu({
   const selected = s.selectedElements();
   const groupable = new Set(selected.map((el) => el.group ?? el.id)).size > 1;
   const grouped = selected.some((el) => !!el.group);
+  useBackToClose(true, onClose);
 
+  // The web menu's four stacking steps, when the screen is tall enough to show them (a landscape phone is not).
+  const roomy = height >= 13 * ROW_HEIGHT;
   const paste: Row = { icon: 'paste', label: 'paste', run: () => void pasteFromSystem(spot.at) };
   const rows: Row[] = selected.length
     ? [
@@ -73,12 +79,19 @@ export function HoldMenu({
         paste,
         { icon: 'plus', label: 'duplicate', run: () => s.duplicateSelection() },
         { icon: 'to-front', label: 'toFront', run: () => s.reorder('front') },
+        ...(roomy
+          ? [
+              { icon: 'forward', label: 'forward', run: () => s.reorder('forward') } as Row,
+              { icon: 'backward', label: 'backward', run: () => s.reorder('backward') } as Row,
+            ]
+          : []),
         { icon: 'to-back', label: 'toBack', run: () => s.reorder('back') },
         ...(groupable ? [{ icon: 'group', label: 'group', run: () => s.group() } as Row] : []),
         ...(grouped ? [{ icon: 'ungroup', label: 'ungroup', run: () => s.ungroup() } as Row] : []),
+        { icon: 'lock', label: 'lock', run: () => s.lockSelection() },
         { icon: 'trash', label: 'remove', run: () => s.deleteSelection(), danger: true },
       ]
-    : [paste];
+    : [...(spot.locked ? [{ icon: 'lock-open', label: 'unlock', run: () => s.unlock(spot.locked!) } as Row] : []), paste];
 
   const menuHeight = rows.length * ROW_HEIGHT;
   const left = Math.max(8, Math.min(spot.x - MENU_WIDTH / 2, width - MENU_WIDTH - 8));

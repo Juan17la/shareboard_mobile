@@ -183,7 +183,7 @@ export function SettingsSheet({
         <AvatarPicker name={nick} />
 
         {meta ? (
-          <GlassPanel level="row" radius={15} border={c.border}>
+          <GlassPanel level="row" radius={15} border={isCreator ? c.borderField : c.border}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13 }}>
               <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                 <Txt weight="bold" size={13} leading={1.2}>

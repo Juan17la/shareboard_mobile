@@ -17,7 +17,9 @@ anyone who has the code.
 
 <br />
 
-<img src="docs/assets/board-phone.png" alt="A Shareboard board with figures connected by arrows" width="320" />
+<img src="docs/assets/board-phone.png" alt="Shareboard on Android: a mind map on the board, with the header, zoom and toolbar" width="260" />
+&nbsp;&nbsp;
+<img src="docs/assets/board-desktop.png" alt="Shareboard in the browser: a sprint board with shapes, arrows and sticky notes" width="640" />
 
 </div>
 
@@ -71,9 +73,9 @@ elbow, with 15 end styles including database crow's feet.
 </td>
 <td valign="top">
 
-**Draw to shape**
+**Hold to shape**
 
-Scribble a rough box, circle, triangle or arrow and it becomes a clean figure.
+Scribble a rough box, circle, triangle or arrow, hold still for a moment, and it becomes a clean figure.
 
 </td>
 </tr>
@@ -117,7 +119,7 @@ ready; it stays as your private copy.
 
 Also: undo and redo, copy and paste between boards, grouping, layers, rotation,
 four typefaces, rounded corners, dashed and dotted lines, a light and a dark
-board, Spanish and English, and a short tutorial for first-time users.
+board, Spanish and English, and an optional short tutorial.
 - **Made for touch:** one finger draws, two fingers move and zoom, hold an
   element for its menu, and gentle vibration on the tools.
 

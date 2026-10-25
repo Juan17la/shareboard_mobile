@@ -57,6 +57,8 @@ export const REALTIME = {
   heartbeatMs: 20_000,
   /** Cursor broadcast throttle (ms). */
   cursorThrottleMs: 45,
+  /** What is being drawn or dragged, sent to the others at most this often (ms): ~30 a second. */
+  previewThrottleMs: 33,
   /** Reconnect backoff: min, max, multiplier. */
   backoffMinMs: 500,
   backoffMaxMs: 15_000,

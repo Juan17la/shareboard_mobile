@@ -1,34 +1,47 @@
 /**
- * The board's header: who you are looking at, how to get others in, and the
- * two buttons everything else hangs off — the menu and the settings.
+ * The board's header: which board this is, how to get others in, and the one
+ * button everything else hangs off.
  *
  * It floats over the canvas with nothing behind the row — no bar, no glass, no
  * fade — only each button on its own small solid chip, so the board really
  * does run edge to edge — "enfocada en la pizarra y no en la interfaz"
- * (docs/01). Everything in it is a
- * shortcut into a sheet, except the code chip, which the design makes directly
- * tappable to copy because that is the single most repeated action in a class.
+ * (docs/01). One row in both orientations: an identity chip on the left (the
+ * board's tile, its name and status, and the avatars of whoever is drawing
+ * with you), Share and the menu on the right. Settings, other boards, export,
+ * access, people and the assistant all live in the menu, grouped.
  */
 import { useEffect, useState } from 'react';
-import { Animated, Easing, Pressable, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Radius, StatusColors } from '@/constants/theme';
+import { StatusColors } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 import { useT, useTf } from '@/features/i18n/store';
 import { useBoardStore } from '@/features/board/store';
-import { formatShortCode } from '@/utils/short-code';
 
-import { IconButton } from '../ui/Button';
 import { Avatar, AvatarOverflow } from '../ui/Avatar';
+import { IconButton } from '../ui/Button';
 import { tourRef } from '../board/Tutorial';
 import { Icon } from '../ui/Icon';
 import { Txt } from '../ui/Text';
 import { tip } from '../ui/Toast';
 
+/** Whether the system asks for less motion; the pulse and the entrance honour it. */
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    void AccessibilityInfo.isReduceMotionEnabled().then(setReduced);
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduced);
+    return () => sub.remove();
+  }, []);
+  return reduced;
+}
+
 /** A slow breathing dot — the design's "someone is actually here" signal. */
-function PresenceDot({ color, animated }: { color: string; animated: boolean }) {
+function PresenceDot({ color, animated: wanted, size = 8 }: { color: string; animated: boolean; size?: number }) {
   const [pulse] = useState(() => new Animated.Value(0));
+  const reduced = useReducedMotion();
+  const animated = wanted && !reduced;
 
   useEffect(() => {
     if (!animated) {
@@ -37,18 +50,8 @@ function PresenceDot({ color, animated }: { color: string; animated: boolean }) 
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
+        Animated.timing(pulse, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ]),
     );
     loop.start();
@@ -58,44 +61,62 @@ function PresenceDot({ color, animated }: { color: string; animated: boolean }) 
   return (
     <Animated.View
       style={{
-        width: 6,
-        height: 6,
-        borderRadius: 3,
+        width: size,
+        height: size,
+        borderRadius: size / 2,
         backgroundColor: color,
-        opacity: animated ? pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.9] }) : 1,
-        transform: [
-          {
-            scale: animated ? pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.35] }) : 1,
-          },
-        ],
+        opacity: animated ? pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }) : 1,
+        transform: [{ scale: animated ? pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.25] }) : 1 }],
       }}
     />
   );
 }
 
+/** The board's mark: its first letter on a tint, with the connection as a badge on the corner. */
+function BoardTile({ name, status, live }: { name: string; status: string; live: boolean }) {
+  const c = useColors();
+  const initial = Array.from(name.trim())[0]?.toUpperCase() ?? '·';
+  return (
+    <View style={{ width: 36, height: 36 }}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 12,
+          backgroundColor: c.accentSoft,
+          borderWidth: 1,
+          borderColor: 'rgba(0,113,227,0.22)',
+        }}
+      >
+        <Txt weight="extrabold" size={17} color={c.accentText}>
+          {initial}
+        </Txt>
+      </View>
+      <View
+        style={{
+          position: 'absolute',
+          right: -3,
+          bottom: -3,
+          padding: 2,
+          borderRadius: 8,
+          backgroundColor: c.surface,
+        }}
+      >
+        <PresenceDot color={status} animated={live} />
+      </View>
+    </View>
+  );
+}
+
 export function BoardHeader({
-  landscape,
-  codeCopied,
-  onCopyCode,
   onOpenPeople,
   onOpenMenu,
-  onOpenSettings,
-  onOpenNew,
-  onOpenPrivacy,
   onOpenShare,
-  onOpenExport,
 }: {
-  landscape: boolean;
-  codeCopied: boolean;
-  onCopyCode: () => void;
   onOpenPeople: () => void;
   onOpenMenu: () => void;
-  onOpenSettings: () => void;
-  /** Another whiteboard: a blank one, or one joined with a code. */
-  onOpenNew: () => void;
-  onOpenPrivacy: () => void;
   onOpenShare: () => void;
-  onOpenExport: () => void;
 }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
@@ -105,6 +126,7 @@ export function BoardHeader({
   const participants = useBoardStore((s) => s.participants);
   const connection = useBoardStore((s) => s.connection);
   const canEdit = useBoardStore((s) => s.canEditNow());
+  const reduced = useReducedMotion();
 
   const online = connection === 'online';
   // The offline board (plans/34): nobody else is on it, and there is no code yet — Share makes one.
@@ -125,224 +147,73 @@ export function BoardHeader({
       : connection === 'offline'
       ? t.offline
       : t.connecting;
+  const name = meta?.name ?? t.appName;
+
+  // The chip settles in once, when the board opens.
+  const [enter] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    if (reduced) {
+      enter.setValue(1);
+      return;
+    }
+    Animated.timing(enter, { toValue: 1, duration: 360, easing: Easing.bezier(0.22, 0.9, 0.26, 1), useNativeDriver: true }).start();
+  }, [enter, reduced]);
 
   const shown = participants.slice(0, 3);
   const overflow = participants.length - shown.length;
-  const isPrivate = meta?.access === 'private';
 
-  // Chips share one height so the action strip reads as a single row of
-  // controls rather than a mix of sizes.
-  const chip = {
+  const identity = (
+    <>
+      <BoardTile name={name} status={statusColor} live={online} />
+      <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+        <Txt weight="extrabold" size={15} leading={1.2} tracking={-0.2} numberOfLines={1}>
+          {name}
+        </Txt>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <Txt weight="semibold" size={11} tone="secondary" numberOfLines={1} style={{ flexShrink: 1 }}>
+            {statusLabel}
+          </Txt>
+          {!canEdit && meta ? (
+            <>
+              <Txt weight="semibold" size={11} tone="tertiary">
+                ·
+              </Txt>
+              <Txt weight="bold" size={11} tone="tertiary">
+                {t.viewOnly}
+              </Txt>
+            </>
+          ) : null}
+        </View>
+      </View>
+      {shown.length > 0 && !local ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 8 }}>
+          {shown.map((p, i) => (
+            <Avatar key={p.userId} name={p.nickname} color={p.color} avatar={p.avatar} size={26} overlap={i > 0} />
+          ))}
+          {overflow > 0 ? <AvatarOverflow count={overflow} /> : null}
+        </View>
+      ) : null}
+    </>
+  );
+  const chipStyle = {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    height: 30,
-    paddingHorizontal: 10,
-    borderRadius: Radius.md,
+    gap: 10,
+    height: 48,
+    paddingLeft: 6,
+    paddingRight: 10,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: c.border,
+    borderColor: c.borderStrong,
     backgroundColor: c.surface,
+    shadowColor: '#151A2D',
+    shadowOpacity: 0.1,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
   } as const;
-
-  // The header is two clusters: on the left the board (its name, the menu
-  // and export), on the right who is here and who may edit (people,
-  // permissions, the code to copy) and share. In portrait each is a row, the name and its
-  // buttons on top; in landscape there is room for all of it on one row.
-  const row = { flexDirection: 'row', alignItems: 'center', gap: 6 } as const;
-  // Says what it does: the "+" alone read as "add something to this board".
-  // It sits beside the menu button, as on the web.
-  const newChip = (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={t.anotherWhiteboard}
-      onPress={onOpenNew}
-      onLongPress={() => tip(t.anotherWhiteboard)}
-      style={[chip, { gap: 5, flexShrink: 0 }]}
-    >
-      <Icon name="plus" size={15} color={c.text} />
-      <Txt weight="bold" size={11.5} numberOfLines={1}>
-        {t.createOrJoin}
-      </Txt>
-    </Pressable>
-  );
-  const settingsBtn = (
-    <IconButton
-      icon="settings"
-      label={t.sheetSettings}
-      onPress={onOpenSettings}
-      size={30}
-      iconSize={16}
-    />
-  );
-  const moreBtn = (
-    <IconButton icon="more" label={t.boardMenu} onPress={onOpenMenu} size={30} iconSize={17} />
-  );
-  const exportBtn = (
-    <IconButton
-      icon="download"
-      label={t.exportImage}
-      onPress={onOpenExport}
-      size={30}
-      iconSize={16}
-    />
-  );
-  const left = (
-    <View style={{ ...row, flexShrink: 1 }}>
-      {settingsBtn}
-      {moreBtn}
-      {newChip}
-      {exportBtn}
-    </View>
-  );
-  const people = (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={t.connectedPeople}
-      onPress={onOpenPeople}
-      onLongPress={() => tip(participants.map((p) => p.nickname).join(', ') || t.connectedPeople)}
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        flexShrink: 0,
-        padding: 3,
-        borderRadius: Radius.pill,
-        borderWidth: 1,
-        borderColor: c.border,
-        backgroundColor: c.surface,
-      }}
-    >
-      {shown.length === 0 ? (
-        <View style={{ width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name="people" size={18} color={c.textSecondary} />
-        </View>
-      ) : (
-        shown.map((p, i) => (
-          <Avatar
-            key={p.userId}
-            name={p.nickname}
-            color={p.color}
-            avatar={p.avatar}
-            size={26}
-            overlap={i > 0}
-          />
-        ))
-      )}
-      {overflow > 0 ? <AvatarOverflow count={overflow} /> : null}
-    </Pressable>
-  );
-  const info = local ? null : (
-    <View style={{ ...row, justifyContent: 'flex-end' }}>
-      {people}
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={t.privacyShort}
-        onPress={onOpenPrivacy}
-        onLongPress={() => tip(t.privacyShort)}
-        style={[chip, { gap: 5 }]}
-      >
-        <Icon name={isPrivate ? 'lock' : 'lock-open'} size={14} color={c.text} />
-        {/* Portrait has no room for both labels ("Permisos" + "Compartir" pushed
-            share off the edge): the lock says it, the long-press tip names it. */}
-        {landscape ? (
-          <Txt weight="bold" size={11.5}>
-            {t.privacyShort}
-          </Txt>
-        ) : null}
-      </Pressable>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${t.code} ${meta?.shortCode ?? ''}`}
-        onPress={onCopyCode}
-        onLongPress={() => tip(t.code)}
-        disabled={!meta}
-        style={[
-          chip,
-          {
-            gap: 6,
-            borderColor: codeCopied ? 'transparent' : c.border,
-            backgroundColor: codeCopied ? 'rgba(15,158,142,0.14)' : c.surface,
-          },
-        ]}
-      >
-        <Icon
-          name={codeCopied ? 'check' : 'copy'}
-          size={14}
-          color={codeCopied ? '#0B7F72' : c.text}
-        />
-        <Txt weight="extrabold" size={13} tracking={1} color={codeCopied ? '#0B7F72' : c.text}>
-          {meta ? formatShortCode(meta.shortCode) : '———·———'}
-        </Txt>
-      </Pressable>
-    </View>
-  );
-  const shareBtn = (
-      <Pressable
-        ref={tourRef('share')}
-        accessibilityRole="button"
-        accessibilityLabel={t.share}
-        onPress={onOpenShare}
-        onLongPress={() => tip(t.share)}
-        style={[
-          chip,
-          {
-            gap: 6,
-            paddingHorizontal: 12,
-            // Last in the row: on a phone narrower still, it is what gives way.
-            flexShrink: 1,
-            minWidth: 0,
-            borderColor: 'transparent',
-            backgroundColor: c.accent,
-            shadowColor: c.accent,
-            shadowOpacity: 0.28,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 4 },
-            elevation: 4,
-          },
-        ]}
-      >
-        <Icon name="share" size={15} color="#FFFFFF" />
-        <Txt
-          weight="extrabold"
-          size={12}
-          tone="inverse"
-          numberOfLines={1}
-          style={{ flexShrink: 1 }}
-        >
-          {t.share}
-        </Txt>
-      </Pressable>
-  );
-  const titleEl = (
-    <View
-      style={{
-        flexShrink: 1,
-        minWidth: 0,
-        gap: 1,
-        paddingHorizontal: 2,
-      }}
-    >
-      <Txt weight="extrabold" size={15} leading={1.2} tracking={-0.2} numberOfLines={1}>
-        {meta?.name ?? t.appName}
-      </Txt>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-        <PresenceDot color={statusColor} animated={online} />
-        <Txt weight="semibold" size={11} tone="secondary">
-          {statusLabel}
-        </Txt>
-        {!canEdit && meta ? (
-          <>
-            <Txt weight="semibold" size={11} tone="tertiary">
-              ·
-            </Txt>
-            <Txt weight="bold" size={11} tone="tertiary">
-              {t.viewOnly}
-            </Txt>
-          </>
-        ) : null}
-      </View>
-    </View>
-  );
 
   return (
     <View
@@ -353,39 +224,67 @@ export function BoardHeader({
         left: 0,
         right: 0,
         paddingTop: insets.top + 4,
-        paddingBottom: landscape ? 2 : 4,
-        paddingLeft: Math.max(insets.left, landscape ? 26 : 12),
-        paddingRight: Math.max(insets.right, landscape ? 16 : 12),
-        gap: 6,
+        paddingBottom: 4,
+        paddingLeft: Math.max(insets.left, 12),
+        paddingRight: Math.max(insets.right, 12),
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
       }}
     >
-      {landscape ? (
-        <View style={{ ...row, gap: 8 }}>
-          {titleEl}
-          {left}
-          <View style={{ flex: 1 }} />
-          {info}
-          {shareBtn}
-        </View>
-      ) : (
-        <>
-          <View style={{ ...row, gap: 8 }}>
-            {titleEl}
-            <View style={{ flex: 1 }} />
-            {info}
-          </View>
-          <View style={{ ...row, gap: 8 }}>
-            {moreBtn}
-            <View style={{ flex: 1 }} />
-            <View style={row}>
-              {settingsBtn}
-              {newChip}
-              {exportBtn}
-              {shareBtn}
-            </View>
-          </View>
-        </>
-      )}
+      <Animated.View
+        style={{
+          flex: 1,
+          minWidth: 0,
+          opacity: enter,
+          transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+        }}
+      >
+        {/* Who is here is one tap away: the chip opens the list. */}
+        {local ? (
+          <View style={chipStyle}>{identity}</View>
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${name}. ${t.connectedPeople}: ${statusLabel}`}
+            onPress={onOpenPeople}
+            onLongPress={() => tip(participants.map((p) => p.nickname).join(', ') || t.connectedPeople)}
+            style={({ pressed }) => [chipStyle, pressed ? { backgroundColor: c.surfaceSelected } : null]}
+          >
+            {identity}
+          </Pressable>
+        )}
+      </Animated.View>
+
+      <Pressable
+        ref={tourRef('share')}
+        accessibilityRole="button"
+        accessibilityLabel={t.share}
+        onPress={onOpenShare}
+        onLongPress={() => tip(t.share)}
+        style={({ pressed }) => ({
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          height: 48,
+          paddingHorizontal: 16,
+          borderRadius: 18,
+          backgroundColor: pressed ? c.accentDeep : c.accent,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: 'rgba(0,55,130,0.45)',
+          shadowColor: c.accent,
+          shadowOpacity: 0.28,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 4,
+        })}
+      >
+        <Icon name="share" size={17} color="#FFFFFF" />
+        <Txt weight="extrabold" size={13.5} tone="inverse" numberOfLines={1}>
+          {t.share}
+        </Txt>
+      </Pressable>
+      <IconButton icon="more" label={t.boardMenu} onPress={onOpenMenu} size={48} iconSize={19} radius={18} />
     </View>
   );
 }

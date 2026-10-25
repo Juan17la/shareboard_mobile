@@ -42,7 +42,10 @@ connect ──▶ (onopen) ──▶ send {join} ──▶ recv {joined}  ──
 ```ts
 { type: 'join';   boardId: string; userId: string; nickname: string; pin?: string }
 { type: 'op';     boardId: string; ops: Op[]; seq: number }   // seq = contador del cliente
-{ type: 'cursor'; boardId: string; at: { x: number; y: number } }
+{ type: 'cursor'; boardId: string; at: { x: number; y: number }; laser?: boolean }
+{ type: 'react';  boardId: string; emoji: Reaction }               // uno de REACTIONS
+{ type: 'timer';  boardId: string; ms: number | null }          // inicia (≤ 3 h) o detiene la cuenta atrás
+{ type: 'preview'; boardId: string; preview: Preview | null } // lo que se dibuja o arrastra ahora
 { type: 'leave';  boardId: string }
 { type: 'ping';   t: number }                                 // t = Date.now() del cliente
 ```
@@ -52,11 +55,15 @@ connect ──▶ (onopen) ──▶ send {join} ──▶ recv {joined}  ──
 ```ts
 { type: 'joined';
   meta: BoardMeta; elements: BoardElement[];
-  participants: Participant[]; you: Participant; seq: number }
+  participants: Participant[]; you: Participant; seq: number;
+  timerLeft?: number }                                          // cuenta atrás en curso
 
 { type: 'op'; ops: Op[]; from: string; seq: number }          // seq = contador del servidor por pizarra
 { type: 'participants'; participants: Participant[] }
-{ type: 'cursor'; from: string; at: { x: number; y: number } }
+{ type: 'cursor'; from: string; at: { x: number; y: number }; laser?: boolean }
+{ type: 'react'; from: string; emoji: Reaction }
+{ type: 'timer'; from: string; left: number | null }          // ms que faltan, medidos al enviar
+{ type: 'preview'; from: string; preview: Preview | null }
 { type: 'permissions'; meta: BoardMeta; you: Participant }
 { type: 'error'; code: ServerErrorCode; message: string }
 { type: 'pong'; t: number }
@@ -98,7 +105,26 @@ localmente) — ver `use-board-sync.ts`.
 * `participants` se difunde al entrar y salir alguien.
 * `cursor` se envía **throttleado a ~45 ms** (`REALTIME.cursorThrottleMs`) y
   **no se persiste**. Si un cliente deja de mandar cursor, su punto simplemente
-  deja de actualizarse.
+  deja de actualizarse. Quien lo recibe lo desliza (~60 ms) hasta el punto
+  nuevo en vez de saltar.
+* `preview` (`{ el?, edit? }`) es lo que alguien dibuja o arrastra en este
+  momento: `el`, un trazo o figura que aún no está en la pizarra; `edit`, el
+  `LiveEdit` de un arrastre, que cada cliente reaplica con `editPatches`. Sale
+  a ~30 por segundo (`REALTIME.previewThrottleMs`) y `null` lo termina, después
+  de las ops en que se convirtió. El servidor solo lo reenvía a los demás (nunca
+  se guarda ni entra en el deshacer): valida su forma, descarta los de más de
+  64 KB, los de lectores y los que pasan de 40 por segundo, y manda `null` por
+  quien cierra el socket.
+* `cursor` con `laser: true` es el puntero láser: quien lo recibe dibuja una
+  estela roja que se desvanece en 1 s. Nunca se guarda.
+* `react` se reenvía a todos (también a quien lo manda), máximo 5 por segundo.
+  `timer` solo lo pueden mandar quienes editan; el servidor guarda en memoria
+  cuándo acaba y se lo dice como `timerLeft` a quien entra después. Se envía
+  el tiempo que falta, no la hora de fin, para no depender del reloj de cada
+  dispositivo.
+* Un elemento con `locked: true` no acepta `update` ni `delete` salvo el
+  `update` que lo desbloquea (`locked: null`); lo rechazado vuelve como
+  corrección (`from: 'server'`), igual que con lo que otro tiene seleccionado.
 * El `color` de cada participante lo asigna el servidor en el `join`.
 
 # Autorización en el socket
@@ -157,12 +183,19 @@ Constantes en `src/services/realtime/protocol.ts` (`CloseCode`).
 | `op` | si `from !== userId` → `store.applyRemote(ops, seq)` |
 | `participants` | `store.setParticipants(...)` |
 | `cursor` | `store.setRemoteCursor(from, at)` |
+| `preview` | `store.setPreview(from, preview)` |
+| `cursor` con `laser` | además `pushLaser(from, at)` (`components/board/laser.ts`) |
+| `react` | `store.addReaction(from, emoji)` |
+| `timer` | `store.setTimerLeft(left)` |
 | `permissions` | `store.setMeta(meta, you)` |
 | `error` | mostrar mensaje; `PIN_*` → `phase = 'need-pin'` |
 | cambio de estado | `store.setConnection('online' | 'offline' | ...)` |
 
 Envío desde el store: cada mutación produce una `Op` en `outbox`; el hook
-la vacía throttleada como `{ type: 'op' }`. Los cursores salen por `sendCursor`.
+la vacía throttleada como `{ type: 'op' }`. Los cursores salen por `sendCursor`
+y los previews por `sendPreview`. Sin conexión las ops esperan en `outbox` y
+se dibuja igual: el `hydrate` del reencuentro las aplica sobre la pizarra del
+servidor y las envía (un lote rechazado vuelve como `resync`).
 
 # Diagramas de secuencia
 

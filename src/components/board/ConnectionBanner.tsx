@@ -2,7 +2,8 @@
  * The pill that says the board is not live right now.
  *
  * `offline` is the actionable state: the socket has given up (or is between
- * attempts), nothing drawn is being sent, and the button reconnects at once.
+ * attempts), what is drawn waits in the outbox until the reconnect sends it,
+ * and the button reconnects at once.
  * `connecting` only needs to be seen, not acted on.
  */
 import { Pressable, View } from 'react-native';

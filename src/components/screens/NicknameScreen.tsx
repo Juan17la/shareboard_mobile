@@ -4,8 +4,9 @@
  * This name and icon are the user as far as the board is concerned: they label
  * the cursor other people watch move and the avatar in the header. Both are
  * remembered per install, so a returning user sees their own name already
- * filled in and one tap gets them through. It is also the welcome screens'
- * second step, where it starts empty rather than on the stand-in guest name.
+ * filled in and one tap gets them through. The first time — joining or
+ * sharing a live board, or making an account — it starts empty rather than on
+ * the stand-in guest name.
  */
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
@@ -16,6 +17,7 @@ import { Avatars, Radius } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
 import { LIMITS } from '@/features/board/model';
 import { useSessionStore, useColors } from '@/features/session/store';
+import { useBackToClose } from '@/hooks/use-back-to-close';
 
 import { Avatar } from '../ui/Avatar';
 import { Backdrop, BackdropScene } from '../ui/Backdrop';
@@ -32,10 +34,13 @@ const backdropScene = (size: SceneSize) => (
 export function NicknameScreen({
   landscape,
   onContinue,
+  onCancel,
   blank = false,
 }: {
   landscape: boolean;
   onContinue: (nickname: string) => void;
+  /** Shows a Cancel button (and Back): the step was asked for on the way to something else. */
+  onCancel?: () => void;
   /** Start with an empty field instead of the stored name. */
   blank?: boolean;
 }) {
@@ -48,6 +53,7 @@ export function NicknameScreen({
 
   const [draft, setDraft] = useState(blank ? '' : storedNickname);
   const ready = draft.trim().length > 0;
+  useBackToClose(!!onCancel, () => onCancel?.());
 
   // The wash, handed to the glass panels so they can blur it; and how far the
   // page has scrolled, so the blur follows the panels (ui/Glass).
@@ -124,6 +130,9 @@ export function NicknameScreen({
             disabled={!ready}
             fullWidth
           />
+          {onCancel ? (
+            <Button label={t.cancel} variant="ghost" fullWidth compact onPress={onCancel} />
+          ) : null}
         </Animated.ScrollView>
       </KeyboardAvoidingView>
     </GlassScene>

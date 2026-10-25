@@ -46,7 +46,8 @@ export function Segmented<T extends string>({
             style={{
               flex: 1,
               alignItems: 'center',
-              paddingVertical: 7,
+              justifyContent: 'center',
+              minHeight: 40,
               borderRadius: 9,
               backgroundColor: active ? c.background : 'transparent',
               ...(active

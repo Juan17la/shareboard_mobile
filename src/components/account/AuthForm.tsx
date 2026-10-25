@@ -1,14 +1,14 @@
 /**
- * Create an account, or sign in to one: two fields and one button, with a
- * link underneath that flips between the two. Used by the last welcome screen,
- * the account sheet, and wherever sharing asks for an account first.
+ * Create an account, or sign in to one: a segmented switch on top, two fields
+ * that explain themselves, one button. Used by the account sheet, which is
+ * also wherever sharing asks for an account first.
  *
- * Registering takes the name and icon already chosen (welcome screen or
- * settings), so it asks for nothing else. Either way the guest id this install
- * had goes along, and the boards it made become the account's.
+ * Registering takes the name and icon already chosen (asked just before the
+ * account sheet, or in settings), so it asks for nothing else. Either way the
+ * guest id this install had goes along, and the boards it made become the account's.
  */
-import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Pressable, TextInput, View } from 'react-native';
 
 import { useT } from '@/features/i18n/store';
 import type { Strings } from '@/features/i18n/strings';
@@ -20,6 +20,7 @@ import { ApiError } from '@/services/api/client';
 import { Button } from '../ui/Button';
 import { Field } from '../ui/Field';
 import { Icon } from '../ui/Icon';
+import { Segmented } from '../ui/Segmented';
 import { Txt } from '../ui/Text';
 import { toast } from '../ui/Toast';
 
@@ -43,18 +44,44 @@ export function AuthForm({
   const [reveal, setReveal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [taken, setTaken] = useState(false);
+  const [shown, setShown] = useState({ username: false, password: false });
+  const userRef = useRef<TextInput>(null);
+  const passRef = useRef<TextInput>(null);
 
   const registering = mode === 'register';
-  const ready =
-    USERNAME.test(username.trim()) &&
-    (registering ? password.length >= LIMITS.minPasswordLength : password.length > 0);
+  const name = username.trim();
+  // Sign-in only needs something typed: older accounts may predate today's rules.
+  const userErr = !name
+    ? t.errUserRequired
+    : registering && !USERNAME.test(name)
+      ? t.errUserInvalid
+      : taken
+        ? t.errUsernameTaken
+        : null;
+  const passErr = !password
+    ? t.errPassRequired
+    : registering && password.length < LIMITS.minPasswordLength
+      ? t.errPassShort
+      : null;
+
+  function switchMode(next: AuthMode) {
+    setMode(next);
+    setError(null);
+    setTaken(false);
+    setShown({ username: false, password: false });
+  }
 
   async function submit() {
-    if (!ready || busy) return;
+    if (busy) return;
+    if (userErr || passErr) {
+      setShown({ username: true, password: true });
+      (userErr ? userRef : passRef).current?.focus();
+      return;
+    }
     setBusy(true);
     setError(null);
     const { guestId, nickname, avatar, signIn } = useSessionStore.getState();
-    const name = username.trim();
     try {
       const res = registering
         ? await register({ username: name, password, nickname, avatar, deviceId: guestId })
@@ -66,30 +93,53 @@ export function AuthForm({
       toast(t.toastSignedIn);
       onDone();
     } catch (err) {
-      setError(messageFor(err, t));
+      if (err instanceof ApiError && err.code === 'USERNAME_TAKEN') {
+        setTaken(true);
+        setShown((s) => ({ ...s, username: true }));
+      } else {
+        setError(messageFor(err, t));
+      }
       setBusy(false);
     }
   }
 
   return (
     <View style={{ gap: 14 }}>
+      <Segmented
+        value={mode}
+        onChange={switchMode}
+        options={[
+          { value: 'register', label: t.createAccount },
+          { value: 'login', label: t.signIn },
+        ]}
+      />
       <Field
+        ref={userRef}
         label={t.username}
         value={username}
-        onChangeText={(v) => setUsername(v.replace(/\s/g, '').slice(0, 24))}
+        onChangeText={(v) => {
+          setUsername(v.replace(/\s/g, '').slice(0, 24));
+          setTaken(false);
+        }}
+        onBlur={() => setShown((s) => ({ ...s, username: true }))}
         autoCapitalize="none"
         autoCorrect={false}
         autoComplete="username"
         textContentType="username"
         accessibilityLabel={t.username}
         returnKeyType="next"
+        submitBehavior="submit"
+        onSubmitEditing={() => passRef.current?.focus()}
+        error={shown.username ? userErr : null}
         hint={registering ? t.usernameHint : undefined}
       />
       <View>
         <Field
+          ref={passRef}
           label={t.password}
           value={password}
           onChangeText={(v) => setPassword(v.slice(0, 128))}
+          onBlur={() => setShown((s) => ({ ...s, password: true }))}
           secureTextEntry={!reveal}
           autoCapitalize="none"
           autoCorrect={false}
@@ -98,6 +148,7 @@ export function AuthForm({
           accessibilityLabel={t.password}
           returnKeyType="go"
           onSubmitEditing={() => void submit()}
+          error={shown.password ? passErr : null}
           hint={registering ? t.passwordHint : undefined}
           style={{ paddingRight: 48 }}
         />
@@ -120,26 +171,7 @@ export function AuthForm({
         </Txt>
       ) : null}
 
-      <Button
-        label={registering ? t.createAccount : t.signIn}
-        loading={busy}
-        disabled={!ready}
-        fullWidth
-        onPress={() => void submit()}
-      />
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => {
-          setMode(registering ? 'login' : 'register');
-          setError(null);
-        }}
-        hitSlop={6}
-        style={{ alignSelf: 'center', paddingHorizontal: 8, paddingVertical: 4 }}
-      >
-        <Txt weight="bold" size={13} tone="accent">
-          {registering ? t.haveAccount : t.noAccount}
-        </Txt>
-      </Pressable>
+      <Button label={registering ? t.createAccount : t.signIn} loading={busy} fullWidth onPress={() => void submit()} />
     </View>
   );
 }
