@@ -32,6 +32,9 @@ Shareboard is made of three projects. Each one is its own Git repository:
 - `plans/` holds the short design notes written before each feature (one file
   per change, numbered in the order they were made). They explain *why* a
   feature behaves the way it does.
+- `research/` holds test and comparison reports, such as the
+  [board audit of 2026-10-22](research/2026-10-22-board-audit.md) (smoothness,
+  bugs and gaps compared with Excalidraw and other boards).
 - Each repository has a `CHANGELOG.md` with every released change.
 - The visual design the app follows lives outside the repositories, in
   `Shareboard Mobile App Design/`.

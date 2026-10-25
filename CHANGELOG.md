@@ -7,6 +7,60 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Sticky notes, vote dots, highlighter, laser pointer, Lock / Unlock in the hold menu, templates, reactions and a class timer (same as the web app).
+  The timer also takes any time up to three hours.
+- Others see your stroke while you draw it and your shapes move while you
+  drag them, not only when you let go.
+- A live board keeps working when the connection drops: what you draw waits
+  and is sent when you're back online, and the banner says so.
+- Drawing and panning stay smooth on full boards: what is already drawn is kept
+  as a picture instead of being redrawn every frame (pen at ~2,000 strokes:
+  65 → 32 ms a frame), and saving the offline board no longer re-reads it.
+
+### Changed
+
+- The mobile header has an identity chip: the board's tile with a live
+  connection badge, its name and status, and the avatars of who is drawing with
+  you (tap it for the full list). It settles in when the board opens.
+- Text fields are paper-white with a 3:1 edge, a focus ring and an error ring;
+  secondary buttons are tinted in the accent; placeholders meet 4.5:1.
+- Sign in and Create account are a switch at the top of the form; each field
+  shows its own error, and the button focuses the first problem.
+- The header is one row: board name (tap the status line for who is here),
+  Share and the menu. Settings, other boards, export, access, people and the
+  assistant are in the menu, in three labelled groups. The code stays in Share.
+- The camera chip keeps only undo and redo, plus the zoom readout while zoomed:
+  zoom is a pinch on a phone, and the assistant is in the menu.
+- Header, chip, menu and sheet buttons have a 44px touch target.
+- Sheets close by dragging the handle or title down.
+- Long-press menu has the four stacking steps when the screen is tall enough.
+- The presence dot holds still when the system asks for reduced motion.
+- Zoom goes from 10 % to 2,000 % (was 25 %–600 %), so fit can show a big board
+  whole.
+- The tutorial's card stands beside a toolbar on the side of the screen
+  instead of covering the buttons around the one it points at.
+- The app opens straight on your board with the pencil in hand: no welcome
+  screens, no name, no account before the first stroke. Your name and icon are
+  asked the first time you share or join a live board (Back or Cancel returns
+  to the board), an account only when you share.
+- The tutorial is offered, not forced: a small card on the empty board says
+  "Show me around" or "Not now"; it is still in Settings.
+- Other people's cursors glide instead of jumping.
+- With the shapes tool in hand, the options strip lists every shape kind, so
+  switching from a rectangle to an arrow is one tap.
+
+### Fixed
+
+- A figure is picked only by its inside or its outline: a click in an ellipse's or a triangle's empty corner no longer selects it.
+- The rotate knob can be dragged again: the "Aa" label button now sits below
+  the selected figure and its knob instead of covering the knob.
+- Android Back closes the long-press menu, a toolbar dropdown, the text being
+  typed (keeping it) or the tutorial before it leaves the app.
+- The dead "Draw to shape" setting is gone; the tutorial and the guide now
+  teach hold to shape (hold the pencil still at the end of a stroke).
+
 ## [1.6.0-beta] - 2026-10-13
 
 ### Added

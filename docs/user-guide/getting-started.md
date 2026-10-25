@@ -1,9 +1,9 @@
 # Getting started
 
-Open Shareboard and draw: no sign-up is needed for that. The first time, three
-short welcome screens ask your name and offer an account — you need one to
-**share** a board (and it keeps your boards on every device), so you can skip it
-with **Not now** and sign in later from Settings → Account.
+Open Shareboard and draw: nothing comes first, not even your name. Shareboard
+asks what to call you the first time you share or join a live board, and asks
+for an account only when you **share** a board (an account also keeps your
+boards on every device). You can sign in any time from Settings → Account.
 
 ## 1. Open Shareboard
 
@@ -45,14 +45,16 @@ next time you open the app.
 Two fingers move the board and pinch to zoom. On a computer, use the mouse
 wheel to move and **Ctrl + wheel** to zoom.
 
-A short tutorial walks new users through these steps the first time. You can
-replay it from **Settings → Replay the tutorial**.
+The first time, a small card on the empty board offers a short tutorial:
+tap **Show me around** to take it, or **Not now** (or just start drawing) to
+skip it. You can take it any time from **Settings → Replay the tutorial**.
 
 ## 3. Draw together
 
-1. Tap **Share**. Because your first board lives only on your device,
-   Shareboard asks to **create a board to share**: it uploads a copy and opens
-   it. Your private board stays as it was.
+1. Tap **Share**. The first time, Shareboard asks for your name and icon and
+   then for an account (create one or sign in). Because your first board lives
+   only on your device, it then offers to **create a board to share**: it
+   uploads a copy and opens it. Your private board stays as it was.
 2. The share sheet shows the board's **six-character code** (for example
    `K7M·Q2R`), a **link**, and a **QR code**. On Android you can send the link
    straight to WhatsApp or any other app.
@@ -64,7 +66,8 @@ each person's name.
 
 ## 4. Choose your name and icon
 
-Until you choose one, you appear as *Guest 1234*. Open **Settings** to set your
+Until you choose one, you appear as *Guest 1234*; sharing or joining a live
+board asks for a name the first time. You can also open **Settings** to set your
 nickname and an icon (🦊 🐼 🐸 …); the icon's colour becomes your cursor
 colour. Settings is also where you switch between **Spanish and English** and
 between the **light and dark board**.
