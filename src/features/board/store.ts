@@ -1685,6 +1685,8 @@ export function coveringFigure(
   at: Point,
   radius: number,
 ): BoardElement | null {
+  // A locked figure is out of reach: it never covers what is drawn inside or under it.
+  visible = visible.filter((el) => !el.locked);
   const hits = hitTest(visible, at, radius);
   if (!hits.length) return null;
   const chosen = new Set(selected.map((el) => el.id));
