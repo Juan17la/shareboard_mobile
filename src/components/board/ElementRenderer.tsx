@@ -20,7 +20,7 @@ import {
 import { memo, useMemo } from 'react';
 import type { DerivedValue, SharedValue } from 'react-native-reanimated';
 
-import { Palettes, inkFor } from '@/constants/theme';
+import { Palettes, inkFor, isLightPaper } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 import {
   addStroke,
@@ -791,8 +791,8 @@ export function Anchors({ elements, near, scale }: { elements: BoardElement[]; n
  * the dark theme's text colour (`inkFor`). The element itself is untouched.
  */
 function inked(el: BoardElement): BoardElement {
-  // A sticky note is light paper on either board: its dark ink stays dark.
-  if (el.kind === 'shape' && el.sticky) return el;
+  // A sticky note, or a figure filled with light paper, keeps its dark ink on either board.
+  if (el.kind === 'shape' && (el.sticky || isLightPaper(el.fill))) return el;
   switch (el.kind) {
     case 'stroke':
     case 'text':

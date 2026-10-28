@@ -29,7 +29,6 @@ import { File } from 'expo-file-system';
 import { useMemo } from 'react';
 import { create } from 'zustand';
 
-import { Fonts } from '@/constants/theme';
 import { setTextMeasure } from '@/features/board/geometry';
 import { FONTS, type FontKey } from '@/features/board/model';
 
@@ -152,7 +151,8 @@ export function useBoardFont(size: number, bold = false, italic = false, font: F
 
 /** The React Native families of each board typeface: medium, bold, italic, bold italic. */
 export const FAMILIES: Record<FontKey, [string, string, string, string]> = {
-  sans: [Fonts.medium, Fonts.extrabold, Fonts.italic, Fonts.extraboldItalic],
+  // The board's sans is Nunito, whatever face the interface is in.
+  sans: ['Nunito_500Medium', 'Nunito_800ExtraBold', 'Nunito_400Regular_Italic', 'Nunito_800ExtraBold_Italic'],
   serif: ['Lora_500Medium', 'Lora_700Bold', 'Lora_500Medium_Italic', 'Lora_700Bold_Italic'],
   mono: [
     'JetBrainsMono_500Medium',

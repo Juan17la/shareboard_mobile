@@ -7,6 +7,28 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.8.0-beta] - 2026-10-28
+
+### Changed
+
+- New look: signage ink on white with solid panels instead of frosted glass.
+  Blue is the main action and selection, green the button that finishes a flow
+  (sign in, create), orange and violet mark the menu's places. Dark mode is
+  pure black and white. The interface font is Onest.
+- A sheet opened from another one (Settings from the menu, an account from
+  Share...) has a back button to the one that opened it.
+- Settings is grouped into You, Display and Help; sign in has a Sign up switch
+  and explains why a forgotten password can't be recovered.
+- A new sticky note hands the cursor back with the note selected, like a
+  shape, and the options strip folds away while you type.
+
+### Fixed
+
+- A locked figure no longer covers what is drawn inside or under it: those
+  can still be picked and moved.
+- A figure filled with a light colour keeps its dark text on the dark board.
+- Exported SVGs open everywhere (the font link broke strict XML readers).
+
 ## [1.7.0-beta] - 2026-10-25
 
 ### Added

@@ -1,10 +1,10 @@
 /**
- * Loads the two families the design is drawn in: Nunito for everything (its
- * rounded, friendly shapes are the reason the app reads as approachable to
- * both a child and a professor) and JetBrains Mono for the things that get
- * read out character by character — board codes, PINs, zoom percentages.
+ * Loads the families the design is drawn in: Onest for the interface (open,
+ * compact and plain-spoken, like signage: anyone reads it at a glance) and
+ * JetBrains Mono for the things that get read out character by character —
+ * board codes, PINs, zoom percentages. Nunito stays as the board's sans.
  *
- * Several Nunito cuts are loaded rather than one: React Native does not
+ * Several cuts are loaded rather than one: React Native does not
  * synthesise weights or italics from a single file, so a "bold" that was never
  * loaded silently falls back to the system face.
  *
@@ -17,11 +17,13 @@ import { useFonts } from 'expo-font';
 
 export function useAppFonts(): boolean {
   const [loaded] = useFonts({
-    Nunito_400Regular: require('@expo-google-fonts/nunito/400Regular/Nunito_400Regular.ttf'),
+    Onest_400Regular: require('@expo-google-fonts/onest/400Regular/Onest_400Regular.ttf'),
+    Onest_500Medium: require('@expo-google-fonts/onest/500Medium/Onest_500Medium.ttf'),
+    Onest_600SemiBold: require('@expo-google-fonts/onest/600SemiBold/Onest_600SemiBold.ttf'),
+    Onest_700Bold: require('@expo-google-fonts/onest/700Bold/Onest_700Bold.ttf'),
+    Onest_800ExtraBold: require('@expo-google-fonts/onest/800ExtraBold/Onest_800ExtraBold.ttf'),
     Nunito_400Regular_Italic: require('@expo-google-fonts/nunito/400Regular_Italic/Nunito_400Regular_Italic.ttf'),
     Nunito_500Medium: require('@expo-google-fonts/nunito/500Medium/Nunito_500Medium.ttf'),
-    Nunito_600SemiBold: require('@expo-google-fonts/nunito/600SemiBold/Nunito_600SemiBold.ttf'),
-    Nunito_700Bold: require('@expo-google-fonts/nunito/700Bold/Nunito_700Bold.ttf'),
     Nunito_800ExtraBold: require('@expo-google-fonts/nunito/800ExtraBold/Nunito_800ExtraBold.ttf'),
     Nunito_800ExtraBold_Italic: require('@expo-google-fonts/nunito/800ExtraBold_Italic/Nunito_800ExtraBold_Italic.ttf'),
     JetBrainsMono_500Medium: require('@expo-google-fonts/jetbrains-mono/500Medium/JetBrainsMono_500Medium.ttf'),

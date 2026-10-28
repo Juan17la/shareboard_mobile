@@ -13,22 +13,22 @@ import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Avatars, Radius } from '@/constants/theme';
+import { Avatars } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
 import { LIMITS } from '@/features/board/model';
-import { useSessionStore, useColors } from '@/features/session/store';
+import { useSessionStore } from '@/features/session/store';
 import { useBackToClose } from '@/hooks/use-back-to-close';
 
 import { Avatar } from '../ui/Avatar';
 import { Backdrop, BackdropScene } from '../ui/Backdrop';
 import { Button } from '../ui/Button';
 import { Field } from '../ui/Field';
-import { GlassPanel, GlassScene, type SceneSize } from '../ui/Glass';
+import { GlassScene, type SceneSize } from '../ui/Glass';
 import { SectionLabel } from '../ui/Sheet';
 import { Txt } from '../ui/Text';
 
 const backdropScene = (size: SceneSize) => (
-  <BackdropScene variant="nickname" width={size.width} height={size.height} />
+  <BackdropScene width={size.width} height={size.height} />
 );
 
 export function NicknameScreen({
@@ -44,7 +44,6 @@ export function NicknameScreen({
   /** Start with an empty field instead of the stored name. */
   blank?: boolean;
 }) {
-  const c = useColors();
   const insets = useSafeAreaInsets();
   const t = useT();
   const storedNickname = useSessionStore((s) => s.nickname);
@@ -64,7 +63,7 @@ export function NicknameScreen({
 
   return (
     <GlassScene render={backdropScene} scroll={scrollY}>
-      <Backdrop variant="nickname" />
+      <Backdrop />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -85,13 +84,13 @@ export function NicknameScreen({
             <Txt weight="extrabold" size={24} leading={1.15} tracking={-0.5}>
               {t.nickTitle}
             </Txt>
-            <Txt size={13.5} leading={1.45} color="#565D6C">
+            <Txt size={13.5} leading={1.45} tone="secondary">
               {t.nickSub}
             </Txt>
           </View>
 
-          <GlassPanel level="row" radius={Radius.xl} border={c.borderField}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 }}>
+          {/* One field beside the icon it names: no card around it. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Avatar name={draft || '?'} color={nickColor} avatar={avatar} size={46} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Field
@@ -104,17 +103,10 @@ export function NicknameScreen({
                   autoFocus={blank || !storedNickname}
                   returnKeyType="go"
                   onSubmitEditing={() => ready && onContinue(draft.trim())}
-                  style={{
-                    borderWidth: 0,
-                    backgroundColor: 'transparent',
-                    paddingHorizontal: 0,
-                    paddingVertical: 4,
-                    fontSize: 17,
-                  }}
+                  style={{ fontSize: 17 }}
                 />
               </View>
-            </View>
-          </GlassPanel>
+          </View>
 
           <View style={{ gap: 9 }}>
             {/* One choice, not two: every icon brings its own colour. */}

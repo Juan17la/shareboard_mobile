@@ -73,7 +73,7 @@ export function PinScreen({
 
   return (
     <View style={{ flex: 1 }}>
-      <Backdrop variant="pin" />
+      <Backdrop />
       <ScrollView
         contentContainerStyle={{
           flexGrow: 1,
@@ -162,7 +162,7 @@ export function PinScreen({
                   : 'transparent',
                 ...(key
                   ? {
-                      shadowColor: '#151A2D',
+                      shadowColor: '#0F1B2D',
                       shadowOpacity: 0.07,
                       shadowRadius: 10,
                       shadowOffset: { width: 0, height: 3 },

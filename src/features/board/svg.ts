@@ -64,7 +64,8 @@ export function toSvg(
   const body = elements.map((el) => faded(el, turned(el, elementSvg(el, ground)))).join('\n');
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
-    `<style>${FONT_CSS}</style>`,
+    // CDATA: the font URL carries raw `&`, which is not valid XML on its own.
+    `<style><![CDATA[${FONT_CSS}]]></style>`,
     background ? `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${background}"/>` : '',
     body,
     '</svg>',

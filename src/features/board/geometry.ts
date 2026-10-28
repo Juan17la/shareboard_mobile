@@ -1059,7 +1059,7 @@ export function followLinks(
 export function shapeAt(elements: BoardElement[], at: Point, pad: number): ShapeElement | null {
   for (let i = elements.length - 1; i >= 0; i--) {
     const el = elements[i];
-    if (el.kind === 'shape' && shapeHit(el, at, pad)) return el;
+    if (el.kind === 'shape' && !el.locked && shapeHit(el, at, pad)) return el;
   }
   return null;
 }

@@ -1,4 +1,4 @@
-import { useState, type Ref } from 'react';
+import { useState, type ReactNode, type Ref } from 'react';
 import { TextInput, View, type TextInputProps } from 'react-native';
 
 import { Fonts, Radius } from '@/constants/theme';
@@ -8,7 +8,8 @@ import { Txt } from './Text';
 
 export interface FieldProps extends TextInputProps {
   label?: string;
-  hint?: string;
+  /** A line of help under the field; a node for one that changes as it is met. */
+  hint?: ReactNode;
   error?: string | null;
   /** Codes and PINs are typed in JetBrains Mono, spaced out. */
   mono?: boolean;
@@ -20,19 +21,19 @@ export function Field({ label, hint, error, mono = false, style, onFocus, onBlur
   const dark = useDark();
   const [focused, setFocused] = useState(false);
   return (
-    <View style={{ gap: 7 }}>
+    <View style={{ gap: 6 }}>
       {label ? (
-        <Txt weight="extrabold" size={10.5} tracking={0.9} style={{ opacity: 0.7 }}>
-          {label.toUpperCase()}
+        <Txt weight="semibold" size={13}>
+          {label}
         </Txt>
       ) : null}
       {/* The ring is a 3px border that is always there, transparent until focus
           or an error lights it: nothing shifts when it appears. */}
       <View
         style={{
-          borderRadius: Radius.lg + 3,
+          borderRadius: Radius.md + 3,
           borderWidth: 3,
-          borderColor: error ? 'rgba(255,59,48,0.22)' : focused ? c.accentSoft : 'transparent',
+          borderColor: error ? c.dangerSoft : focused ? c.accentSoft : 'transparent',
           margin: -3,
         }}
       >
@@ -53,17 +54,17 @@ export function Field({ label, hint, error, mono = false, style, onFocus, onBlur
           }}
           style={[
             {
-              minHeight: 48,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              borderRadius: Radius.lg,
-              borderWidth: focused ? 2 : 1.5,
+              minHeight: 44,
+              paddingHorizontal: 12,
+              paddingVertical: 9,
+              borderRadius: Radius.md,
+              borderWidth: 2,
               borderColor: error ? c.dangerBright : focused ? c.accent : c.borderField,
               // Paper-white on the panel (a well in dark mode): the edge is
               // drawn by the border, the fill only says "type here".
               backgroundColor: c.background,
               color: c.text,
-              fontFamily: mono ? Fonts.monoBold : Fonts.semibold,
+              fontFamily: mono ? Fonts.monoBold : Fonts.medium,
               fontSize: mono ? 15 : 16,
               ...(mono ? { letterSpacing: 1.5 } : null),
             },
@@ -73,14 +74,16 @@ export function Field({ label, hint, error, mono = false, style, onFocus, onBlur
         />
       </View>
       {error ? (
-        <Txt size={11.5} leading={1.4} weight="semibold" tone="danger" accessibilityRole="alert">
+        <Txt size={12} leading={1.4} weight="semibold" tone="danger" accessibilityRole="alert">
           {error}
         </Txt>
-      ) : hint ? (
-        <Txt size={11.5} leading={1.4} tone="secondary">
+      ) : typeof hint === 'string' ? (
+        <Txt size={12} leading={1.4} tone="secondary">
           {hint}
         </Txt>
-      ) : null}
+      ) : (
+        hint ?? null
+      )}
     </View>
   );
 }

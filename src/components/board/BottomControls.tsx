@@ -104,7 +104,7 @@ export function BottomControls({
 }
 
 const floatShadow = {
-  shadowColor: '#151A2D',
+  shadowColor: '#0F1B2D',
   shadowOpacity: 0.12,
   shadowRadius: 22,
   shadowOffset: { width: 0, height: 8 },

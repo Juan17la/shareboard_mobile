@@ -64,7 +64,8 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,

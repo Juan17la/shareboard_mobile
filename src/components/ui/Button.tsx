@@ -1,7 +1,6 @@
 import {
   ActivityIndicator,
   Pressable,
-  StyleSheet,
   View,
   type PressableProps,
   type ViewStyle,
@@ -14,7 +13,12 @@ import { Icon, type IconName } from './Icon';
 import { tip } from './Toast';
 import { Txt } from './Text';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dashed';
+/**
+ * Pills, like the line badges on a transit sign. `primary` (blue), `go`
+ * (green: the step that finishes a flow) and `danger` are filled flat;
+ * `secondary` is outlined in ink. Mirrors web `ui/Button.tsx`.
+ */
+export type ButtonVariant = 'primary' | 'go' | 'secondary' | 'ghost' | 'danger' | 'dashed';
 
 export interface ButtonProps extends Omit<PressableProps, 'children' | 'style'> {
   label: string;
@@ -24,6 +28,8 @@ export interface ButtonProps extends Omit<PressableProps, 'children' | 'style'> 
   fullWidth?: boolean;
   /** Compact height for inline use next to an input. */
   compact?: boolean;
+  /** The icon after the label (a "go on" arrow) instead of before it. */
+  iconAfter?: boolean;
   style?: ViewStyle;
 }
 
@@ -31,7 +37,7 @@ export interface ButtonProps extends Omit<PressableProps, 'children' | 'style'> 
 function foreground(c: Palette, variant: ButtonVariant): string {
   switch (variant) {
     case 'secondary':
-      return c.accentText;
+      return c.text;
     case 'ghost':
       return c.textSecondary;
     case 'dashed':
@@ -51,42 +57,36 @@ function container(
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 9,
-    borderRadius: 14,
+    gap: 8,
+    borderRadius: Radius.pill,
     opacity: disabled ? 0.55 : 1,
   };
+  // Filled like signage: the flat line colour, flat as enamel, a soft low
+  // shadow, and the deeper shade while the finger is on it.
+  const filled = (fill: string, deep: string, shadow: ViewStyle): ViewStyle => ({
+    ...base,
+    backgroundColor: pressed ? deep : fill,
+    ...(disabled ? null : shadow),
+  });
   switch (variant) {
-    // Filled the iOS way: the flat system colour, a hairline ring, a tight
-    // shadow, and a deeper shade while the finger is on it.
     case 'primary':
-      return {
-        ...base,
-        backgroundColor: pressed ? c.accentDeep : c.accent,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: 'rgba(0,55,130,0.45)',
-        ...(disabled ? null : Shadow.accent),
-      };
+      return filled(c.accent, c.accentDeep, Shadow.accent);
+    case 'go':
+      return filled(c.go, c.goDeep, Shadow.accent);
     case 'danger':
-      return {
-        ...base,
-        backgroundColor: pressed ? '#B00012' : c.danger,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: 'rgba(150,10,20,0.45)',
-        ...(disabled ? null : Shadow.danger),
-      };
-    // Tinted, the Apple way: the accent at low strength with accent type, so
-    // it reads as a button without competing with the filled primary.
+      return filled(c.danger, '#A00D25', Shadow.danger);
+    // Outlined in ink: clearly a button, never competing with a filled one.
     case 'secondary':
       return {
         ...base,
-        backgroundColor: pressed ? c.accentSoft : c.accentSofter,
-        borderWidth: 1,
-        borderColor: 'rgba(0,113,227,0.30)',
+        backgroundColor: pressed ? c.surfaceSelected : 'transparent',
+        borderWidth: 2,
+        borderColor: c.text,
       };
     case 'dashed':
       return {
         ...base,
-        borderWidth: 1,
+        borderWidth: 2,
         borderStyle: 'dashed',
         borderColor: c.borderDashed,
         borderRadius: Radius.lg,
@@ -103,6 +103,7 @@ export function Button({
   loading = false,
   fullWidth = false,
   compact = false,
+  iconAfter = false,
   disabled,
   style,
   ...rest
@@ -120,8 +121,10 @@ export function Button({
       style={({ pressed }) => [
         container(c, variant, off, pressed),
         {
-          paddingVertical: compact ? 12 : 16,
-          paddingHorizontal: compact ? 16 : 18,
+          minHeight: compact ? 40 : 48,
+          paddingVertical: compact ? 8 : 12,
+          paddingHorizontal: compact ? 16 : 20,
+          flexDirection: iconAfter ? 'row-reverse' : 'row',
           width: fullWidth ? '100%' : undefined,
           transform: [{ scale: pressed && !off ? 0.985 : 1 }],
         },
@@ -133,8 +136,8 @@ export function Button({
         <ActivityIndicator color={fg} />
       ) : (
         <>
-          {icon ? <Icon name={icon} size={compact ? 16 : 19} color={fg} /> : null}
-          <Txt weight="bold" size={compact ? 13.5 : 15.5} color={fg}>
+          {icon ? <Icon name={icon} size={compact ? 16 : 18} color={fg} /> : null}
+          <Txt weight="bold" size={compact ? 14 : 15} tracking={-0.1} color={fg}>
             {label}
           </Txt>
         </>
@@ -143,7 +146,7 @@ export function Button({
   );
 }
 
-/** Square glass icon button — the header's back / menu affordances. */
+/** Round icon button ringed in ink, like a station marker — the header's back / menu affordances. */
 export function IconButton({
   icon,
   label,
@@ -153,7 +156,7 @@ export function IconButton({
   color: tint,
   disabled,
   background: fill,
-  radius = Radius.md,
+  radius,
 }: {
   icon: IconName;
   label: string;
@@ -167,7 +170,7 @@ export function IconButton({
 }) {
   const c = useColors();
   const color = tint ?? c.text;
-  const background = fill ?? c.surface;
+  const background = fill ?? c.background;
   return (
     <Pressable
       accessibilityRole="button"
@@ -184,9 +187,9 @@ export function IconButton({
         flexShrink: 0,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: radius,
-        borderWidth: 1,
-        borderColor: c.borderStrong,
+        borderRadius: radius ?? size / 2,
+        borderWidth: 2,
+        borderColor: c.text,
         backgroundColor: pressed ? c.surfaceSelected : background,
         opacity: disabled ? 0.4 : 1,
       })}
@@ -219,10 +222,10 @@ export function StepperButton({
         height: 26,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 9,
-        borderWidth: 1,
-        borderColor: c.borderStrong,
-        backgroundColor: pressed ? c.surfaceSelected : c.surface,
+        borderRadius: 13,
+        borderWidth: 2,
+        borderColor: c.text,
+        backgroundColor: pressed ? c.surfaceSelected : c.background,
       })}
     >
       <Icon name={icon} size={14} color={c.text} />

@@ -39,7 +39,7 @@ import {
 import { Platform, View, type LayoutChangeEvent, type ViewStyle } from 'react-native';
 import { useAnimatedReaction, useSharedValue, type SharedValue } from 'react-native-reanimated';
 
-import { Radius, type Palette } from '@/constants/theme';
+import { Radius } from '@/constants/theme';
 import { useColors, useDark } from '@/features/session/store';
 
 const ABSOLUTE_FILL = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as const;
@@ -47,14 +47,6 @@ const ABSOLUTE_FILL = { position: 'absolute', top: 0, left: 0, right: 0, bottom:
 const NATIVE_BLUR = Platform.OS === 'ios';
 
 export type GlassLevel = 'panel' | 'row' | 'chip';
-
-/** Tint painted over the blur. */
-const tint = (c: Palette, level: GlassLevel) => (level === 'panel' ? c.glassTint : c.glassTintSolid);
-
-/** Tint with nothing blurred under it, so it has to carry the contrast alone. */
-const tintUnblurred = (c: Palette) => c.glassFlat;
-
-const INTENSITY: Record<GlassLevel, number> = { panel: 44, row: 30, chip: 26 };
 
 /** iOS `intensity` → Skia sigma, eyeballed to read the same on both. */
 const sigmaFor = (intensity: number) => 6 + intensity * 0.2;
@@ -230,31 +222,16 @@ export function GlassPanel({
     ...(border ? { borderWidth: 1, borderColor: border } : null),
   };
 
-  if (!blurs) {
-    // A translucent view with `elevation` shows its own shadow through itself
-    // on Android — the darker lower half that read as "two tones". Without a
-    // blur underneath the panel is translucent, so the elevation goes.
-    const flat = Object.assign({}, ...(Array.isArray(style) ? style : [style])) as ViewStyle;
-    delete flat.elevation;
-    return (
-      <View
-        pointerEvents={pointerEvents}
-        style={[shell, { backgroundColor: tintUnblurred(c) }, flat]}
-      >
-        {children}
-      </View>
-    );
-  }
-
-  // Android's elevation needs an opaque background to cast a shadow from; the
-  // scene canvas paints over it entirely, so it never shows. iOS must stay
-  // transparent or the native blur has nothing to look through.
-  const ground = NATIVE_BLUR ? null : { backgroundColor: c.background };
-
+  // Panels are solid signage now: an opaque face, so text on it keeps full
+  // contrast over any drawing. The blur pipeline above stays for now.
+  // ponytail: GlassBlur / scenes / useBoardMirror are unused by panels; delete them
+  // once the solid look is confirmed on device.
+  void blurs;
   return (
-    <View pointerEvents={pointerEvents} style={[shell, ground, style as ViewStyle]}>
-      <GlassBlur intensity={INTENSITY[level]} />
-      <View pointerEvents="none" style={[ABSOLUTE_FILL, { backgroundColor: tint(c, level) }]} />
+    <View
+      pointerEvents={pointerEvents}
+      style={[shell, { backgroundColor: level === 'panel' ? c.glassFlat : c.glassTintSolid }, style as ViewStyle]}
+    >
       {children}
     </View>
   );
