@@ -112,8 +112,8 @@ export function ColorPickerSheet({
         ))}
 
         <View style={{ height: 6 }} />
-        <Txt weight="extrabold" size={10.5} tracking={0.9} tone="secondary">
-          {t.custom.toUpperCase()}
+        <Txt weight="bold" size={13}>
+          {t.custom}
         </Txt>
         <View style={{ flexDirection: 'row', gap: 6 }}>
           {GREYS.map((grey) => swatch(grey, grey))}

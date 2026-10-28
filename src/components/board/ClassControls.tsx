@@ -111,7 +111,7 @@ export function ClassPanel({
               onTimer(custom);
               onClose();
             }}
-            style={{ marginLeft: 'auto', height: 36, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', backgroundColor: c.accent, opacity: custom ? 1 : 0.4 }}
+            style={{ marginLeft: 'auto', height: 36, paddingHorizontal: 12, borderRadius: 18, justifyContent: 'center', backgroundColor: c.accent, opacity: custom ? 1 : 0.4 }}
           >
             <Txt weight="extrabold" size={13} color="#FFFFFF">
               {t.timerStart}

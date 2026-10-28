@@ -2,95 +2,104 @@
  * Design tokens. The web app copies them into `web/src/index.css` — keep them
  * in sync. Full rationale in docs/03-styles.
  *
- * The palette comes from the Shareboard mobile design: a light, glassy surface
- * system built on frosted white panels over a soft ambient wash, with one
- * blood-red accent doing all the "this is active / this is the CTA" work.
- * Neutrals, labels, separators and red/orange are Apple's iOS/macOS system
- * colours. `Colors` is the light palette; `Palettes.dark` is the same set over a deep
- * ink ground. Components read the one in use through `useColors()`
+ * The wayfinding system: signage ink on a white ground, and a set of transit
+ * "lines" that each own one job — blue is the primary action and selection,
+ * green confirms (the step that finishes a flow), orange asks for attention,
+ * violet marks the app-wide places. Panels are solid signage, not glass.
+ * `Colors` is the light palette; `Palettes.dark` is pure black and white. Components read the one in use through `useColors()`
  * (`features/session/store.ts`), so nothing else has to know which is on.
  */
-/** UI surfaces. Deliberately restrained: board content is the star. */
+/** UI surfaces. Board content is the star. */
 export const Colors = {
   /** Page and canvas background. */
   background: '#FFFFFF',
-  /** Flat (non-glass) card fill. */
-  surface: '#F2F2F7',
-  surfaceSelected: '#E5E5EA',
-  /** Primary text. */
-  text: '#000000',
+  /** Flat card fill. */
+  surface: '#EEF1F5',
+  surfaceSelected: '#E1E6ED',
+  /** Primary text: signage ink. */
+  text: '#0F1B2D',
   /** Supporting text, labels, hints. */
-  textSecondary: '#6C6C70',
-  textTertiary: '#8E8E93',
+  textSecondary: '#4A566B',
+  textTertiary: '#6B7689',
 
-  /** The single brand accent: active tool, primary CTA, selected state. */
-  accent: '#0071E3',
-  accentDeep: '#0058B0',
-  /** The accent as *text* (tab labels, links): deeper on light, lighter on dark, for contrast. */
-  accentText: '#0062CC',
-  /** Tinted accent background for selected rows and icon chips. */
-  accentSoft: 'rgba(0,113,227,0.11)',
-  accentSofter: 'rgba(0,113,227,0.07)',
+  /** The blue line: active tool, primary CTA, selected state. */
+  accent: '#0072CE',
+  accentDeep: '#005AA3',
+  /** The blue as *text* (tab labels, links): deeper on light, lighter on dark, for contrast. */
+  accentText: '#0063B4',
+  /** Tinted blue background for selected rows and icon chips. */
+  accentSoft: 'rgba(0,114,206,0.11)',
+  accentSofter: 'rgba(0,114,206,0.06)',
+  /** The green line: the button that finishes a flow (sign in, create). */
+  go: '#00843D',
+  goDeep: '#006B31',
+  /** Lines that only mark places (menu sections). */
+  lineOrange: '#E06F00',
+  lineViolet: '#6E4BD8',
 
-  danger: '#D70015',
-  dangerBright: '#FF3B30',
-  dangerSoft: 'rgba(255,59,48,0.08)',
-  warn: '#C93400',
-  warnSoft: 'rgba(255,149,0,0.12)',
+  danger: '#C8102E',
+  dangerBright: '#E5283C',
+  dangerSoft: 'rgba(229,40,60,0.08)',
+  warn: '#B45300',
+  warnSoft: 'rgba(224,111,0,0.12)',
 
   /** Hairlines and control borders. */
-  border: 'rgba(60,60,67,0.10)',
-  borderStrong: 'rgba(60,60,67,0.14)',
-  /** The edge of a text field: 3:1 against a white or a frosted ground, so a field is seen as one. */
-  borderField: 'rgba(60,60,67,0.58)',
-  borderDashed: 'rgba(60,60,67,0.22)',
+  border: 'rgba(15,27,45,0.10)',
+  borderStrong: 'rgba(15,27,45,0.16)',
+  /** The edge of a text field: 3:1 against white, so a field is seen as one. */
+  borderField: '#8A94A4',
+  borderDashed: 'rgba(15,27,45,0.28)',
 
-  // Frosted-panel recipe. `BlurView` supplies the blur; these are the tint and
-  // the highlight painted over it so panels read as glass rather than as flat
-  // translucent boxes.
-  /** Tint over the blur for floating panels (tool rail, sheets). */
-  glassTint: 'rgba(255,255,255,0.46)',
-  /** Slightly more opaque tint for rows and chips that hold text. */
-  glassTintSolid: 'rgba(255,255,255,0.62)',
-  /** Near-opaque tint for panels that cannot blur (inside a Modal). */
-  glassFlat: 'rgba(255,255,255,0.92)',
-  /** Top inner highlight that gives the panel its lit edge. */
-  glassHighlight: 'rgba(255,255,255,0.92)',
-  /** A light rim around chips over the board. */
-  glassRim: 'rgba(255,255,255,0.60)',
+  // Panels. The names stay from the glass era; the panels are now solid,
+  // like a sign, so text on them keeps its contrast over any drawing.
+  /** Floating panels (tool rail, sheets). */
+  glassTint: 'rgba(255,255,255,0.97)',
+  /** Rows and chips that hold text. */
+  glassTintSolid: '#FFFFFF',
+  /** Panels inside a Modal. */
+  glassFlat: '#FFFFFF',
+  /** No lit edge: signage is flat. */
+  glassHighlight: 'rgba(255,255,255,0)',
+  /** A rim around chips over the board. */
+  glassRim: 'rgba(15,27,45,0.10)',
 };
 
 export type Theme = 'light' | 'dark';
 export type Palette = { [K in keyof typeof Colors]: string };
 
-/** The dark board: Apple's dark system colours (iOS elevated / macOS), same recipe. */
+/** The dark board: pure black and white, no tint; the lines keep their colours because they carry meaning. */
 export const Palettes: Record<Theme, Palette> = {
   light: Colors,
   dark: {
     ...Colors,
-    background: '#1C1C1E',
-    surface: '#2C2C2E',
-    surfaceSelected: '#3A3A3C',
+    background: '#000000',
+    surface: '#141414',
+    surfaceSelected: '#262626',
     text: '#FFFFFF',
-    textSecondary: '#AEAEB2',
-    textTertiary: '#8E8E93',
-    accent: '#0071E3',
-    accentDeep: '#0058B0',
-    accentText: '#4DA2FF',
-    accentSoft: 'rgba(10,132,255,0.20)',
-    accentSofter: 'rgba(10,132,255,0.11)',
-    dangerBright: '#FF453A',
-    border: 'rgba(235,235,245,0.10)',
-    borderStrong: 'rgba(235,235,245,0.16)',
-    borderField: 'rgba(235,235,245,0.5)',
-    borderDashed: 'rgba(235,235,245,0.26)',
-    glassTint: 'rgba(28,28,30,0.55)',
-    glassTintSolid: 'rgba(44,44,46,0.72)',
-    glassFlat: 'rgba(44,44,46,0.94)',
-    glassHighlight: 'rgba(255,255,255,0.08)',
-    glassRim: 'rgba(255,255,255,0.10)',
+    textSecondary: '#A3A3A3',
+    textTertiary: '#8A8A8A',
+    accent: '#0072CE',
+    accentDeep: '#005AA3',
+    accentText: '#5AAEFF',
+    accentSoft: 'rgba(43,143,232,0.20)',
+    accentSofter: 'rgba(43,143,232,0.10)',
+    dangerBright: '#FF5A5F',
+    border: 'rgba(255,255,255,0.10)',
+    borderStrong: 'rgba(255,255,255,0.18)',
+    borderField: 'rgba(255,255,255,0.42)',
+    borderDashed: 'rgba(255,255,255,0.30)',
+    glassTint: 'rgba(10,10,10,0.97)',
+    glassTintSolid: '#141414',
+    glassFlat: '#0A0A0A',
+    glassHighlight: 'rgba(255,255,255,0)',
+    glassRim: 'rgba(255,255,255,0.18)',
   },
 };
+
+/** The lines a section can sit on: each group of a menu owns one, on web and mobile alike. */
+export type Line = 'blue' | 'green' | 'orange' | 'violet' | 'ink';
+export const lineColor = (c: Palette, line: Line): string =>
+  ({ blue: c.accent, green: c.go, orange: c.lineOrange, violet: c.lineViolet, ink: c.text })[line];
 
 /**
  * The default ink (and picked black) is dark and vanishes on the dark
@@ -102,19 +111,30 @@ export function inkFor(color: string, dark: boolean): string {
   return dark && /^#(1B2030|000000)/i.test(color) ? '#FFFFFF' + color.slice(7) : color;
 }
 
+/**
+ * A fill that reads as light paper on the dark board: bright and mostly
+ * opaque (an AI flowchart's white or yellow boxes). Its dark ink stays dark,
+ * as on a sticky note, or the white label would vanish into it.
+ */
+export function isLightPaper(fill: string | null | undefined): boolean {
+  if (!fill || (fill.length > 7 && parseInt(fill.slice(7, 9), 16) < 0x99)) return false;
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(fill.slice(i, i + 2), 16));
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150;
+}
+
 /** What does not change with the theme: scrims and the blur strength. */
 export const Glass = {
   /** Scrim behind a bottom sheet / dialog. */
-  scrim: 'rgba(21,26,45,0.28)',
-  scrimStrong: 'rgba(21,26,45,0.34)',
+  scrim: 'rgba(15,27,45,0.28)',
+  scrimStrong: 'rgba(15,27,45,0.34)',
   blurIntensity: 40,
 } as const;
 
 /** Connection status badge colors (theme-independent). */
 export const StatusColors = {
-  online: '#0F9E8E',
-  connecting: '#F59E0B',
-  offline: '#9AA0A6',
+  online: '#00843D',
+  connecting: '#E06F00',
+  offline: '#8A94A4',
 } as const;
 
 /**
@@ -176,20 +196,21 @@ export const Avatars = [
 export const avatarColor = (icon: string): string =>
   (Avatars.find((a) => a.icon === icon) ?? Avatars[0]).color;
 
-export const Radius = { sm: 8, md: 12, lg: 16, xl: 20, xxl: 26, pill: 999 } as const;
+export const Radius = { sm: 6, md: 10, lg: 14, xl: 18, xxl: 22, pill: 999 } as const;
 
 /**
  * Font families registered by `useAppFonts` in `hooks/use-app-fonts.ts`.
- * Nunito for everything, JetBrains Mono for codes, PINs and numbers.
+ * Onest for the interface, JetBrains Mono for codes, PINs and numbers. Onest
+ * has no italics, so the rare italic UI text borrows Nunito's (the board face).
  */
 export const Fonts = {
-  regular: 'Nunito_400Regular',
+  regular: 'Onest_400Regular',
   italic: 'Nunito_400Regular_Italic',
   extraboldItalic: 'Nunito_800ExtraBold_Italic',
-  medium: 'Nunito_500Medium',
-  semibold: 'Nunito_600SemiBold',
-  bold: 'Nunito_700Bold',
-  extrabold: 'Nunito_800ExtraBold',
+  medium: 'Onest_500Medium',
+  semibold: 'Onest_600SemiBold',
+  bold: 'Onest_700Bold',
+  extrabold: 'Onest_800ExtraBold',
   mono: 'JetBrainsMono_500Medium',
   monoBold: 'JetBrainsMono_700Bold',
 } as const;
@@ -197,30 +218,29 @@ export const Fonts = {
 /** Soft drop shadows. Elevation is subtle everywhere. */
 export const Shadow = {
   panel: {
-    shadowColor: '#151A2D',
+    shadowColor: '#0F1B2D',
     shadowOpacity: 0.16,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
     elevation: 8,
   },
   card: {
-    shadowColor: '#151A2D',
+    shadowColor: '#0F1B2D',
     shadowOpacity: 0.1,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
-  // Filled controls, the iOS way: a tight, low shadow in a deeper shade of
-  // their own colour — no glow. The lit edge and hairline are in `ui/Button`.
+  // Filled controls, like signage: flat, with a tight, low shadow.
   accent: {
-    shadowColor: '#002864',
+    shadowColor: '#0F1B2D',
     shadowOpacity: 0.3,
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 2,
   },
   danger: {
-    shadowColor: '#780000',
+    shadowColor: '#0F1B2D',
     shadowOpacity: 0.28,
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },

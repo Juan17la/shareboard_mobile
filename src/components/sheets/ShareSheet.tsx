@@ -82,23 +82,24 @@ export function ShareSheet({
                 accessibilityRole="button"
                 accessibilityLabel={`${t.code} ${code}`}
                 onPress={() => copy(code, t.toastCopied)}
-                style={{
+                style={({ pressed }) => ({
                   flexDirection: 'row',
                   alignItems: 'center',
                   alignSelf: 'flex-start',
-                  gap: 7,
-                  paddingHorizontal: 11,
-                  paddingVertical: 9,
-                  borderRadius: 13,
-                  borderWidth: 1,
-                  borderColor: c.borderStrong,
-                  backgroundColor: c.surface,
-                }}
+                  gap: 8,
+                  height: 44,
+                  paddingLeft: 8,
+                  paddingRight: 14,
+                  borderRadius: 22,
+                  backgroundColor: pressed ? c.accentDeep : c.accent,
+                })}
               >
-                <Txt weight="extrabold" size={17} tracking={1.6}>
+                {/* The code as a line badge: a station ring, then the code to read out. */}
+                <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 4, borderColor: '#FFFFFF' }} />
+                <Txt mono weight="bold" size={17} tracking={1.5} tone="inverse">
                   {formatShortCode(code)}
                 </Txt>
-                <Icon name="copy" size={15} color={c.text} />
+                <Icon name="copy" size={15} color="#FFFFFF" />
               </Pressable>
               <Txt size={11} leading={1.35} tone="secondary">
                 {t.qrHint}
@@ -181,23 +182,28 @@ function LocalShare({
 
   return (
     <Sheet open={open} title={t.sheetShare} onClose={onClose} closeLabel={t.close}>
-      <View style={{ gap: 12 }}>
-        {/* A guest is asked to sign in first: a live board belongs to an account. */}
-        <Txt size={13} leading={1.45} tone="secondary">
-          {signedIn ? t.shareLocalBody : t.signInToShareBody}
-        </Txt>
-        {signedIn ? (
+      {signedIn ? (
+        <View style={{ gap: 12 }}>
+          <Txt size={14} leading={1.4} tone="secondary">
+            {t.shareLocalBody}
+          </Txt>
           <Button label={t.shareLocalCta} icon="share" loading={busy} fullWidth onPress={() => void promote()} />
-        ) : (
-          <Button label={t.signInToShare} icon="user" fullWidth onPress={onNeedAccount} />
-        )}
-        {sharedAs ? (
-          <Button label={t.openShared} icon="link" variant="secondary" fullWidth onPress={() => go(sharedAs)} />
-        ) : null}
-        <View style={{ flexDirection: 'row' }}>
-          <ShortcutTile icon="image" label={t.exportImage} onPress={onOpenExport} />
+          {sharedAs ? (
+            <Button label={t.openShared} icon="link" variant="secondary" fullWidth onPress={() => go(sharedAs)} />
+          ) : null}
+          <View style={{ flexDirection: 'row' }}>
+            <ShortcutTile icon="image" label={t.exportImage} onPress={onOpenExport} />
+          </View>
         </View>
-      </View>
+      ) : (
+        // Sharing needs an account, so a guest gets the one way forward and nothing else.
+        <View style={{ gap: 12 }}>
+          <Txt size={14} leading={1.4} tone="secondary">
+            {t.signInToShareBody}
+          </Txt>
+          <Button label={t.signInToShare} icon="user" fullWidth onPress={onNeedAccount} />
+        </View>
+      )}
     </Sheet>
   );
 }

@@ -15,6 +15,7 @@ import {
   ArrowUUpLeftIcon,
   ArrowUUpRightIcon,
   ArrowUpIcon,
+  ArrowRightIcon,
   ArrowUpRightIcon,
   BoundingBoxIcon,
   CaretLeftIcon,
@@ -114,6 +115,7 @@ export type IconName =
   | 'polygon'
   | 'line'
   | 'arrow'
+  | 'go'
   | 'undo'
   | 'redo'
   | 'edit'
@@ -178,6 +180,7 @@ const GLYPHS: Record<IconName, [PhosphorIcon, IconWeight?]> = {
   polygon: [HexagonIcon],
   line: [LineSegmentIcon],
   arrow: [ArrowUpRightIcon],
+  go: [ArrowRightIcon, 'bold'],
   undo: [ArrowUUpLeftIcon],
   redo: [ArrowUUpRightIcon],
   edit: [PencilSimpleLineIcon],

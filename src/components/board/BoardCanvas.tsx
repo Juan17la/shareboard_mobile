@@ -625,9 +625,13 @@ export function BoardCanvas({
         tick(haptics);
         return;
       }
-      // The sticky tool stays in hand: one note after another is how a brainstorm goes.
+      // Like a shape, a new note hands the cursor back, the note selected.
       const id = store().addSticky(p);
-      if (id) setEditingId(id);
+      if (id) {
+        store().finishCreate([id]);
+        store().setRailOpen(false);
+        setEditingId(id);
+      }
     };
     /** The pen moved after it made a figure: the figure follows, once a frame (JS side of the pen gesture). */
     const figureMoved = (x: number, y: number) => {
@@ -1137,6 +1141,10 @@ export function BoardCanvas({
   ]);
 
   const editing = editingId ? elements[editingId] : null;
+  // While typing, the options strip folds away so the words get the whole board.
+  useEffect(() => {
+    if (editingId) useBoardStore.getState().setRailOpen(false);
+  }, [editingId]);
   // Connection points show whenever an arrow could land on them: those nearest
   // the end under the finger — the one being drawn, or the handle being dragged.
   const draggedEnd =
@@ -1267,6 +1275,8 @@ export function BoardCanvas({
             const { tool: t, elements: all, finishCreate } = useBoardStore.getState();
             const done = all[editing.id];
             if (t === 'text' && done?.kind === 'text' && !done.deleted && done.text) finishCreate([done.id]);
+            // Typing over: what is still selected gets its options back.
+            useBoardStore.getState().setRailOpen(useBoardStore.getState().selectedIds.length > 0);
             setEditingId(null);
             setDraft(null);
           }}

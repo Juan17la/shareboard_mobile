@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, TextInput, View } from 'react-native';
 
-import { inkFor } from '@/constants/theme';
+import { inkFor, isLightPaper } from '@/constants/theme';
 import { useColors, useDark } from '@/features/session/store';
 import { useBackToClose } from '@/hooks/use-back-to-close';
 import { useT } from '@/features/i18n/store';
@@ -166,7 +166,9 @@ export function TextEditorOverlay({
   // The stored colour is the light-theme ink by default; flip it to the dark
   // board's ink the same way the committed element already paints (`inked` in
   // ElementRenderer) — otherwise the caret is black on black.
-  const color = inkFor(element.kind === 'text' ? element.color : element.stroke, dark);
+  const color = element.kind === 'text'
+    ? inkFor(element.color, dark)
+    : inkFor(element.stroke, dark && !isLightPaper(element.fill));
   const bold = element.kind === 'text' && !!element.bold;
   const italic = element.kind === 'text' && !!element.italic;
 

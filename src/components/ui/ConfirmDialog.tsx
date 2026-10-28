@@ -12,6 +12,7 @@ import { Glass } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 
 import { MirrorScene } from '../board/BoardMirror';
+import { Button } from './Button';
 import { GlassPanel, NoGlassScene } from './Glass';
 import { Icon } from './Icon';
 import { Txt } from './Text';
@@ -63,81 +64,52 @@ export function ConfirmDialog({
               backgroundColor: Glass.scrimStrong,
             }}
           />
-          <View style={{ width: '100%', maxWidth: 320 }}>
+          {/* Left-aligned like the sheets: what happens, why it matters, then the
+              two answers, the safe one first and the consequence on the right.
+              Mirrors web `ConfirmDialog`. */}
+          <View style={{ width: '100%', maxWidth: 380 }}>
             <GlassPanel
               level="panel"
-              radius={24}
-              border={c.glassHighlight}
+              radius={16}
+              border={null}
               style={{
-                shadowColor: '#151A2D',
-                shadowOpacity: 0.28,
-                shadowRadius: 60,
-                shadowOffset: { width: 0, height: 22 },
+                borderWidth: 1,
+                borderColor: c.borderStrong,
+                shadowColor: '#0F1B2D',
+                shadowOpacity: 0.26,
+                shadowRadius: 40,
+                shadowOffset: { width: 0, height: 16 },
                 elevation: 24,
               }}
             >
               <NoGlassScene>
-              <View style={{ alignItems: 'center', gap: 9, paddingHorizontal: 20, paddingVertical: 22 }}>
-                <View
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 15,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: isDanger ? c.dangerSoft : c.warnSoft,
-                  }}
-                >
-                  <Icon name="warning" size={24} color={accent} />
-                </View>
-
-                <Txt weight="extrabold" size={17} leading={1.25} tracking={-0.2} style={{ textAlign: 'center' }}>
-                  {title}
-                </Txt>
-                <Txt size={12.5} leading={1.5} tone="secondary" style={{ textAlign: 'center' }}>
-                  {body}
-                </Txt>
-
-                <View style={{ flexDirection: 'row', gap: 9, marginTop: 4, alignSelf: 'stretch' }}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={cancelLabel}
-                    onPress={onCancel}
-                    disabled={busy}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 13,
-                      alignItems: 'center',
-                      borderRadius: 14,
-                      borderWidth: 1,
-                      borderColor: c.borderStrong,
-                      backgroundColor: c.glassTintSolid,
-                    }}
-                  >
-                    <Txt weight="extrabold" size={13}>
-                      {cancelLabel}
+                <View style={{ gap: 12, padding: 18 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 16,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: isDanger ? c.dangerSoft : c.warnSoft,
+                      }}
+                    >
+                      <Icon name="warning" size={18} color={accent} />
+                    </View>
+                    <Txt weight="bold" size={17} leading={1.25} tracking={-0.2} style={{ flex: 1 }}>
+                      {title}
                     </Txt>
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={confirmLabel}
-                    onPress={onConfirm}
-                    disabled={busy}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 13,
-                      alignItems: 'center',
-                      borderRadius: 14,
-                      backgroundColor: accent,
-                      opacity: busy ? 0.6 : 1,
-                    }}
-                  >
-                    <Txt weight="extrabold" size={13} tone="inverse">
-                      {confirmLabel}
-                    </Txt>
-                  </Pressable>
+                  </View>
+                  <Txt size={14} leading={1.4} tone="secondary">
+                    {body}
+                  </Txt>
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+                    <Button label={cancelLabel} variant="secondary" compact disabled={busy} onPress={onCancel} />
+                    {/* Both uses (clear, delete) destroy work: the answer is always red. */}
+                    <Button label={confirmLabel} variant="danger" compact loading={busy} onPress={onConfirm} />
+                  </View>
                 </View>
-              </View>
               </NoGlassScene>
             </GlassPanel>
           </View>
