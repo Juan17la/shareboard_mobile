@@ -884,7 +884,7 @@ export function Toolbar({ landscape }: { landscape: boolean }) {
 const NONE: BoardElement[] = [];
 
 const panelShadow = {
-  shadowColor: '#151A2D',
+  shadowColor: '#0F1B2D',
   shadowOpacity: 0.16,
   shadowRadius: 34,
   shadowOffset: { width: 0, height: 12 },
@@ -907,8 +907,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <Dense.Provider value>
     <View style={{ gap: 4 }}>
-      <Txt weight="extrabold" size={10} tracking={0.8} tone="secondary">
-        {title.toUpperCase()}
+      <Txt weight="bold" size={11} tone="secondary">
+        {title}
       </Txt>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5 }}>{children}</View>
     </View>
@@ -1071,15 +1071,16 @@ function ToolButton({
         height: size,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: radius,
+        // A round station, like the web rail's.
+        borderRadius: size / 2,
         backgroundColor: active ? c.accent : 'transparent',
         ...(active
           ? {
-              shadowColor: c.accent,
-              shadowOpacity: 0.3,
-              shadowRadius: 12,
-              shadowOffset: { width: 0, height: 4 },
-              elevation: 4,
+              shadowColor: '#0F1B2D',
+              shadowOpacity: 0.18,
+              shadowRadius: 2,
+              shadowOffset: { width: 0, height: 1 },
+              elevation: 2,
             }
           : null),
       }}

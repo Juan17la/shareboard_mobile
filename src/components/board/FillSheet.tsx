@@ -86,8 +86,8 @@ export function FillSheet({
             }}
           />
           <View style={{ flex: 1, gap: 6 }}>
-            <Txt weight="extrabold" size={10.5} tracking={0.9} tone="secondary">
-              {t.hexCode.toUpperCase()}
+            <Txt weight="bold" size={13}>
+              {t.hexCode}
             </Txt>
             <TextInput
               value={text}
@@ -161,8 +161,8 @@ export function FillSheet({
         </View>
 
         <View style={{ gap: 8 }}>
-          <Txt weight="extrabold" size={10.5} tracking={0.9} tone="secondary">
-            {t.opacity.toUpperCase()}
+          <Txt weight="bold" size={13}>
+            {t.opacity}
           </Txt>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             {stepper(`${t.opacity} −${STEP}%`, '−', opacity - STEP)}

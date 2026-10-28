@@ -206,7 +206,7 @@ export function Tutorial({ offerTop }: { offerTop: number }) {
           padding: 16,
           borderRadius: 16,
           backgroundColor: c.surface,
-          shadowColor: '#151A2D',
+          shadowColor: '#0F1B2D',
           shadowOpacity: 0.2,
           shadowRadius: 24,
           shadowOffset: { width: 0, height: 8 },
@@ -229,7 +229,7 @@ export function Tutorial({ offerTop }: { offerTop: number }) {
           <Pressable
             accessibilityRole="button"
             onPress={next}
-            style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: c.accent }}
+            style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: c.accent }}
           >
             <Txt weight="extrabold" size={13} tone="inverse">
               {offer ? t.tourStart : index === STEPS.length - 1 ? t.tourDone : t.tourNext}

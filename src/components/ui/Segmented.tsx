@@ -9,7 +9,7 @@ export interface SegmentOption<T extends string> {
   label: string;
 }
 
-/** Two-to-four-way choice: visibility, export format. */
+/** Two-to-four-way choice: visibility, export format. A pill ringed in ink; the chosen part fills. */
 export function Segmented<T extends string>({
   options,
   value,
@@ -27,9 +27,10 @@ export function Segmented<T extends string>({
       style={{
         flexDirection: 'row',
         gap: 2,
-        padding: 3,
-        borderRadius: 11,
-        backgroundColor: c.surfaceSelected,
+        padding: 2,
+        borderRadius: 999,
+        borderWidth: 2,
+        borderColor: c.text,
         opacity: disabled ? 0.5 : 1,
       }}
     >
@@ -48,20 +49,11 @@ export function Segmented<T extends string>({
               alignItems: 'center',
               justifyContent: 'center',
               minHeight: 40,
-              borderRadius: 9,
-              backgroundColor: active ? c.background : 'transparent',
-              ...(active
-                ? {
-                    shadowColor: '#151A2D',
-                    shadowOpacity: 0.14,
-                    shadowRadius: 3,
-                    shadowOffset: { width: 0, height: 1 },
-                    elevation: 2,
-                  }
-                : null),
+              borderRadius: 999,
+              backgroundColor: active ? c.text : 'transparent',
             }}
           >
-            <Txt weight="bold" size={12.5} color={active ? c.accentText : c.textSecondary}>
+            <Txt weight="bold" size={13} color={active ? c.background : c.textSecondary}>
               {opt.label}
             </Txt>
           </Pressable>

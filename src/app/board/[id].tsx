@@ -35,6 +35,7 @@ import { BoardHeader } from '@/components/header/BoardHeader';
 import { NicknameScreen } from '@/components/screens/NicknameScreen';
 import { PinScreen } from '@/components/screens/PinScreen';
 import { AccountSheet } from '@/components/sheets/AccountSheet';
+import { SheetBack } from '@/components/ui/sheet-back';
 import { AiSheet } from '@/components/sheets/AiSheet';
 import { BoardsSheet } from '@/components/sheets/BoardsSheet';
 import { ExportSheet } from '@/components/sheets/ExportSheet';
@@ -110,7 +111,13 @@ function BoardScreen({ id }: { id: string }) {
   const meta = useBoardStore((s) => s.meta);
   const clearBoard = useBoardStore((s) => s.clearBoard);
 
-  const [sheet, setSheet] = useState<SheetName | null>(null);
+  // Sheets opened from another sheet stack up, so each can go back to the one
+  // that opened it; `setSheet` starts over, `pushSheet` goes one deeper.
+  const [stack, setStack] = useState<SheetName[]>([]);
+  const sheet = stack.at(-1) ?? null;
+  const setSheet = useCallback((next: SheetName | null) => setStack(next ? [next] : []), []);
+  const pushSheet = useCallback((next: SheetName) => setStack((s) => [...s, next]), []);
+  const backSheet = useCallback(() => setStack((s) => s.slice(0, -1)), []);
   const [confirm, setConfirm] = useState<ConfirmName | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -118,7 +125,7 @@ function BoardScreen({ id }: { id: string }) {
   const [afterSignIn, setAfterSignIn] = useState<SheetName | null>(null);
   const askAccount = (from: SheetName | null) => {
     setAfterSignIn(from);
-    setSheet('account');
+    pushSheet('account');
   };
 
   // A live board waits for a name, asked once; the offline board needs none.
@@ -132,7 +139,7 @@ function BoardScreen({ id }: { id: string }) {
     async (snapshot: BoardSnapshot) => {
       if (!useSessionStore.getState().account) {
         setAfterSignIn('import');
-        setSheet('account');
+        pushSheet('account');
         return;
       }
       // Always a new board, never a paste into this one — importing must not be
@@ -143,7 +150,7 @@ function BoardScreen({ id }: { id: string }) {
       );
       router.setParams({ id: created.id });
     },
-    [t, userId],
+    [t, userId, pushSheet],
   );
 
   const [creating, setCreating] = useState(false);
@@ -270,11 +277,12 @@ function BoardScreen({ id }: { id: string }) {
   const headerHeight = insets.top + 56;
 
   return (
+    <SheetBack.Provider value={stack.length > 1 ? backSheet : undefined}>
     <GlassScene render={mirror} style={{ backgroundColor: c.background }}>
       <BoardCanvas onCursorMove={sync.sendCursor} onPreview={sync.sendPreview} canvasRef={canvasRef} />
 
       <BoardHeader
-        onOpenPeople={() => setSheet('people')}
+        onOpenPeople={() => pushSheet('people')}
         onOpenMenu={() => setSheet('menu')}
         onOpenShare={() => setSheet('share')}
       />
@@ -296,8 +304,8 @@ function BoardScreen({ id }: { id: string }) {
         open={sheet === 'share'}
         onClose={() => setSheet(null)}
         link={link}
-        onOpenExport={() => setSheet('export')}
-        onOpenPrivacy={() => setSheet('privacy')}
+        onOpenExport={() => pushSheet('export')}
+        onOpenPrivacy={() => pushSheet('privacy')}
         onNeedAccount={() => askAccount('share')}
       />
       <PeopleSheet open={sheet === 'people'} onClose={() => setSheet(null)} />
@@ -306,7 +314,7 @@ function BoardScreen({ id }: { id: string }) {
       <PrivacySheet
         open={sheet === 'privacy'}
         onClose={() => setSheet(null)}
-        onOpenPeople={() => setSheet('people')}
+        onOpenPeople={() => pushSheet('people')}
       />
       <ExportSheet open={sheet === 'export'} onClose={() => setSheet(null)} />
       <ImportSheet
@@ -318,15 +326,15 @@ function BoardScreen({ id }: { id: string }) {
       <MenuSheet
         open={sheet === 'menu'}
         onClose={() => setSheet(null)}
-        onOpenBoards={() => setSheet('boards')}
-        onOpenNew={() => setSheet('join')}
-        onOpenSettings={() => setSheet('settings')}
-        onOpenImport={() => setSheet('import')}
-        onOpenExport={() => setSheet('export')}
-        onOpenPrivacy={() => setSheet('privacy')}
-        onOpenPeople={() => setSheet('people')}
-        onOpenAi={() => setSheet('ai')}
-        onOpenTemplates={() => setSheet('templates')}
+        onOpenBoards={() => pushSheet('boards')}
+        onOpenNew={() => pushSheet('join')}
+        onOpenSettings={() => pushSheet('settings')}
+        onOpenImport={() => pushSheet('import')}
+        onOpenExport={() => pushSheet('export')}
+        onOpenPrivacy={() => pushSheet('privacy')}
+        onOpenPeople={() => pushSheet('people')}
+        onOpenAi={() => pushSheet('ai')}
+        onOpenTemplates={() => pushSheet('templates')}
       />
       <BoardsSheet open={sheet === 'boards'} onClose={() => setSheet(null)} currentId={id} />
       <JoinSheet
@@ -345,7 +353,6 @@ function BoardScreen({ id }: { id: string }) {
       <AccountSheet
         open={sheet === 'account'}
         onClose={() => setSheet(null)}
-        reason={afterSignIn ? t.signInToShareBody : undefined}
         onSignedIn={() => setSheet(afterSignIn)}
       />
 
@@ -365,6 +372,7 @@ function BoardScreen({ id }: { id: string }) {
         onCancel={() => setConfirm(null)}
       />
     </GlassScene>
+    </SheetBack.Provider>
   );
 }
 
@@ -383,7 +391,7 @@ function BoardError({
 }) {
   return (
     <View style={{ flex: 1 }}>
-      <Backdrop variant="home" />
+      <Backdrop />
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 28 }}>
         <Txt weight="extrabold" size={20} leading={1.2} tracking={-0.4} style={{ textAlign: 'center' }}>
           {t.errOpen}

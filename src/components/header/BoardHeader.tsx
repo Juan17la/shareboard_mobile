@@ -11,7 +11,7 @@
  * access, people and the assistant all live in the menu, grouped.
  */
 import { useEffect, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StatusColors } from '@/constants/theme';
@@ -72,7 +72,7 @@ function PresenceDot({ color, animated: wanted, size = 8 }: { color: string; ani
   );
 }
 
-/** The board's mark: its first letter on a tint, with the connection as a badge on the corner. */
+/** The board's mark: its first letter in a ringed station, with the connection as a badge on the corner. */
 function BoardTile({ name, status, live }: { name: string; status: string; live: boolean }) {
   const c = useColors();
   const initial = Array.from(name.trim())[0]?.toUpperCase() ?? '·';
@@ -83,10 +83,10 @@ function BoardTile({ name, status, live }: { name: string; status: string; live:
           flex: 1,
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: 12,
+          borderRadius: 18,
           backgroundColor: c.accentSoft,
-          borderWidth: 1,
-          borderColor: 'rgba(0,113,227,0.22)',
+          borderWidth: 2,
+          borderColor: c.accent,
         }}
       >
         <Txt weight="extrabold" size={17} color={c.accentText}>
@@ -100,7 +100,7 @@ function BoardTile({ name, status, live }: { name: string; status: string; live:
           bottom: -3,
           padding: 2,
           borderRadius: 8,
-          backgroundColor: c.surface,
+          backgroundColor: c.background,
         }}
       >
         <PresenceDot color={status} animated={live} />
@@ -201,14 +201,14 @@ export function BoardHeader({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    height: 48,
-    paddingLeft: 6,
-    paddingRight: 10,
-    borderRadius: 18,
+    height: 44,
+    paddingLeft: 4,
+    paddingRight: 14,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: c.borderStrong,
-    backgroundColor: c.surface,
-    shadowColor: '#151A2D',
+    backgroundColor: c.background,
+    shadowColor: '#0F1B2D',
     shadowOpacity: 0.1,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 5 },
@@ -266,25 +266,20 @@ export function BoardHeader({
           flexDirection: 'row',
           alignItems: 'center',
           gap: 6,
-          height: 48,
-          paddingHorizontal: 16,
-          borderRadius: 18,
+          height: 44,
+          paddingLeft: 13,
+          paddingRight: 16,
+          borderRadius: 22,
+          // Flat, no elevation: Android draws it as a grey box behind the pill.
           backgroundColor: pressed ? c.accentDeep : c.accent,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: 'rgba(0,55,130,0.45)',
-          shadowColor: c.accent,
-          shadowOpacity: 0.28,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 4 },
-          elevation: 4,
         })}
       >
         <Icon name="share" size={17} color="#FFFFFF" />
-        <Txt weight="extrabold" size={13.5} tone="inverse" numberOfLines={1}>
+        <Txt weight="bold" size={14} tone="inverse" numberOfLines={1}>
           {t.share}
         </Txt>
       </Pressable>
-      <IconButton icon="more" label={t.boardMenu} onPress={onOpenMenu} size={48} iconSize={19} radius={18} />
+      <IconButton icon="more" label={t.boardMenu} onPress={onOpenMenu} size={44} iconSize={19} />
     </View>
   );
 }
