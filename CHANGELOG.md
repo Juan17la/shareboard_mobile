@@ -7,6 +7,8 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.8.0-beta] - 2026-10-28
+
 ### Changed
 
 - New look: signage ink on white with solid panels instead of frosted glass.
