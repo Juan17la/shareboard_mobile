@@ -7,6 +7,10 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Licensed under the MIT License, replacing PolyForm Noncommercial 1.0.0.
+
 ## [1.8.0-beta] - 2026-10-28
 
 ### Changed
@@ -561,8 +565,7 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ### Fixed
 
-- The app talks to the deployed server again
-  (https://shareboard-server.onrender.com): 1.0.0-beta.3 was built for a
+- The app talks to the deployed server again: 1.0.0-beta.3 was built for a
   placeholder URL and could not open boards.
 
 ## [1.0.0-beta.3] - 2026-09-26
