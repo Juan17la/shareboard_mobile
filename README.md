@@ -11,7 +11,7 @@ anyone who has the code.
 
 [![Latest release](https://img.shields.io/github/v/release/Juan17la/shareboard_mobile?include_prereleases&label=version&color=0B6BCB)](https://github.com/Juan17la/shareboard_mobile/releases)
 [![Platform](https://img.shields.io/badge/Android-555?label=runs%20on)](#install)
-[![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-FFAA00)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-FFAA00)](LICENSE)
 
 [Download](#install) · [Features](#what-you-can-do) · [User guide](docs/user-guide/getting-started.md) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md)
 
@@ -184,12 +184,7 @@ The [user guide](docs/user-guide/features.md) explains every tool and option.
 
 ## License
 
-Shareboard is source-available under the
-[PolyForm Noncommercial License 1.0.0](LICENSE). You are free to use it, read
-the code, modify it and share it for any noncommercial purpose. Selling it, or
-using it or any part of it to make money, is reserved to the author. For
-commercial permission, open an issue or contact
-[@Juan17la](https://github.com/Juan17la).
+Shareboard is open source under the [MIT License](LICENSE).
 
 <div align="center">
 <br />
