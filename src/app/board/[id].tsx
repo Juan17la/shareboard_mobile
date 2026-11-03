@@ -23,44 +23,44 @@ import { useCallback, useEffect, useState } from 'react';
 import { View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BoardCanvas } from '@/components/board/BoardCanvas';
-import { ConnectionBanner } from '@/components/board/ConnectionBanner';
-import { useBoardMirror } from '@/components/board/BoardMirror';
-import { BottomControls } from '@/components/board/BottomControls';
-import { ReactionStream, TimerPill } from '@/components/board/ClassControls';
-import { PERF_HUD, PerfHud } from '@/components/board/PerfHud';
-import { Toolbar } from '@/components/board/Toolbar';
-import { Tutorial } from '@/components/board/Tutorial';
-import { BoardHeader } from '@/components/header/BoardHeader';
-import { NicknameScreen } from '@/components/screens/NicknameScreen';
-import { PinScreen } from '@/components/screens/PinScreen';
-import { AccountSheet } from '@/components/sheets/AccountSheet';
-import { SheetBack } from '@/components/ui/sheet-back';
-import { AiSheet } from '@/components/sheets/AiSheet';
-import { BoardsSheet } from '@/components/sheets/BoardsSheet';
-import { ExportSheet } from '@/components/sheets/ExportSheet';
-import { ImportSheet } from '@/components/sheets/ImportSheet';
-import { JoinSheet } from '@/components/sheets/JoinSheet';
-import { MenuSheet } from '@/components/sheets/MenuSheet';
-import { TemplatesSheet } from '@/components/sheets/TemplatesSheet';
-import { PeopleSheet } from '@/components/sheets/PeopleSheet';
-import { PrivacySheet } from '@/components/sheets/PrivacySheet';
-import { SettingsSheet } from '@/components/sheets/SettingsSheet';
-import { ShareSheet } from '@/components/sheets/ShareSheet';
-import { Backdrop } from '@/components/ui/Backdrop';
-import { Button } from '@/components/ui/Button';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { GlassScene } from '@/components/ui/Glass';
-import { LoadingScreen } from '@/components/ui/LoadingScreen';
-import { Txt } from '@/components/ui/Text';
-import { ToastHost, toast } from '@/components/ui/Toast';
+import { BoardCanvas } from '@/components/organisms/board/BoardCanvas';
+import { ConnectionBanner } from '@/components/molecules/ConnectionBanner';
+import { useBoardMirror } from '@/components/molecules/BoardMirror';
+import { BottomControls } from '@/components/organisms/board/BottomControls';
+import { ReactionStream, TimerPill } from '@/components/organisms/board/ClassControls';
+import { PERF_HUD, PerfHud } from '@/components/molecules/PerfHud';
+import { Toolbar } from '@/components/organisms/board/Toolbar';
+import { Tutorial } from '@/components/organisms/board/Tutorial';
+import { BoardHeader } from '@/components/organisms/header/BoardHeader';
+import { NicknameScreen } from '@/components/templates/NicknameScreen';
+import { PinScreen } from '@/components/templates/PinScreen';
+import { AccountSheet } from '@/components/organisms/sheets/AccountSheet';
+import { SheetBack } from '@/components/molecules/sheet-back';
+import { AiSheet } from '@/components/organisms/sheets/AiSheet';
+import { BoardsSheet } from '@/components/organisms/sheets/BoardsSheet';
+import { ExportSheet } from '@/components/organisms/sheets/ExportSheet';
+import { ImportSheet } from '@/components/organisms/sheets/ImportSheet';
+import { JoinSheet } from '@/components/organisms/sheets/JoinSheet';
+import { MenuSheet } from '@/components/organisms/sheets/MenuSheet';
+import { TemplatesSheet } from '@/components/organisms/sheets/TemplatesSheet';
+import { PeopleSheet } from '@/components/organisms/sheets/PeopleSheet';
+import { PrivacySheet } from '@/components/organisms/sheets/PrivacySheet';
+import { SettingsSheet } from '@/components/organisms/sheets/SettingsSheet';
+import { ShareSheet } from '@/components/organisms/sheets/ShareSheet';
+import { Backdrop } from '@/components/atoms/Backdrop';
+import { Button } from '@/components/atoms/Button';
+import { ConfirmDialog } from '@/components/molecules/ConfirmDialog';
+import { GlassScene } from '@/components/atoms/Glass';
+import { LoadingScreen } from '@/components/templates/LoadingScreen';
+import { Txt } from '@/components/atoms/Text';
+import { ToastHost, toast } from '@/components/molecules/Toast';
 import { WEB_BASE_URL } from '@/constants/config';
 import { fill, type Strings } from '@/features/i18n/strings';
 import { useT } from '@/features/i18n/store';
 import type { BoardSnapshot } from '@/features/board/model';
 import { useBoardStore } from '@/features/board/store';
 import { isLocalId } from '@/features/board/local';
-import { useSessionStore, useColors } from '@/features/session/store';
+import { mayShare, useSessionStore, useColors } from '@/features/session/store';
 import { useBoardSync } from '@/hooks/use-board-sync';
 import { createBoard, deleteBoard, importSnapshot } from '@/services/api/boards';
 import { boardShareLink } from '@/utils/deep-link';
@@ -107,6 +107,8 @@ function BoardScreen({ id }: { id: string }) {
   const hydrated = useSessionStore((s) => s.hydrated);
   const onboarded = useSessionStore((s) => s.onboarded);
   const signedIn = useSessionStore((s) => s.account !== null);
+  // Sharing (a new live board, an import) needs a verified email; the account sheet asks for it.
+  const canShare = useSessionStore((s) => mayShare(s.account));
 
   const meta = useBoardStore((s) => s.meta);
   const clearBoard = useBoardStore((s) => s.clearBoard);
@@ -137,7 +139,7 @@ function BoardScreen({ id }: { id: string }) {
 
   const handleImportSnapshot = useCallback(
     async (snapshot: BoardSnapshot) => {
-      if (!useSessionStore.getState().account) {
+      if (!mayShare(useSessionStore.getState().account)) {
         setAfterSignIn('import');
         pushSheet('account');
         return;
@@ -156,7 +158,7 @@ function BoardScreen({ id }: { id: string }) {
   const [creating, setCreating] = useState(false);
   /** A fresh, empty whiteboard — public, anyone with the code can draw; the access button changes that. */
   async function createNew(name = '') {
-    if (!signedIn) {
+    if (!canShare) {
       askAccount('join');
       return;
     }
@@ -307,6 +309,8 @@ function BoardScreen({ id }: { id: string }) {
         onOpenExport={() => pushSheet('export')}
         onOpenPrivacy={() => pushSheet('privacy')}
         onNeedAccount={() => askAccount('share')}
+        onCreateBlank={() => void createNew()}
+        creating={creating}
       />
       <PeopleSheet open={sheet === 'people'} onClose={() => setSheet(null)} />
       <AiSheet open={sheet === 'ai'} onClose={() => setSheet(null)} />

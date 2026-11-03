@@ -137,6 +137,8 @@ export interface ShapeElement extends ElementBase {
   fill?: string | null;
   /** Optional label, centred inside the shape (on the midpoint of a line). */
   text?: string;
+  /** The label's colour; absent on older figures, whose label takes the border's (`stroke`). */
+  textColor?: string;
   /** Label size; `SHAPE_TEXT_SIZE` when absent. */
   fontSize?: number;
   /** Label typeface; `sans` when absent. */

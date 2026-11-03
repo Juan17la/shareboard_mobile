@@ -19,7 +19,7 @@ import { currentStrings } from '@/features/i18n/store';
 import { useSessionStore } from '@/features/session/store';
 import { updatePermissions } from '@/services/api/boards';
 import type { UpdatePermissionsRequest } from '@/services/api/types';
-import { toast } from '@/components/ui/Toast';
+import { toast } from '@/components/molecules/Toast';
 
 import { useBoardStore } from './store';
 

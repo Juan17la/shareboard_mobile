@@ -11,9 +11,9 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
-import { Button } from '@/components/ui/Button';
-import { LoadingScreen } from '@/components/ui/LoadingScreen';
-import { Txt } from '@/components/ui/Text';
+import { Button } from '@/components/atoms/Button';
+import { LoadingScreen } from '@/components/templates/LoadingScreen';
+import { Txt } from '@/components/atoms/Text';
 import { useT } from '@/features/i18n/store';
 import { useColors, useSessionStore } from '@/features/session/store';
 import { createBoard } from '@/services/api/boards';

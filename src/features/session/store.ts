@@ -49,11 +49,20 @@ export interface AppSettings {
 }
 
 /** The signed-in account. */
+/** Sharing is open to this account: its email is verified, or the server does not ask for that. */
+export const mayShare = (a: Account | null) => a !== null && (a.emailVerified === true || a.verificationRequired !== true);
+
 export interface Account {
   id: string;
   username: string;
   /** Session token, sent as `Authorization: Bearer` (services/api/client.ts). */
   token: string;
+  /** Absent on accounts saved before emails; null until one is added. */
+  email?: string | null;
+  /** Sharing needs it. The server decides; this copy only picks what to show. */
+  emailVerified?: boolean;
+  /** Whether the server makes sharing wait for `emailVerified`; absent on accounts saved before it. */
+  verificationRequired?: boolean;
 }
 
 interface SessionState {
@@ -87,6 +96,8 @@ interface SessionState {
   setNickname(nickname: string): void;
   signIn(account: Account, profile: { nickname: string; avatar?: string }): void;
   signOut(): void;
+  /** What the server said about the account since signing in (email, a new token). */
+  updateAccount(patch: Partial<Account>): void;
   setOnboarded(): void;
   setAvatar(avatar: string): void;
   setTheme(theme: Theme): void;
@@ -161,6 +172,10 @@ export const useSessionStore = create<SessionState>()(
       /** Back to this install's guest id; the boards opened as the account go with it. */
       signOut() {
         set((s) => ({ account: null, userId: s.guestId, recent: [], pins: {} }));
+      },
+
+      updateAccount(patch) {
+        set((s) => (s.account ? { account: { ...s.account, ...patch } } : {}));
       },
 
       setOnboarded() {

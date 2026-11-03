@@ -12,6 +12,7 @@ import type { BoardElement, BoardMeta, BoardSnapshot, Point, UserId } from '@/fe
 import { request } from './client';
 import type {
   MyBoard,
+  AccountProfile,
   SignedIn,
   CreateBoardRequest,
   JoinBoardRequest,
@@ -75,15 +76,41 @@ export const importSnapshot = (snapshot: BoardSnapshot, creatorId: UserId) =>
 /** `deviceId`: the guest id used until now, whose boards the account takes over. -> 201 */
 export const register = (body: {
   username: string;
+  email: string;
   password: string;
   nickname: string;
   avatar?: string;
   deviceId: UserId;
 }) => request<SignedIn>('POST', '/auth/register', { body });
 
-/** errors: 401 LOGIN_INVALID, 429 */
-export const login = (body: { username: string; password: string; deviceId: UserId }) =>
+/** `login`: the username or the email. errors: 401 LOGIN_INVALID, 429 */
+export const login = (body: { login: string; password: string; deviceId: UserId }) =>
   request<SignedIn>('POST', '/auth/login', { body });
+
+export const getMe = () => request<AccountProfile>('GET', '/me');
+
+/** Adds or changes the account's email (with its password) and sends it a 6-digit code. errors: 401 LOGIN_INVALID, 409 EMAIL_TAKEN */
+export const setEmail = (email: string, password: string) =>
+  request<AccountProfile>('POST', '/me/email', { body: { email, password } });
+
+/** errors: 429 (one a minute) */
+export const resendEmailCode = () => request<void>('POST', '/me/email/resend');
+
+/** errors: 400 CODE_INVALID */
+export const verifyEmail = (code: string) =>
+  request<AccountProfile>('POST', '/me/email/verify', { body: { code } });
+
+/** A new token for this install comes back: every other session ends. */
+export const changePassword = (password: string, newPassword: string) =>
+  request<SignedIn>('POST', '/me/password', { body: { password, newPassword } });
+
+/** Emails a reset code if the address has an account; 202 either way. */
+export const forgotPassword = (email: string) =>
+  request<void>('POST', '/auth/password/forgot', { body: { email } });
+
+/** Signs in. errors: 400 CODE_INVALID */
+export const resetPassword = (body: { email: string; code: string; password: string }) =>
+  request<SignedIn>('POST', '/auth/password/reset', { body });
 
 /** Every board the signed-in account made or has got into, newest first. */
 export const getMyBoards = async () => (await request<{ boards: MyBoard[] }>('GET', '/me/boards')).boards;

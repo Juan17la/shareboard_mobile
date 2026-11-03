@@ -18,13 +18,13 @@ import { splitOps } from '@/features/board/ops';
 import { isLocalId, loadLocal, localMeta, markOnline, updateLocal } from '@/features/board/local';
 import { useBoardStore } from '@/features/board/store';
 import { useSessionStore } from '@/features/session/store';
-import { toast } from '@/components/ui/Toast';
+import { toast } from '@/components/molecules/Toast';
 import { ApiError } from '@/services/api/client';
 import { getBoard, joinBoard } from '@/services/api/boards';
 import { TAB_ID, WebSocketConnection } from '@/services/realtime/socket';
 import type { BoardElement, Participant, Point } from '@/features/board/model';
 import type { Preview, Reaction } from '@/services/realtime/protocol';
-import { pushLaser } from '@/components/board/laser';
+import { pushLaser } from '@/components/molecules/laser';
 import { throttle } from '@/utils/throttle';
 
 /** Errors that end the session even once the board is open. */
