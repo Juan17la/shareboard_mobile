@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shareboard Navigation Flow</title>
+<meta name="description" content="How a user moves between Shareboard's routes, gates and sheets, drawn as a metro map with detailed flows.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .map-wrap { overflow-x: auto; }
+  .map { min-width: 900px; width: 100%; height: auto; display: block; }
+  .map text { font-family: var(--sans); fill: var(--ink); }
+  .map .lbl { font-size: 14px; font-weight: 700; }
+  .map .sub { font-size: 11px; fill: var(--ink-3); font-weight: 500; }
+  .map .st { fill: var(--card); stroke: var(--ink); stroke-width: 4; }
+  .map .hub { fill: var(--card); stroke: var(--ink); stroke-width: 6; }
+  .key { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; font-size: 13px; }
+  .key span { display: inline-flex; align-items: center; gap: 8px; }
+  .key i { width: 28px; height: 6px; border-radius: 3px; display: inline-block; }
+  .diagram { background: #fff; color: #0F1B2D; border-radius: 14px; padding: 16px; overflow-x: auto; border: 1px solid var(--hair-strong); }
+  .diagram .mermaid { display: flex; justify-content: center; }
+  .diagram svg { max-width: min(100%, 760px) !important; height: auto; }
+  .diagram pre { margin: 0; }
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <p class="pillnote">Design planning · 3 of 4</p>
+    <h1>Navigation <em>flow</em></h1>
+    <p>Shareboard has almost no pages. The app opens on a board, and everything else is a sheet over that board.
+      This page shows how the routes, the entry gates and the sheets connect. It describes the screens in the
+      <a href="mockups.html">mockups</a>, styled with the <a href="design-system.html">design system</a>.</p>
+    <div class="toc"><a href="#map">Metro map</a><a href="#routes">Routes</a><a href="#launch">Launch &amp; entry</a><a href="#share">Share flow</a><a href="#account">Account flow</a><a href="#sheets">Sheet stack</a><a href="#rules">Navigation rules</a></div>
+  </section>
+
+  <h2 id="map"><span class="stop"></span>The app as a metro map</h2>
+  <p class="lede">The board is the central interchange. The orange line brings people in, the blue lines handle sharing and other whiteboards, the green line acts on this board, and the violet line reaches app-wide places. Every station off the board is a sheet: closing it brings you back to the interchange.</p>
+  <div class="card map-wrap">
+    <svg class="map" viewBox="0 0 1000 560" role="img" aria-labelledby="mapTitle mapDesc">
+      <title id="mapTitle">Shareboard navigation map</title>
+      <desc id="mapDesc">Entry line: launch, loading, identity, PIN, then the board. From the board: share line to share, access and people; menu interchange with whiteboards line (my whiteboards, new or join, import), this-board line (export, templates, draw with AI) and app line (settings, account, keyboard shortcuts).</desc>
+      <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="9">
+        <!-- entry (orange) -->
+        <path d="M70 280 H500" stroke="#E06F00"/>
+        <path d="M70 150 H170 Q200 150 200 180 V280" stroke="#E06F00" stroke-dasharray="1 16"/>
+        <!-- share (blue) -->
+        <path d="M500 280 L560 160 H900" stroke="#0072CE"/>
+        <!-- board -> menu (ink) -->
+        <path d="M500 280 L560 420" stroke="var(--ink)"/>
+        <!-- hold / context menu -->
+        <path d="M500 280 L420 440" stroke="var(--ink)" stroke-dasharray="1 16"/>
+        <!-- whiteboards (blue) -->
+        <path d="M560 420 Q600 340 640 340 H920" stroke="#0072CE"/>
+        <!-- this board (green) -->
+        <path d="M560 420 H920" stroke="#00843D"/>
+        <!-- app (violet) -->
+        <path d="M560 420 Q600 500 640 500 H920" stroke="#6E4BD8"/>
+        <!-- share -> account -->
+        <path d="M560 160 L620 70 H760" stroke="#00843D" stroke-dasharray="1 16"/>
+      </g>
+      <!-- stations -->
+      <g>
+        <circle class="st" cx="70" cy="280" r="11"/><text class="lbl" x="70" y="315" text-anchor="middle">Launch</text><text class="sub" x="70" y="331" text-anchor="middle">/ · app icon</text>
+        <circle class="st" cx="70" cy="150" r="11"/><text class="lbl" x="70" y="125" text-anchor="middle">Link</text><text class="sub" x="70" y="185" text-anchor="middle">/b/:code · QR</text>
+        <circle class="st" cx="200" cy="280" r="11"/><text class="lbl" x="200" y="315" text-anchor="middle">Loading</text><text class="sub" x="200" y="331" text-anchor="middle">opening the board</text>
+        <circle class="st" cx="310" cy="280" r="11"/><text class="lbl" x="310" y="315" text-anchor="middle">Identity</text><text class="sub" x="310" y="331" text-anchor="middle">name + icon (once)</text>
+        <circle class="st" cx="410" cy="280" r="11"/><text class="lbl" x="410" y="315" text-anchor="middle">PIN</text><text class="sub" x="410" y="331" text-anchor="middle">private boards</text>
+        <circle class="hub" cx="500" cy="280" r="22"/><text class="lbl" x="440" y="245" text-anchor="middle" style="font-size:17px">BOARD</text>
+        <circle class="st" cx="420" cy="440" r="11"/><text class="lbl" x="420" y="475" text-anchor="middle">Hold / context menu</text><text class="sub" x="420" y="491" text-anchor="middle">on an element</text>
+        <circle class="st" cx="560" cy="160" r="11"/><text class="lbl" x="540" y="150" text-anchor="end">Share</text>
+        <circle class="st" cx="730" cy="160" r="11"/><text class="lbl" x="730" y="198" text-anchor="middle">Access</text><text class="sub" x="730" y="214" text-anchor="middle">creator only</text>
+        <circle class="st" cx="900" cy="160" r="11"/><text class="lbl" x="900" y="198" text-anchor="middle">People</text><text class="sub" x="900" y="214" text-anchor="middle">also from header</text>
+        <circle class="st" cx="760" cy="70" r="11"/><text class="lbl" x="800" y="50" text-anchor="middle">Account</text><text class="sub" x="800" y="96" text-anchor="end" dx="40">when sharing needs it</text>
+        <circle class="hub" cx="560" cy="420" r="18"/><text class="lbl" x="520" y="410" text-anchor="end">Menu ⋯</text>
+        <circle class="st" cx="680" cy="340" r="11"/><text class="lbl" x="680" y="318" text-anchor="middle">My whiteboards</text>
+        <circle class="st" cx="800" cy="340" r="11"/><text class="lbl" x="800" y="318" text-anchor="middle">New / Join</text>
+        <circle class="st" cx="920" cy="340" r="11"/><text class="lbl" x="920" y="318" text-anchor="middle">Import</text>
+        <circle class="st" cx="680" cy="420" r="11"/><text class="lbl" x="680" y="452" text-anchor="middle">Export</text>
+        <circle class="st" cx="800" cy="420" r="11"/><text class="lbl" x="800" y="452" text-anchor="middle">Templates</text>
+        <circle class="st" cx="920" cy="420" r="11"/><text class="lbl" x="920" y="452" text-anchor="middle">Draw with AI</text>
+        <circle class="st" cx="680" cy="500" r="11"/><text class="lbl" x="680" y="532" text-anchor="middle">Settings</text>
+        <circle class="st" cx="800" cy="500" r="11"/><text class="lbl" x="800" y="532" text-anchor="middle">Account</text>
+        <circle class="st" cx="920" cy="500" r="11"/><text class="lbl" x="920" y="532" text-anchor="middle">Shortcuts</text><text class="sub" x="920" y="548" text-anchor="middle">web only</text>
+      </g>
+    </svg>
+    <div class="key">
+      <span><i style="background:#E06F00"></i>Entry gates</span>
+      <span><i style="background:#0072CE"></i>Share &amp; whiteboards</span>
+      <span><i style="background:#00843D"></i>This board</span>
+      <span><i style="background:#6E4BD8"></i>App</span>
+      <span><i style="background:var(--ink)"></i>Board → menu</span>
+      <span><i style="background:repeating-linear-gradient(90deg,var(--ink-3) 0 4px,transparent 4px 10px)"></i>Conditional</span>
+    </div>
+  </div>
+
+  <h2 id="routes"><span class="stop"></span>Routes</h2>
+  <div class="grid g2">
+    <div class="card tablewrap"><b>Web (React Router)</b><table>
+      <tr><th>Path</th><th>Page</th><th>Behaviour</th></tr>
+      <tr><td><code>/</code></td><td>Start</td><td>No UI: redirects to the offline board; fallback last board, else creates one; error + <i>Try again</i></td></tr>
+      <tr><td><code>/board/:id</code></td><td>Board</td><td>The app. Gates, canvas and every sheet</td></tr>
+      <tr><td><code>/b/:code</code></td><td>Short code</td><td>Resolves the code → <code>/board/:id</code>, or "board not found" + Back</td></tr>
+      <tr><td><code>/inicio</code></td><td>Landing</td><td>Public page: what it is, open in browser, download APK</td></tr>
+      <tr><td><code>*</code></td><td>—</td><td>Redirects to <code>/</code></td></tr>
+    </table></div>
+    <div class="card tablewrap"><b>Android (Expo Router)</b><table>
+      <tr><th>Route</th><th>Screen</th><th>Behaviour</th></tr>
+      <tr><td><code>index</code></td><td>Start</td><td>Same as web <code>/</code>; shows the loading screen</td></tr>
+      <tr><td><code>board/[id]</code></td><td>Board</td><td>Same as web. Switching boards uses <code>setParams</code>, never a second screen</td></tr>
+      <tr><td><code>shareboard://board/&lt;id&gt;</code></td><td>Deep link</td><td>Opens the app on that board</td></tr>
+      <tr><td>Update prompt</td><td>Overlay</td><td>Above every route when a newer APK exists</td></tr>
+    </table></div>
+  </div>
+
+  <h2 id="launch"><span class="stop o"></span>Launch and entry gates</h2>
+  <p class="lede">What happens between tapping the icon (or a link) and drawing. Gates are full-screen; once passed, the user stays on the board screen.</p>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+    l_A([Open app or /]) --> l_B{Offline board<br/>stored?}
+    l_B -- yes / create --> l_OB[Offline board<br/>'Only on this device']
+    l_B -- storage unavailable --> l_C{Recent board?}
+    l_C -- yes --> l_L
+    l_C -- no --> l_D[Create live board] -->|ok| l_L
+    l_D -->|fails| l_E[Error + Try again] --> l_A
+    l_LNK([Link /b/code, QR,<br/>Join with a code]) --> l_R{Code resolves?}
+    l_R -- no --> l_NF[Board not found + Back] --> l_A
+    l_R -- yes --> l_L[Loading]
+    l_L --> l_N{Nickname<br/>chosen?}
+    l_N -- no --> l_ID[Identity:<br/>name + icon] --> l_P
+    l_N -- yes --> l_P{Private and<br/>not creator?}
+    l_P -- yes --> l_PIN[PIN keypad] -->|wrong| l_PIN
+    l_PIN -->|right| l_J
+    l_P -- no --> l_J[Live board<br/>joined]
+    l_ID -.->|NICKNAME_TAKEN| l_ID
+    l_J -.->|board deleted| l_A
+    l_OB -.->|first launch| l_T[Tutorial<br/>6 steps]
+  </pre></div>
+
+  <h2 id="share"><span class="stop"></span>Share flow</h2>
+  <p class="lede">The product's main path. A guest is only asked for an account at the moment it is needed, and is brought back to Share afterwards.</p>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+    s_S([Tap Share]) --> s_K{Board type}
+    s_K -- live --> s_SS[Share sheet:<br/>code · link · QR]
+    s_K -- offline --> s_CH{Choose}
+    s_CH -- Share this board --> s_AC
+    s_CH -- New shared board --> s_AC
+    s_AC{Signed in?} -- no --> s_ACC[Account sheet] --> s_V
+    s_AC -- yes --> s_V{Email verified?}
+    s_V -- no --> s_VE[Enter 6-digit code] --> s_UP
+    s_V -- yes --> s_UP[Upload copy /<br/>create board]
+    s_UP --> s_LIVE[Open live board] --> s_SS
+    s_SS --> s_CP[Copy code / link<br/>WhatsApp · More…]
+    s_SS --> s_ACS[Access sheet<br/>creator] --> s_PPL[People sheet]
+    s_SS --> s_EXP[Export sheet]
+  </pre></div>
+
+  <h2 id="account"><span class="stop g"></span>Account flow</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+    a_T([Action needs an account,<br/>or Settings, Account]) --> a_NN{Nickname set?}
+    a_NN -- no --> a_ID[Identity screen] --> a_AS
+    a_NN -- yes --> a_AS[Account sheet]
+    a_AS -->|Sign in| a_SI[Username or email and password] -->|ok| a_BACK
+    a_AS -->|Create account| a_RG[Username, email, password] -->|ok| a_VE[Verify email code] --> a_BACK
+    a_SI -->|Forgot password| a_FP[Email, then code and new password] --> a_BACK
+    a_AS -->|Not now| a_X([Sheet closes,<br/>action not done])
+    a_BACK([Return to the sheet<br/>that asked])
+  </pre></div>
+
+  <h2 id="sheets"><span class="stop v"></span>Sheet stack</h2>
+  <p class="lede">Sheets open in two ways. <b>Set</b> starts a new stack (opened from the board). <b>Push</b> goes one level deeper and shows a back arrow; Back pops one level, Close clears the stack.</p>
+  <div class="card tablewrap"><table>
+    <tr><th>From</th><th>Opens</th><th>Mode</th></tr>
+    <tr><td>Header · Share pill</td><td>Share</td><td>set</td></tr>
+    <tr><td>Header · ⋯</td><td>Menu</td><td>set</td></tr>
+    <tr><td>Header · title / "3 online"</td><td>People</td><td>push</td></tr>
+    <tr><td>Menu</td><td>My whiteboards, New / Join, Import, Export, Templates, Draw with AI, Access, People, Settings</td><td>push</td></tr>
+    <tr><td>Share</td><td>Export, Access, Account</td><td>push</td></tr>
+    <tr><td>Access</td><td>People (choose who edits)</td><td>push</td></tr>
+    <tr><td>Settings</td><td>Account; Clear / Delete confirm dialog</td><td>push / dialog</td></tr>
+    <tr><td>Any action needing an account</td><td>Account → returns to that sheet</td><td>push</td></tr>
+    <tr><td>View chip</td><td>Reactions popover, Timer popover</td><td>popover</td></tr>
+    <tr><td>Element (hold / right-click)</td><td>Hold menu / context menu</td><td>popover</td></tr>
+  </table></div>
+
+  <h2 id="rules"><span class="stop v"></span>Navigation rules</h2>
+  <div class="grid g3">
+    <div class="card"><b>One screen, many sheets</b><p class="note">The board never unmounts while a sheet is open; the drawing stays visible behind the scrim and live updates keep arriving.</p></div>
+    <div class="card"><b>Every sheet is dismissable</b><p class="note">Close button, tap on the scrim, Esc (web), drag down and the Android Back button (pops one level).</p></div>
+    <div class="card"><b>Board to board in place</b><p class="note">Opening another whiteboard swaps the board id on the same screen; it does not stack a new page.</p></div>
+    <div class="card"><b>Account returns you</b><p class="note">The account sheet remembers which sheet asked for it and goes back there after sign-in.</p></div>
+    <div class="card"><b>Gone boards let go</b><p class="note">A deleted or forgotten board is removed from recents and the app returns to <code>/</code>, which opens the next one.</p></div>
+    <div class="card"><b>Same map on both clients</b><p class="note">Web and Android have the same stations in the same places; only the toolbar position and context-menu gesture differ.</p></div>
+  </div>
+</main>
+<footer class="site"><a href="design-system.html">← Design system</a> · Shareboard design planning · <a href="product-vision.html">Product vision →</a></footer>
+<script src="shared.js"></script>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    themeVariables: {
+      fontFamily: 'Onest, system-ui, sans-serif', fontSize: '14px',
+      primaryColor: '#FFFFFF', primaryBorderColor: '#0F1B2D', primaryTextColor: '#0F1B2D',
+      lineColor: '#0072CE', secondaryColor: '#EEF1F5', tertiaryColor: '#EEF1F5',
+    },
+    flowchart: { curve: 'basis', htmlLabels: true },
+  });
+  let n = 0;
+  for (const node of document.querySelectorAll('pre.mermaid')) {
+    // Explicit ids: auto ids are time-based and can collide, mixing diagrams up.
+    const { svg } = await mermaid.render(
+      `flow-${++n}`,
+      node.innerHTML.replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&'),
+    );
+    node.innerHTML = svg;
+  }
+</script>
+</body>
+</html>

@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { UpdatePrompt } from '@/components/UpdatePrompt';
+import { UpdatePrompt } from '@/components/molecules/UpdatePrompt';
 import { useColors, useDark } from '@/features/session/store';
 import { useAppFonts } from '@/hooks/use-app-fonts';
 

@@ -8,7 +8,7 @@
  */
 import * as Clipboard from 'expo-clipboard';
 
-import { toast } from '@/components/ui/Toast';
+import { toast } from '@/components/molecules/Toast';
 
 import { decodeClip, encodeClip } from './clip';
 import { pasteImage } from './import';
