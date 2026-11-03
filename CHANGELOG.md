@@ -7,9 +7,26 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Sign up asks for an email; sign in takes the username or the email.
+- Forgot password: an emailed code and a new password, in place of "it can't be recovered".
+- The account sheet shows the email: add one (older accounts), enter its code, send a new one, change it; and change the password.
+
 ### Changed
 
 - Licensed under the MIT License, replacing PolyForm Noncommercial 1.0.0.
+- Sharing the offline board offers two clear choices: "Share this board" (an online copy with everything on it) or "Create a new shared board" (blank), each with a line saying what it does.
+- When the server requires verified emails, sharing a board asks for the code first and carries on once it is entered; otherwise (the default) accounts share right away.
+
+### Fixed
+
+- The selection box only takes what it fully encloses, like Excalidraw; clipping a figure no longer selects it.
+- An arrow's end snaps to a figure only close to its outline: drawn well inside a figure, it stays where it was drawn.
+- Lines, arrows and text keep their own options: an arrow's colour, route or markers no longer carry over to the next line or text, and a line is always bare and straight.
+- A figure's or a line's label has its own "Text colour" (in the Text menu); recolouring the border leaves it alone.
+- Arrows can change their width, like lines.
+
 
 ## [1.8.0-beta] - 2026-10-28
 

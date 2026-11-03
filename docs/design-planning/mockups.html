@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shareboard Mockups</title>
+<meta name="description" content="Low-fidelity HTML mockups of every Shareboard screen and sheet, web and Android, with annotations.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Caveat:wght@600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .desk-scroll { overflow-x: auto; padding-bottom: 6px; }
+  .desk-scroll .desk { min-width: 880px; }
+  .panel { position: absolute; background: var(--white); border-radius: 14px; box-shadow: var(--shadow); }
+  .vtools { left: 16px; top: 140px; padding: 6px; display: grid; gap: 4px; }
+  .vtools .ibtn, .htools .ibtn { border-color: transparent; width: 38px; height: 38px; }
+  .vtools .ibtn.on, .htools .ibtn.on { background: var(--blue); color: #fff; }
+  .chip { display: flex; align-items: center; gap: 2px; padding: 4px 8px; }
+  .chip .ibtn { border-color: transparent; width: 34px; height: 34px; }
+  .chip .z { font: 700 12px var(--mono); padding: 0 6px; }
+  .chip .sep { width: 1px; height: 20px; background: var(--hair-strong); margin: 0 4px; }
+  .opts { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+  .opts .sep { width: 1px; height: 22px; background: var(--hair-strong); }
+  .w { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; }
+  .w span { background: var(--ink); border-radius: 4px; display: block; width: 14px; }
+  .w.on { background: var(--blue-soft); outline: 2px solid var(--blue); }
+  .title-block { position: absolute; left: 36px; top: 14px; }
+  .title-block b { font-size: 16px; letter-spacing: -.3px; display: block; }
+  .title-block > span { font-size: 12px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+  .cursor-tag { position: absolute; display: flex; align-items: flex-start; gap: 2px; }
+  .cursor-tag svg { width: 16px; height: 16px; }
+  .cursor-tag em { font: 700 11px var(--sans); font-style: normal; color: #fff; padding: 2px 7px; border-radius: 999px; margin-top: 10px; }
+  .sticky { position: absolute; background: #FFE58A; border: 2px solid #0F1B2D; border-radius: 8px; display: grid; place-items: center; font: 600 24px Caveat, cursive; color: #0F1B2D; }
+  .hdr-pill { display: flex; align-items: center; gap: 8px; background: var(--white); border: 1px solid var(--hair-strong); border-radius: 999px; padding: 4px 12px 4px 4px; box-shadow: var(--shadow); min-width: 0; }
+  .hdr-pill b { font-size: 13px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hdr-pill span { font-size: 10px; color: var(--ink-2); display: block; white-space: nowrap; }
+  .ph-head { position: absolute; left: 10px; right: 10px; top: 34px; display: flex; gap: 6px; align-items: center; }
+  .ph-head .btn { height: 38px; padding: 0 12px; font-size: 13px; }
+  .ph-head .ibtn { width: 38px; height: 38px; }
+  .htools { position: absolute; left: 10px; right: 10px; bottom: 16px; padding: 5px; display: flex; justify-content: space-between; }
+  .htools .ibtn { width: 32px; height: 32px; }
+  .htools .ibtn svg.i { width: 16px; height: 16px; }
+  .ph-sheet { position: absolute; left: 0; right: 0; bottom: 0; font-size: 13px; }
+  .ph-sheet .sheet { padding: 0 14px 18px; }
+  .ph-sheet .sheet-h b { font-size: 17px; }
+  .ph-sheet .row { font-size: 13px; padding: 8px 10px; }
+  .ph-sheet .row .t { font-size: 13px; }
+  .ph-sheet .btn { height: 42px; font-size: 14px; }
+  .ph-sheet .field .in { height: 40px; font-size: 14px; }
+  .full { position: absolute; inset: 26px 0 0; background: var(--white); padding: 22px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .full h4 { font-size: 21px; font-weight: 800; letter-spacing: -.5px; margin: 6px 0 0; line-height: 1.15; }
+  .full p { margin: 0; font-size: 13px; color: var(--ink-2); }
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: auto; }
+  .keypad span { height: 50px; border-radius: 999px; border: 2px solid var(--hair-strong); display: grid; place-items: center; font: 700 20px var(--mono); }
+  .pins { display: flex; gap: 14px; justify-content: center; margin: 14px 0; }
+  .pins i { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--ink); display: block; }
+  .pins i.f { background: var(--ink); }
+  .avatars { display: flex; gap: 8px; flex-wrap: wrap; }
+  .avatars .avatar { width: 36px; height: 36px; }
+  .avatars .avatar.on { box-shadow: 0 0 0 2px var(--white), 0 0 0 4px var(--blue); }
+  .qr { width: 120px; height: 120px; border: 1px solid var(--hair-strong); border-radius: 12px; padding: 10px; background:
+      conic-gradient(from 90deg at 2px 2px, transparent 25%, transparent 0) ; display: grid; place-items: center; }
+  .qr svg { width: 100%; height: 100%; color: var(--ink); }
+  .hdr-pill .avatar, .title-block .avatar { color: #fff; }
+  .desk svg, .phone svg, .landing svg { color: var(--ink); }
+  .ann { display: grid; gap: 20px; }
+  .ann .legend { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px 24px; }
+  .desk.tall { aspect-ratio: auto; height: 720px; }
+  .landing { border-radius: 14px; overflow: hidden; border: 1px solid var(--hair-strong); box-shadow: var(--shadow); background: var(--page); }
+  .landing .lbar { background: var(--blue); color: #fff; display: flex; align-items: center; gap: 18px; padding: 10px 18px; font-size: 13px; font-weight: 600; flex-wrap: wrap; }
+  .landing .lbar .brand { font-size: 15px; }
+  .landing .hero2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin: 16px; background: var(--white); border-radius: 18px; overflow: hidden; }
+  @media (max-width: 760px) { .landing .hero2 { grid-template-columns: 1fr; } }
+  .landing .hero2 > div { padding: 28px; }
+  .landing h5 { font-size: 34px; line-height: 1.02; letter-spacing: -1.2px; margin: 0 0 12px; font-weight: 800; }
+  .landing h5 em { font-style: normal; color: var(--blue-text); }
+  .metro-steps { display: flex; align-items: center; margin: 8px 0 14px; }
+  .metro-steps i { width: 18px; height: 18px; border-radius: 50%; border: 4px solid var(--blue); background: var(--white); display: block; flex: none; }
+  .metro-steps i.g { border-color: var(--green); }
+  .metro-steps span { height: 4px; background: var(--blue); flex: 1; }
+  .state-grid .card { display: grid; gap: 10px; justify-items: start; }
+  .banner { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; font: 600 13px var(--sans); }
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <p class="pillnote">Design planning · 1 of 4</p>
+    <h1>Mockups of the <em>current UI</em></h1>
+    <p>Low-fidelity HTML models of every screen and sheet in Shareboard 1.8, drawn with the real design tokens.
+      Numbered orange markers point at the parts explained in each legend. Colours, type and components are
+      specified in the <a href="design-system.html">design system</a>; how the screens connect is in the
+      <a href="navigation-flow.html">navigation flow</a>.</p>
+    <div class="toc">
+      <a href="#web-board">Web · Board</a><a href="#web-menu">Web · Menu</a><a href="#web-share">Web · Share &amp; Access</a>
+      <a href="#android">Android screens</a><a href="#android-sheets">Android sheets</a><a href="#landing">Landing page</a><a href="#states">States &amp; feedback</a>
+    </div>
+  </section>
+
+  <!-- ================= WEB BOARD ================= -->
+  <h2 id="web-board"><span class="stop"></span>Web · Board screen</h2>
+  <p class="lede">There is no home page: the app opens straight on a board. The canvas fills the window and all chrome floats over it on opaque panels, so the drawing always has the most space.</p>
+  <div class="ann">
+    <div class="desk-scroll"><div class="desk tall">
+      <div class="title-block">
+        <b>Biology — cell diagram</b>
+        <span><i class="dot" style="background:var(--green)"></i>3 online
+          <span style="display:flex;margin-left:4px"><span class="avatar" style="width:18px;height:18px;font-size:9px;background:#6E4BD8">A</span><span class="avatar" style="width:18px;height:18px;font-size:9px;background:#00843D;margin-left:-5px">L</span><span class="avatar" style="width:18px;height:18px;font-size:9px;background:#0072CE;margin-left:-5px">M</span></span></span>
+      </div>
+      <b class="callout" style="left:6px;top:6px">1</b>
+
+      <div style="position:absolute;right:16px;top:12px;display:flex;gap:8px">
+        <span class="btn sm primary"><i data-i="share"></i>Share</span>
+        <span class="ibtn"><i data-i="dots"></i></span>
+      </div>
+      <b class="callout" style="right:150px;top:8px">2</b>
+
+      <div class="panel chip" style="right:16px;top:66px">
+        <span class="ibtn"><i data-i="minus"></i></span><span class="z">100%</span><span class="ibtn"><i data-i="plus"></i></span><span class="ibtn"><i data-i="fit"></i></span>
+        <span class="sep"></span><span class="ibtn"><i data-i="undo"></i></span><span class="ibtn"><i data-i="redo"></i></span>
+        <span class="sep"></span><span class="ibtn"><i data-i="smile"></i></span><span class="ibtn"><i data-i="timer"></i></span>
+      </div>
+      <b class="callout" style="right:390px;top:74px">3</b>
+
+      <div class="panel vtools">
+        <span class="ibtn"><i data-i="cursor"></i></span><span class="ibtn"><i data-i="hand"></i></span>
+        <span class="ibtn on"><i data-i="pencil"></i></span><span class="ibtn"><i data-i="eraser"></i></span>
+        <span class="ibtn"><i data-i="rect"></i></span><span class="ibtn"><i data-i="circle"></i></span>
+        <span class="ibtn"><i data-i="tri"></i></span><span class="ibtn"><i data-i="hex"></i></span>
+        <span class="ibtn"><i data-i="line"></i></span><span class="ibtn"><i data-i="arrow"></i></span>
+        <span class="ibtn"><i data-i="note"></i></span><span class="ibtn"><i data-i="text"></i></span>
+        <span class="ibtn"><i data-i="bucket"></i></span>
+      </div>
+      <b class="callout" style="left:6px;top:128px">4</b>
+
+      <div class="panel opts" style="left:74px;top:208px">
+        <span class="swatch" style="background:#0F1B2D"></span><span class="swatch on" style="background:#0072CE"></span>
+        <span class="swatch" style="background:#E5283C"></span><span class="swatch" style="background:#00843D"></span>
+        <span class="swatch" style="background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"></span>
+        <span class="sep"></span>
+        <span class="w"><span style="height:2px"></span></span><span class="w on"><span style="height:4px"></span></span><span class="w"><span style="height:6px"></span></span><span class="w"><span style="height:9px"></span></span>
+        <span class="sep"></span>
+        <span class="seg"><span class="on">Pen</span><span>Highlighter</span><span>Laser</span></span>
+      </div>
+      <b class="callout" style="left:66px;top:198px">5</b>
+
+      <!-- canvas content -->
+      <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 1000 625" preserveAspectRatio="none" aria-hidden="true">
+        <ellipse cx="770" cy="400" rx="130" ry="85" fill="#C9F0D3" stroke="currentColor" stroke-width="2.5"/>
+        <path d="M535 300 C 600 295, 650 300, 690 332" fill="none" stroke="currentColor" stroke-width="2.5"/>
+        <path d="M676 326 l14 6-4-14" fill="none" stroke="currentColor" stroke-width="2.5"/>
+        <path d="M300 470 C 340 430, 380 500, 420 460 S 500 430, 530 470" fill="none" stroke="#0072CE" stroke-width="4" stroke-linecap="round"/>
+      </svg>
+      <div class="sticky" style="left:40%;top:40%;width:150px;height:96px">Nucleus</div>
+      <div style="position:absolute;left:71%;top:62%;font:700 15px var(--sans);color:var(--ink)">Cytoplasm</div>
+      <div class="cursor-tag" style="left:56%;top:36%"><svg viewBox="0 0 24 24"><path d="M3 2l17 8-7 2-3 8z" fill="#6E4BD8"/></svg><em style="background:#6E4BD8">Ana</em></div>
+      <div class="cursor-tag" style="left:52%;top:72%"><svg viewBox="0 0 24 24"><path d="M3 2l17 8-7 2-3 8z" fill="#00843D"/></svg><em style="background:#00843D">Leo</em></div>
+      <b class="callout" style="left:64%;top:50%">6</b>
+    </div></div>
+    <ol class="legend">
+      <li><b class="n">1</b><span><b>Title &amp; presence.</b> Board name; status dot + text (<i>3 online</i>, <i>Connecting…</i>, <i>Only on this device</i>). Click opens <i>Connected people</i>.</span></li>
+      <li><b class="n">2</b><span><b>Share</b> (Line Blue primary pill) and the <b>⋯ board menu</b> (ringed icon button).</span></li>
+      <li><b class="n">3</b><span><b>View chip.</b> Zoom −/level/+/fit, undo/redo, reactions and timer, separated by hairlines.</span></li>
+      <li><b class="n">4</b><span><b>Toolbar.</b> 13 tools, vertical on desktop. Active tool fills Line Blue. Each shows its shortcut letter and a tooltip.</span></li>
+      <li><b class="n">5</b><span><b>Options strip.</b> Only the options of the tool in hand: here pencil colour, width and pen kind.</span></li>
+      <li><b class="n">6</b><span><b>Canvas.</b> Infinite, dot grid, board content in its own fonts and palette; live cursors with name tags in each person's colour.</span></li>
+    </ol>
+  </div>
+
+  <!-- ================= WEB MENU ================= -->
+  <h2 id="web-menu"><span class="stop"></span>Web · Board menu</h2>
+  <p class="lede">The ⋯ button opens the menu as a centred card over a scrim. Sections are drawn as metro lines: Whiteboards rides the blue line, This board the green line, App the violet line.</p>
+  <div class="ann">
+    <div class="desk-scroll"><div class="desk">
+      <div class="title-block"><b>My board</b><span><i class="dot" style="background:var(--ink-3)"></i>Only on this device</span></div>
+      <div class="scrim"></div>
+      <div class="sheet" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:440px">
+        <div class="sheet-h"><b>Board menu</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+        <p class="sub">My board</p>
+        <div class="line-sec" style="--c:var(--blue)"><div class="st">Whiteboards</div>
+          <div class="row"><i data-i="laptop"></i><span class="grow">My whiteboards</span><i data-i="chev"></i></div>
+          <div class="row"><i data-i="plus"></i><span class="grow">New / Join</span><i data-i="chev"></i></div>
+          <div class="row"><i data-i="upload"></i><span class="grow">Import a board</span><i data-i="chev"></i></div>
+        </div>
+        <div class="line-sec" style="--c:var(--green)"><div class="st">This board</div>
+          <div class="row"><i data-i="image"></i><span class="grow">Export</span><i data-i="chev"></i></div>
+          <div class="row"><i data-i="tpl"></i><span class="grow">Templates</span><i data-i="chev"></i></div>
+          <div class="row"><i data-i="sparkle"></i><span class="grow">Draw with AI</span><i data-i="chev"></i></div>
+        </div>
+        <div class="line-sec" style="--c:var(--violet)"><div class="st">App</div>
+          <div class="row"><i data-i="gear"></i><span class="grow">Settings</span><i data-i="chev"></i></div>
+          <div class="row"><i data-i="keyboard"></i><span class="grow">Keyboard shortcuts</span><i data-i="chev"></i></div>
+        </div>
+      </div>
+      <b class="callout" style="left:calc(50% - 232px);top:21%">1</b>
+      <b class="callout" style="left:calc(50% - 232px);top:42%">2</b>
+    </div></div>
+    <ol class="legend">
+      <li><b class="n">1</b><span><b>Sheet header.</b> 5 px ink rule on top, 20 px extrabold title, 32 px ringed close. Esc, click outside or close dismisses.</span></li>
+      <li><b class="n">2</b><span><b>Line diagram.</b> Station ring + bold section name; a 3 px coloured bar runs down the rows. Each row pushes a deeper sheet (Back returns here).</span></li>
+      <li><b class="n">·</b><span>On a live board the creator also sees <i>Access</i> and <i>People</i> rows under <i>This board</i>.</span></li>
+    </ol>
+  </div>
+
+  <!-- ================= WEB SHARE / ACCESS ================= -->
+  <h2 id="web-share"><span class="stop"></span>Web · Share and Access sheets</h2>
+  <p class="lede">Share is the product's main action. On a live board it shows the code badge, link and QR; on the offline board it first asks whether to upload a copy or start blank.</p>
+  <div class="grid g2">
+    <div class="mock-wrap">
+      <div class="sheet">
+        <div class="sheet-h"><b>Share board</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:start">
+          <div style="display:grid;justify-items:center;gap:8px">
+            <div class="qr"><svg viewBox="0 0 21 21" shape-rendering="crispEdges"><path fill="currentColor" d="M0 0h7v7H0zM1 1v5h5V1zM2 2h3v3H2zM14 0h7v7h-7zM15 1v5h5V1zM16 2h3v3h-3zM0 14h7v7H0zM1 15v5h5v-5zM2 16h3v3H2zM8 0h2v2H8zM11 1h2v3h-2zM9 4h2v2H9zM8 8h3v2H8zM12 8h2v3h-2zM15 9h3v2h-3zM0 9h2v2H0zM3 8h3v2H3zM9 12h2v3H9zM12 13h3v2h-3zM16 12h2v2h-2zM19 14h2v3h-2zM9 17h3v2H9zM13 16h2v5h-2zM16 18h3v3h-3zM8 19h2v2H8z"/></svg></div>
+            <span class="note">Scan to join from another device.</span>
+          </div>
+          <div style="display:grid;gap:10px">
+            <div class="line-sec" style="--c:var(--ink);padding-left:20px;margin:0"><div class="st">Code</div></div>
+            <span class="badge" style="justify-self:start"><span class="ring"></span>B7S·GWV <i data-i="copy"></i></span>
+            <div class="row"><i data-i="link"></i><span class="grow"><span class="t">Copy link</span><span class="d mono">shareboard-web.vercel.app/b/B7SGWV</span></span></div>
+            <div class="row" style="justify-content:center;flex-direction:column;gap:4px"><i data-i="lock"></i><span class="t">Access</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="mock-cap"><b>Share — live board</b><span>Code badge copies on click (<i>Code copied</i> toast). Access is creator-only.</span></div>
+    </div>
+    <div class="mock-wrap">
+      <div class="sheet">
+        <div class="sheet-h"><b>Editing access</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+        <div class="line-sec" style="--c:var(--blue);margin:0"><div class="st">Visibility</div>
+          <div style="padding:8px 0"><span class="seg wide"><span>Public</span><span class="on">Private</span></span></div>
+          <div class="row"><span class="grow"><span class="d">Access PIN</span><span class="mono" style="font-size:20px;font-weight:700;letter-spacing:4px">4 8 1 7</span></span><span class="btn xs secondary">New PIN</span></div>
+        </div>
+        <div class="line-sec" style="--c:var(--green)"><div class="st">Who can edit</div>
+          <div class="row"><span class="grow"><span class="t">Everyone</span><span class="d">Anyone who joins can draw.</span></span></div>
+          <div class="row sel"><span class="grow"><span class="t">Selected people</span><span class="d">Only the people you pick.</span></span><i data-i="check"></i></div>
+          <div class="row"><span class="grow"><span class="t">Only me</span><span class="d">Everyone else can watch.</span></span></div>
+          <div class="row" style="margin-top:8px"><i data-i="users"></i><span class="grow">Choose who edits</span><i data-i="chev"></i></div>
+        </div>
+      </div>
+      <div class="mock-cap"><b>Access (privacy) — creator only</b><span>No save button: each change applies at once and reverts if the server refuses.</span></div>
+    </div>
+    <div class="mock-wrap">
+      <div class="sheet">
+        <div class="sheet-h"><b>Share board</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+        <p class="sub" style="margin-top:0">This board is only on this device. Share it as it is, or start a new blank one.</p>
+        <div class="row"><i data-i="share"></i><span class="grow"><span class="t">Share this board</span><span class="d">Makes an online copy with everything on it. This one stays as your private copy.</span></span><i data-i="chev"></i></div>
+        <div class="row"><i data-i="plus"></i><span class="grow"><span class="t">Create a new shared board</span><span class="d">Starts completely blank.</span></span><i data-i="chev"></i></div>
+      </div>
+      <div class="mock-cap"><b>Share — offline board</b><span>Either choice asks for an account first if the user is a guest.</span></div>
+    </div>
+    <div class="mock-wrap">
+      <div class="sheet">
+        <div class="sheet-h"><b>Keyboard shortcuts</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+        <div class="tablewrap"><table>
+          <tr><td><code>V H P E</code></td><td>Cursor, hand, pencil, eraser</td></tr>
+          <tr><td><code>R O Y G L A</code></td><td>Figures, line, arrow</td></tr>
+          <tr><td><code>Ctrl Z / Y</code></td><td>Undo / redo</td></tr>
+          <tr><td><code>Ctrl C X V D</code></td><td>Copy, cut, paste, duplicate</td></tr>
+          <tr><td><code>Shift 1</code></td><td>Fit to content</td></tr>
+          <tr><td><code>?</code></td><td>This list</td></tr>
+        </table></div>
+      </div>
+      <div class="mock-cap"><b>Keyboard shortcuts (web only)</b><span>Opened from Menu → App or with <code>?</code>.</span></div>
+    </div>
+  </div>
+
+  <!-- ================= ANDROID SCREENS ================= -->
+  <h2 id="android"><span class="stop g"></span>Android · Screens</h2>
+  <p class="lede">On a phone the toolbar moves to the bottom (thumb reach), figures collapse into one <b>Shapes</b> button, and the context menu is a press-and-hold menu. Full-screen gates (identity, PIN, loading) appear before a live board opens.</p>
+  <div class="grid g3">
+    <div class="mock-wrap">
+      <div class="phone">
+        <div class="status"><span>11:09</span><span>●●● ▮</span></div>
+        <div class="ph-head">
+          <div class="hdr-pill" style="flex:1"><span class="avatar" style="background:var(--blue)">M</span><span style="min-width:0"><b>My board</b><span>Only on this device</span></span></div>
+          <span class="btn primary"><i data-i="share"></i>Share</span>
+          <span class="ibtn"><i data-i="dots"></i></span>
+        </div>
+        <div class="panel chip" style="right:10px;top:84px"><span class="z">100%</span><span class="sep"></span><span class="ibtn"><i data-i="undo"></i></span><span class="ibtn"><i data-i="redo"></i></span><span class="sep"></span><span class="ibtn"><i data-i="smile"></i></span></div>
+        <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 300 650" aria-hidden="true">
+          <ellipse cx="150" cy="300" rx="48" ry="26" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="150" y="304" font-size="10" text-anchor="middle" fill="currentColor" font-family="Onest">Main idea</text>
+          <rect x="34" y="200" width="66" height="30" rx="6" fill="#FFC9D6" stroke="currentColor"/><rect x="200" y="200" width="66" height="30" rx="6" fill="#BFE3FF" stroke="currentColor"/>
+          <rect x="34" y="370" width="66" height="30" rx="6" fill="#C9F0D3" stroke="currentColor"/><rect x="200" y="370" width="66" height="30" rx="6" fill="#E3D9FF" stroke="currentColor"/>
+          <path d="M100 215 Q115 290 102 300M200 215 Q185 290 198 300M100 385 Q115 310 102 300M200 385 Q185 310 198 300" fill="none" stroke="currentColor"/>
+        </svg>
+        <div class="panel opts" style="left:10px;right:10px;bottom:66px;justify-content:space-between;padding:6px 10px">
+          <span class="swatch on" style="background:#0F1B2D;width:22px;height:22px"></span><span class="swatch" style="background:#0072CE;width:22px;height:22px"></span><span class="swatch" style="background:#E5283C;width:22px;height:22px"></span><span class="sep"></span><span class="ibtn s32"><i data-i="gear"></i></span>
+        </div>
+        <div class="panel htools">
+          <span class="ibtn"><i data-i="cursor"></i></span><span class="ibtn"><i data-i="hand"></i></span><span class="ibtn on"><i data-i="pencil"></i></span><span class="ibtn"><i data-i="eraser"></i></span><span class="ibtn"><i data-i="shapes"></i></span><span class="ibtn"><i data-i="note"></i></span><span class="ibtn"><i data-i="text"></i></span><span class="ibtn"><i data-i="bucket"></i></span>
+        </div>
+      </div>
+      <div class="mock-cap"><b>Board (phone, portrait)</b><span>Header pill with avatar and status, Share, ⋯; view chip; bottom toolbar with 8 tools; options above it, extra options behind the gear.</span></div>
+    </div>
+
+    <div class="mock-wrap">
+      <div class="phone">
+        <div class="status"><span>11:09</span><span>●●● ▮</span></div>
+        <div class="full">
+          <div class="steps"><span class="stop-pill cur"><i>1</i>Name</span><span class="stop-bar"></span><span class="stop-pill"><i>2</i>Board</span></div>
+          <h4>What should we call you?</h4>
+          <p>Your name shows next to your cursor on the board.</p>
+          <div class="field"><label>Your name</label><div class="in focus">Marta</div><span class="hint">Max 40 characters.</span></div>
+          <div class="field"><label>Your icon</label>
+            <div class="avatars"><span class="avatar on" style="background:#FFE7D6">🦊</span><span class="avatar" style="background:#E3E5EA">🐼</span><span class="avatar" style="background:#DDF3E4">🐸</span><span class="avatar" style="background:#EDE3FA">🐙</span><span class="avatar" style="background:#FCE1EC">🦄</span><span class="avatar" style="background:#FFF2CC">🐝</span></div>
+          </div>
+          <div style="margin-top:auto;display:grid;gap:8px"><span class="btn go block">Continue →</span><span class="btn ghost block">Show me around</span></div>
+        </div>
+      </div>
+      <div class="mock-cap"><b>Identity (nickname) gate</b><span>Asked once, before the first live board. Step stops show where the user is.</span></div>
+    </div>
+
+    <div class="mock-wrap">
+      <div class="phone">
+        <div class="status"><span>11:09</span><span>●●● ▮</span></div>
+        <div class="full" style="text-align:center">
+          <span class="ibtn" style="align-self:flex-start"><i data-i="back"></i></span>
+          <span style="justify-self:center;margin:0 auto" class="ibtn on"><i data-i="lock"></i></span>
+          <h4>Private board</h4>
+          <p>Ask the creator for the 4-digit PIN.</p>
+          <div class="pins"><i class="f"></i><i class="f"></i><i></i><i></i></div>
+          <div class="keypad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span style="border:0"></span><span>0</span><span style="border:0"><i data-i="backspace"></i></span></div>
+        </div>
+      </div>
+      <div class="mock-cap"><b>PIN gate</b><span>Submits on the 4th digit; a wrong PIN shakes and clears the dots with <i>Wrong PIN. Give it another go.</i></span></div>
+    </div>
+
+    <div class="mock-wrap">
+      <div class="phone">
+        <div class="status"><span>11:09</span><span>●●● ▮</span></div>
+        <div class="full" style="align-items:center;justify-content:center;text-align:center">
+          <div style="width:44px;height:44px;border-radius:50%;border:5px solid var(--grey-sel);border-top-color:var(--blue)"></div>
+          <p style="font-weight:600;color:var(--ink-3)">Opening the board…</p>
+          <p style="font-size:12px">Taking longer than usual. Check your connection: the server may be waking up.</p>
+          <span class="btn secondary sm">Try again</span>
+        </div>
+      </div>
+      <div class="mock-cap"><b>Loading / slow start</b><span>The hint and retry appear only when loading is slow (cold server).</span></div>
+    </div>
+
+    <div class="mock-wrap">
+      <div class="phone">
+        <div class="status"><span>11:09</span><span>●●● ▮</span></div>
+        <div class="ph-head">
+          <div class="hdr-pill" style="flex:1"><span class="avatar" style="background:var(--green)">L</span><span style="min-width:0"><b>Retro sprint 14</b><span><i class="dot" style="background:var(--orange)"></i> View only</span></span></div>
+          <span class="btn primary"><i data-i="share"></i>Share</span><span class="ibtn"><i data-i="dots"></i></span>
+        </div>
+        <div style="position:absolute;left:22px;right:22px;top:110px;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;height:330px">
+          <div style="border:2px solid var(--hair-strong);border-radius:8px;padding:4px;font:700 10px var(--sans)">Went well<div class="sticky" style="position:static;height:40px;font-size:14px;margin-top:6px">Demo!</div></div>
+          <div style="border:2px solid var(--hair-strong);border-radius:8px;padding:4px;font:700 10px var(--sans)">To improve<div class="sticky" style="position:static;height:40px;font-size:14px;margin-top:6px;background:#FFC9D6">Tests</div></div>
+          <div style="border:2px solid var(--hair-strong);border-radius:8px;padding:4px;font:700 10px var(--sans)">Actions</div>
+        </div>
+        <div style="position:absolute;left:0;right:0;bottom:20px;text-align:center"><span class="banner" style="background:var(--warn-soft);color:var(--ink)"><i data-i="eye"></i>View only</span></div>
+      </div>
+      <div class="mock-cap"><b>Board as a viewer</b><span>No toolbar; the status reads <i>View only</i>. Everything else updates live.</span></div>
+    </div>
+
+    <div class="mock-wrap">
+      <div class="phone">
+        <div class="status"><span>11:09</span><span>●●● ▮</span></div>
+        <div class="ph-head">
+          <div class="hdr-pill" style="flex:1"><span class="avatar" style="background:var(--blue)">M</span><span style="min-width:0"><b>Physics lab</b><span>3 online</span></span></div>
+          <span class="btn primary"><i data-i="share"></i>Share</span><span class="ibtn"><i data-i="dots"></i></span>
+        </div>
+        <div class="sticky" style="left:70px;top:230px;width:150px;height:90px;outline:2px solid var(--blue);outline-offset:4px">Force = m·a</div>
+        <div class="panel" style="left:30px;right:30px;top:340px;padding:6px;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;text-align:center;font:600 10px var(--sans)">
+          <span style="display:grid;justify-items:center;gap:2px;padding:6px 0"><i data-i="copy"></i>Copy</span>
+          <span style="display:grid;justify-items:center;gap:2px;padding:6px 0"><i data-i="plus"></i>Duplicate</span>
+          <span style="display:grid;justify-items:center;gap:2px;padding:6px 0"><i data-i="lock"></i>Lock</span>
+          <span style="display:grid;justify-items:center;gap:2px;padding:6px 0;color:var(--danger-bright)"><i data-i="close"></i>Delete</span>
+          <span style="display:grid;justify-items:center;gap:2px;padding:6px 0"><i data-i="upload"></i>To front</span>
+          <span style="display:grid;justify-items:center;gap:2px;padding:6px 0"><i data-i="download"></i>To back</span>
+          <span style="display:grid;justify-items:center;gap:2px;padding:6px 0"><i data-i="tpl"></i>Group</span>
+          <span style="display:grid;justify-items:center;gap:2px;padding:6px 0"><i data-i="text"></i>Aa</span>
+        </div>
+      </div>
+      <div class="mock-cap"><b>Hold menu</b><span>Press and hold an element: order, group, clipboard, lock, delete, label. Web shows the same actions on right-click.</span></div>
+    </div>
+  </div>
+
+  <!-- ================= ANDROID SHEETS ================= -->
+  <h2 id="android-sheets"><span class="stop g"></span>Android · Sheets</h2>
+  <p class="lede">Secondary tasks open as bottom sheets: 20 px top corners, a grab handle, the 5 px ink rule, drag down or Back to close. Deeper sheets stack and show a back arrow.</p>
+  <div class="grid g3">
+    <!-- Menu -->
+    <div class="mock-wrap"><div class="phone"><div class="scrim"></div><div class="ph-sheet"><div class="sheet phone"><div class="grab"></div>
+      <div class="sheet-h"><b>Board menu</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+      <div class="line-sec" style="--c:var(--blue)"><div class="st">Whiteboards</div><div class="row"><i data-i="laptop"></i><span class="grow">My whiteboards</span></div><div class="row"><i data-i="plus"></i><span class="grow">New / Join</span></div><div class="row"><i data-i="upload"></i><span class="grow">Import a board</span></div></div>
+      <div class="line-sec" style="--c:var(--green)"><div class="st">This board</div><div class="row"><i data-i="image"></i><span class="grow">Export</span></div><div class="row"><i data-i="tpl"></i><span class="grow">Templates</span></div><div class="row"><i data-i="sparkle"></i><span class="grow">Draw with AI</span></div></div>
+      <div class="line-sec" style="--c:var(--violet)"><div class="st">App</div><div class="row"><i data-i="gear"></i><span class="grow">Settings</span></div></div>
+    </div></div></div><div class="mock-cap"><b>Menu</b><span>Hub for every secondary place.</span></div></div>
+
+    <!-- Share -->
+    <div class="mock-wrap"><div class="phone"><div class="scrim"></div><div class="ph-sheet"><div class="sheet phone"><div class="grab"></div>
+      <div class="sheet-h"><b>Share board</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+      <span class="badge"><span class="ring"></span>K7M·Q2R</span>
+      <div class="row" style="margin-top:10px"><i data-i="link"></i><span class="grow"><span class="t">Copy link</span><span class="d mono">…/b/K7MQ2R</span></span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px"><div class="row" style="margin:0"><i data-i="chat"></i>WhatsApp</div><div class="row" style="margin:0"><i data-i="share"></i>More…</div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px"><div class="row" style="margin:0"><i data-i="qr"></i>QR</div><div class="row" style="margin:0"><i data-i="lock"></i>Access</div></div>
+    </div></div></div><div class="mock-cap"><b>Share</b><span>Code badge, link, WhatsApp, system share, QR, Access.</span></div></div>
+
+    <!-- Account -->
+    <div class="mock-wrap"><div class="phone"><div class="scrim"></div><div class="ph-sheet"><div class="sheet phone"><div class="grab"></div>
+      <div class="sheet-h"><b>Sign in to share</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+      <p class="sub">Sharing a board needs an account: it stays yours, and you find it on any device.</p>
+      <span class="seg wide" style="margin-bottom:10px"><span class="on">Sign in</span><span>Create account</span></span>
+      <div class="field"><label>Username or email</label><div class="in">marta.r</div></div>
+      <div class="field" style="margin-top:8px"><label>Password</label><div class="in err">••••</div><span class="errmsg">Use at least 8 characters.</span></div>
+      <span class="btn go block" style="margin-top:12px">Sign in →</span>
+      <span class="btn ghost block">Forgot your password?</span>
+    </div></div></div><div class="mock-cap"><b>Account</b><span>Asked only when an action needs it; returns to that action afterwards.</span></div></div>
+
+    <!-- Join -->
+    <div class="mock-wrap"><div class="phone"><div class="scrim"></div><div class="ph-sheet"><div class="sheet phone"><div class="grab"></div>
+      <div class="sheet-h"><span style="display:flex;gap:8px;align-items:center"><span class="ibtn s32"><i data-i="back"></i></span><b>New / Join</b></span><span class="ibtn s32"><i data-i="close"></i></span></div>
+      <div class="field"><label>Board code</label><div class="in code focus">K7M·Q2R</div><span class="hint">6 characters. Private boards will ask for a PIN.</span></div>
+      <span class="btn primary block" style="margin-top:10px">Join</span>
+      <div style="border-top:1px solid var(--hair);margin:14px 0 10px"></div>
+      <div class="field"><label>Name your board</label><div class="in ph">Board name (optional)</div></div>
+      <span class="btn go block" style="margin-top:10px">New whiteboard</span>
+    </div></div></div><div class="mock-cap"><b>New / Join</b><span>Joins by code or link, or creates a blank live board.</span></div></div>
+
+    <!-- Boards -->
+    <div class="mock-wrap"><div class="phone"><div class="scrim"></div><div class="ph-sheet"><div class="sheet phone"><div class="grab"></div>
+      <div class="sheet-h"><b>My whiteboards</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+      <div class="row sel"><i data-i="laptop"></i><span class="grow"><span class="t">My board</span><span class="d">On this device · works offline</span></span></div>
+      <div class="row"><span class="avatar" style="width:26px;height:26px;background:var(--blue)">P</span><span class="grow"><span class="t">Physics lab</span><span class="d">5 min ago · Yours</span></span></div>
+      <div class="row"><span class="avatar" style="width:26px;height:26px;background:var(--green)">R</span><span class="grow"><span class="t">Retro sprint 14</span><span class="d">yesterday · Private</span></span><i data-i="lock"></i></div>
+      <div class="row"><span class="avatar" style="width:26px;height:26px;background:var(--violet)">B</span><span class="grow"><span class="t">Biology — cell</span><span class="d">3 d ago</span></span></div>
+    </div></div></div><div class="mock-cap"><b>My whiteboards</b><span>Offline board first; live boards with time and badges.</span></div></div>
+
+    <!-- People -->
+    <div class="mock-wrap"><div class="phone"><div class="scrim"></div><div class="ph-sheet"><div class="sheet phone"><div class="grab"></div>
+      <div class="sheet-h"><b>Connected</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+      <p class="sub">Tap a name to grant or remove editing.</p>
+      <div class="row"><span class="avatar" style="background:var(--blue)">M</span><span class="grow"><span class="t">Marta</span><span class="d">Creator · you</span></span><span class="pillnote">Always</span></div>
+      <div class="row"><span class="avatar" style="background:var(--violet)">A</span><span class="grow"><span class="t">Ana</span><span class="d">Guest</span></span><span class="pillnote" style="background:var(--blue-soft);color:var(--blue-text)">Can edit</span></div>
+      <div class="row"><span class="avatar" style="background:var(--green)">L</span><span class="grow"><span class="t">Leo</span><span class="d">Guest</span></span><span class="pillnote">View only</span></div>
+    </div></div></div><div class="mock-cap"><b>People</b><span>Presence list; the creator toggles editors here.</span></div></div>
+
+    <!-- Export -->
+    <div class="mock-wrap"><div class="phone"><div class="scrim"></div><div class="ph-sheet"><div class="sheet phone"><div class="grab"></div>
+      <div class="sheet-h"><b>Export</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+      <div style="height:90px;border:1px solid var(--hair-strong);border-radius:12px;background-image:radial-gradient(var(--hair-strong) 1px,transparent 1.2px);background-size:10px 10px;display:grid;place-items:center"><div class="sticky" style="position:static;width:70px;height:44px;font-size:14px">Ideas</div></div>
+      <p class="note" style="margin:6px 0">1240 × 860 px · 18 elements</p>
+      <span class="seg wide"><span class="on">PNG</span><span>JPG</span><span>SVG</span></span>
+      <div class="row plain"><span class="grow">Transparent background</span><span class="toggle on"></span></div>
+      <span class="seg wide"><span class="on">Whole board</span><span>Selection</span></span>
+      <span class="btn primary block" style="margin-top:10px"><i data-i="download"></i>Download</span>
+      <span class="btn ghost block">Export .json file</span>
+    </div></div></div><div class="mock-cap"><b>Export</b><span>PNG/JPG keep the board inside for editable re-import.</span></div></div>
+
+    <!-- AI -->
+    <div class="mock-wrap"><div class="phone"><div class="scrim"></div><div class="ph-sheet"><div class="sheet phone"><div class="grab"></div>
+      <div class="sheet-h"><b>Draw with AI</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+      <div class="field"><div class="in" style="height:64px;align-items:flex-start;padding-top:8px">a login flow diagram</div><span class="hint">You get a preview before it is added.</span></div>
+      <div style="height:110px;margin-top:8px;border:1px dashed var(--hair-dashed);border-radius:12px;display:grid;place-items:center">
+        <svg viewBox="0 0 200 90" width="80%" aria-hidden="true"><rect x="4" y="30" width="44" height="26" rx="5" fill="#BFE3FF" stroke="currentColor"/><rect x="78" y="30" width="44" height="26" rx="5" fill="#C9F0D3" stroke="currentColor"/><path d="M146 43l20-16 20 16-20 16z" fill="#FFE58A" stroke="currentColor"/><path d="M48 43h28M122 43h22" stroke="currentColor" fill="none"/></svg>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px"><span class="btn secondary">Discard</span><span class="btn go">Add to board</span></div>
+    </div></div></div><div class="mock-cap"><b>Draw with AI</b><span>Prompt → preview → Add or Discard.</span></div></div>
+
+    <!-- Settings -->
+    <div class="mock-wrap"><div class="phone"><div class="scrim"></div><div class="ph-sheet"><div class="sheet phone"><div class="grab"></div>
+      <div class="sheet-h"><b>Settings</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+      <div class="line-sec" style="--c:var(--blue);margin:0"><div class="st">You</div><div class="row"><span class="avatar" style="width:26px;height:26px;background:var(--blue)">M</span><span class="grow">Marta</span><i data-i="chev"></i></div><div class="row"><i data-i="globe"></i><span class="grow">Language</span><span class="seg"><span>ES</span><span class="on">EN</span></span></div></div>
+      <div class="line-sec" style="--c:var(--violet)"><div class="st">Display</div>
+        <div class="row"><i data-i="moon"></i><span class="grow">Dark board</span><span class="toggle"></span></div>
+        <div class="row"><i data-i="grid"></i><span class="grow">Dot grid</span><span class="toggle on"></span></div>
+        <div class="row"><i data-i="cursor"></i><span class="grow">Other cursors</span><span class="toggle on"></span></div>
+      </div>
+      <div class="line-sec" style="--c:var(--danger)"><div class="st">This board</div><div class="row" style="color:var(--danger-bright)"><span class="grow">Delete the board</span></div></div>
+    </div></div></div><div class="mock-cap"><b>Settings</b><span>Per-device; creator-only rows (rename, clear, delete) at the end.</span></div></div>
+  </div>
+
+  <!-- ================= LANDING ================= -->
+  <h2 id="landing"><span class="stop o"></span>Web · Landing page (<code>/inicio</code>)</h2>
+  <p class="lede">The public page that explains the app and links to the web version and the APK. It reuses the metro language: a blue top bar, a code badge, and the "How it works" steps drawn as a line with stations.</p>
+  <div class="landing">
+    <div class="lbar"><span class="brand"><span class="ring"></span>Shareboard</span><span style="margin-left:auto">How it works</span><span>Features</span><span>Download</span><span class="btn xs" style="background:#fff;color:#0063B4">Web version →</span></div>
+    <div class="hero2">
+      <div>
+        <h5>Draw together.<br><em>Share a code.</em></h5>
+        <p style="color:var(--ink-2);margin:0 0 18px">Shareboard is a whiteboard that opens ready to draw. Press Share, send six characters, and everyone draws on the same board, live. No account needed.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap"><span class="btn primary">Open in the browser →</span><span class="btn secondary"><i data-i="download"></i>Download for Android</span></div>
+      </div>
+      <div style="position:relative;min-height:240px;background-image:radial-gradient(var(--hair-strong) 1px,transparent 1.2px);background-size:16px 16px;border-left:1px solid var(--hair)">
+        <span class="badge sm" style="position:absolute;left:14px;top:14px"><span class="ring"></span>K7Q2XM</span>
+        <div class="sticky" style="left:60px;top:70px;width:110px;height:70px">Ideas</div>
+        <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 400 260" preserveAspectRatio="none" aria-hidden="true"><ellipse cx="300" cy="170" rx="55" ry="38" fill="#C9F0D3" stroke="currentColor" stroke-width="2"/><path d="M175 110 C 230 110, 250 120, 262 140" stroke="currentColor" stroke-width="2" fill="none"/><path d="M40 210 C 80 180, 120 240, 160 200" stroke="#E5283C" stroke-width="3" fill="none"/></svg>
+      </div>
+    </div>
+    <div style="margin:0 16px 16px;background:var(--white);border-radius:18px;padding:22px 28px">
+      <b style="font-size:24px;letter-spacing:-.6px">How it works</b>
+      <div class="metro-steps"><i></i><span></span><i></i><span></span><i class="g"></i></div>
+      <div class="grid g3" style="gap:12px;font-size:13px;color:var(--ink-2)"><div><b style="color:var(--ink);font-size:16px">1 Open it</b><br>You land straight on a board.</div><div><b style="color:var(--ink);font-size:16px">2 Draw</b><br>Pencil, shapes, arrows, notes, text.</div><div><b style="color:var(--ink);font-size:16px">3 Share</b><br>Send the code, link or QR.</div></div>
+    </div>
+  </div>
+
+  <!-- ================= STATES ================= -->
+  <h2 id="states"><span class="stop o"></span>States and feedback</h2>
+  <p class="lede">Small pieces that tell the user what the system is doing. Status always pairs colour with words.</p>
+  <div class="grid g3 state-grid">
+    <div class="card"><b>Connection status</b>
+      <span class="banner" style="background:rgba(0,132,61,.12);color:var(--ink)"><i class="dot" style="background:var(--green)"></i>3 online</span>
+      <span class="banner" style="background:var(--warn-soft);color:var(--ink)"><i class="dot" style="background:var(--orange)"></i>Reconnecting…</span>
+      <span class="banner" style="background:var(--danger-soft);color:var(--ink)"><i class="dot" style="background:var(--danger)"></i>Offline — keep drawing, it syncs when you're back</span>
+    </div>
+    <div class="card"><b>Toasts</b><span class="toast"><i data-i="check"></i>Code copied</span><span class="toast"><i data-i="check"></i>Access updated</span><span class="toast">You do not have editing access</span></div>
+    <div class="card"><b>Confirm dialog</b>
+      <div class="sheet" style="width:100%"><div class="sheet-h"><b>Delete the board?</b></div><p class="sub" style="margin-top:0">Board K7M·Q2R and its code will stop working. This cannot be undone.</p><div style="display:flex;gap:8px;justify-content:flex-end"><span class="btn sm ghost">Cancel</span><span class="btn sm danger">Delete</span></div></div>
+    </div>
+    <div class="card"><b>Tutorial coach mark</b><div class="panel" style="position:static;padding:12px 14px;display:flex;gap:12px;align-items:center"><span style="font-size:13px">Grab the pencil and draw something.</span><span class="btn xs primary">Next</span></div><div class="steps"><span class="stop-pill cur"><i>1</i>Draw</span><span class="stop-bar"></span><span class="stop-pill"><i>2</i></span><span class="stop-bar"></span><span class="stop-pill"><i>3</i></span></div></div>
+    <div class="card"><b>Timer &amp; reactions</b><span class="badge sm" style="background:var(--ink);color:var(--white)"><i data-i="timer"></i>04:59</span><span style="font-size:28px">👍 🎉 ❤️</span><span class="note">Reactions float up for a second on every screen.</span></div>
+    <div class="card"><b>Update prompt (Android)</b><div class="row" style="width:100%"><span class="grow"><span class="t">Version 1.9.0 is out</span><span class="d">A new version of Shareboard is available.</span></span><span class="btn xs primary">Download</span></div></div>
+  </div>
+</main>
+<footer class="site">Shareboard design planning · Mockups reflect release 1.8.x-beta · Next: <a href="design-system.html">Design system →</a></footer>
+<script src="shared.js"></script>
+</body>
+</html>

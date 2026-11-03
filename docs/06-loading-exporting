@@ -62,7 +62,7 @@ verdad.
 
 # Exportación (cliente)
 
-**Móvil** — `src/features/board/export.ts` + `components/sheets/ExportSheet.tsx`:
+**Móvil** — `src/features/board/export.ts` + `components/organisms/sheets/ExportSheet.tsx`:
 
 * Se renderiza un `Canvas` de Skia **fuera de pantalla** ajustado a los límites
   del contenido (`contentBounds` en `geometry.ts`) con un padding de 24 px.
@@ -115,7 +115,7 @@ exportación que pierde la parte editable es mucho mejor que una que falla.
 
 # Importación (cliente)
 
-`src/features/board/import.ts` + `components/sheets/ImportSheet.tsx`:
+`src/features/board/import.ts` + `components/organisms/sheets/ImportSheet.tsx`:
 
 La hoja tiene **un solo botón** ("Elegir archivo") y un interruptor
 ("Recuperar trazos y textos editables"). Lo que ocurre después lo deciden los

@@ -19,7 +19,7 @@ Most of their logic exists twice, as twins kept in step by hand:
 | SVG export | `lib/svg.ts` | `features/board/svg.ts` |
 | QR codes | `lib/qr.ts` | `features/qr/encode.ts` |
 | Strings (ES/EN) | `features/strings.ts` | `features/i18n/strings.ts` |
-| Canvas | `components/board/BoardCanvas.tsx` + `renderer.ts` (Canvas 2D) | `components/board/BoardCanvas.tsx` + `ElementRenderer.tsx` (Skia) |
+| Canvas | `components/organisms/board/BoardCanvas.tsx` + `renderer.ts` (Canvas 2D) | `components/organisms/board/BoardCanvas.tsx` + `ElementRenderer.tsx` (Skia) |
 
 When a bug is fixed in one, check the twin.
 
@@ -217,7 +217,7 @@ everything. The web also sets `<html lang>` for screen readers.
 
 ## Mobile-only pieces
 
-- **Updater** (`features/update/releases.ts`, `components/UpdatePrompt.tsx`):
+- **Updater** (`features/update/releases.ts`, `components/molecules/UpdatePrompt.tsx`):
   see [Communication](communication.md#the-in-app-updater-android).
 - **Configuration** (`constants/config.ts`): `EXPO_PUBLIC_API_URL`,
   `EXPO_PUBLIC_WS_URL`, `EXPO_PUBLIC_WEB_URL` (where share links point) and

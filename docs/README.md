@@ -19,6 +19,11 @@ Shareboard is made of three projects. Each one is its own Git repository:
 | Install the app and draw my first board | [Getting started](user-guide/getting-started.md) |
 | Learn every tool and feature | [Features](user-guide/features.md) |
 | Fix a problem | [Troubleshooting](user-guide/troubleshooting.md) |
+| Understand what the product is, for whom | [Product overview](specification/product-overview.md) |
+| Read the functional requirements | [Functional requirements](specification/functional-requirements.md) |
+| Read the quality requirements | [Non-functional requirements](specification/non-functional-requirements.md) |
+| Follow user goals step by step | [Use cases](specification/use-cases.md) |
+| See the UI, design system and navigation | [Design planning](design-planning/mockups.html) (open in a browser) |
 | Understand the overall design | [Architecture overview](architecture/overview.md) |
 | Know what a board is made of | [Data model](architecture/data-model.md) |
 | See how the apps talk to the server | [Communication: REST and WebSocket](architecture/communication.md) |
@@ -28,6 +33,16 @@ Shareboard is made of three projects. Each one is its own Git repository:
 | Ship a new version | [Releasing](development/releasing.md) |
 
 ## Other material
+
+- `specification/` is the formal software specification: product overview,
+  functional requirements (FR-xx), non-functional requirements (NFR-xx) and
+  use cases (UC-xx). Start at [its index](specification/README.md).
+- `design-planning/` holds four linked HTML pages to open in a browser:
+  [mockups](design-planning/mockups.html) of every screen and sheet, the
+  [design system](design-planning/design-system.html) (palette, fonts,
+  components), the [navigation flow](design-planning/navigation-flow.html)
+  and the [product vision](design-planning/product-vision.html) (objective,
+  style, audience).
 
 - `plans/` holds the short design notes written before each feature (one file
   per change, numbered in the order they were made). They explain *why* a
