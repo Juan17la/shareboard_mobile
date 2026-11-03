@@ -62,7 +62,7 @@ Política (`editPolicy`): `everyone` | `selected` | `creator-only`. También
   cabecera muestra "Solo lectura"; el servidor **rechaza** las ops de un viewer
   con `error FORBIDDEN` (defensa en profundidad).
 * El creador cambia permisos en la hoja de permisos
-  (`components/sheets/PrivacySheet.tsx`). **No hay botón de guardar**: cada
+  (`components/organisms/sheets/PrivacySheet.tsx`). **No hay botón de guardar**: cada
   cambio se aplica de forma optimista y se revierte si el servidor lo rechaza
   (`features/board/use-permissions.ts`). El backend responde con `BoardMeta` y
   además emite `permissions` por WebSocket a todos, con el `role` recalculado de
@@ -157,7 +157,7 @@ Qué se sincroniza y qué no:
 * **Colores de presencia**: los propone el cliente y los confirma el servidor.
 * Los cursores ajenos se dibujan como una capa de vistas sobre el lienzo, con el
   nombre al lado y a tamaño constante sea cual sea el zoom
-  (`components/board/PeerCursors.tsx`). Se pueden ocultar en ajustes.
+  (`components/molecules/PeerCursors.tsx`). Se pueden ocultar en ajustes.
 
 # Deshacer / rehacer
 

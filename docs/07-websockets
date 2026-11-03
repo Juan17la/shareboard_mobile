@@ -184,7 +184,7 @@ Constantes en `src/services/realtime/protocol.ts` (`CloseCode`).
 | `participants` | `store.setParticipants(...)` |
 | `cursor` | `store.setRemoteCursor(from, at)` |
 | `preview` | `store.setPreview(from, preview)` |
-| `cursor` con `laser` | además `pushLaser(from, at)` (`components/board/laser.ts`) |
+| `cursor` con `laser` | además `pushLaser(from, at)` (`components/molecules/laser.ts`) |
 | `react` | `store.addReaction(from, emoji)` |
 | `timer` | `store.setTimerLeft(left)` |
 | `permissions` | `store.setMeta(meta, you)` |

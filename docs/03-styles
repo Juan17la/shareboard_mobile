@@ -65,7 +65,7 @@ procedural en home / nombre / PIN; una captura periódica del lienzo en la
 pizarra, `useBoardMirror`) y el panel lo dibuja en su propio canvas, desplazado
 a su posición y con un `Blur` gaussiano. Lo que vive en un `Modal` (hojas,
 diálogos) queda fuera (`NoGlassScene`) y usa un tinte casi opaco
-(`components/ui/Glass.tsx`). El estilo va siempre en props `style`: NativeWind
+(`components/atoms/Glass.tsx`). El estilo va siempre en props `style`: NativeWind
 no está cableado — su runtime vaciaba las funciones `style` de `Pressable`.
 
 **Estado de conexión**: `online #0F9E8E`, `connecting #F59E0B`,
@@ -78,7 +78,7 @@ no está cableado — su runtime vaciaba las funciones `style` de `Pressable`.
 #30A46C (verde)  #0091FF (azul)   #8E4EC6 (morado)   #FF8FAB (rosa)
 ```
 
-Más un selector "Otro" (`components/ui/ColorPickerSheet.tsx`): una rejilla de
+Más un selector "Otro" (`components/molecules/ColorPickerSheet.tsx`): una rejilla de
 tonos × luminosidades, no deslizadores. Se elige de un toque y no hay que saber
 qué es la saturación.
 
@@ -96,10 +96,10 @@ en el `join` y el servidor lo respeta salvo que ya lo tenga otra persona.
   PIN, porcentaje de zoom.
 * React Native no sintetiza pesos ni cursivas, así que cada corte es un archivo
   aparte (`hooks/use-app-fonts.ts`) y se pide por nombre a través de
-  `<Txt weight>` (`components/ui/Text.tsx`) — nunca con `fontWeight`.
+  `<Txt weight>` (`components/atoms/Text.tsx`) — nunca con `fontWeight`.
 * Escala: 10.5 (label), 11.5 (caption), 13 (body), 15 (título de fila), 18
   (título de hoja), 20–26 (display).
-* El lienzo también dibuja en Nunito: `components/board/BoardFonts.tsx` carga
+* El lienzo también dibuja en Nunito: `components/organisms/board/BoardFonts.tsx` carga
   cuatro cortes en el gestor de fuentes de Skia, porque `matchFont` solo mira
   las fuentes del sistema.
 
@@ -110,7 +110,7 @@ en el `join` y el servidor lo respeta salvo que ya lo tenga otra persona.
 * **Radios** (`Radius`): `sm 8, md 12, lg 16, xl 20, xxl 26, pill 999`.
 * **Elevación** (`Shadow`): sombras muy difusas y de baja opacidad; el CTA y los
   botones destructivos llevan sombra teñida de su propio color.
-* **Iconos**: trazados a mano en `components/ui/Icon.tsx` (rejilla de 24px,
+* **Iconos**: trazados a mano en `components/atoms/Icon.tsx` (rejilla de 24px,
   trazo 1.9–2.4, extremos redondos), transcritos del diseño.
 
 # Componentes base

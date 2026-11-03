@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shareboard Design System</title>
+<meta name="description" content="Colour palette, typography, spacing, shapes, components and states of the Shareboard interface (Metro wayfinding system).">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Nunito:wght@400;700&family=Lora:ital@0;1&family=Caveat:wght@600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .sw { border-radius: 14px; overflow: hidden; background: var(--card); box-shadow: var(--shadow); }
+  .sw .chip { height: 84px; display: flex; align-items: flex-end; padding: 10px; font: 700 12px var(--mono); }
+  .sw .meta { padding: 10px 12px 12px; font-size: 13px; }
+  .sw .meta b { display: block; font-size: 14px; }
+  .sw .meta code { color: var(--ink-3); }
+  .sw .meta p { margin: 4px 0 0; color: var(--ink-2); font-size: 12px; line-height: 1.4; }
+  .mini { display: flex; flex-wrap: wrap; gap: 10px; }
+  .mini div { display: grid; gap: 4px; justify-items: center; font: 600 11px var(--mono); color: var(--ink-3); }
+  .mini span { width: 46px; height: 46px; border-radius: 12px; border: 1px solid var(--hair-strong); }
+  .type-row { display: grid; grid-template-columns: 150px 1fr; gap: 16px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--hair); }
+  .type-row .spec { font: 500 12px var(--mono); color: var(--ink-3); }
+  @media (max-width: 600px) { .type-row { grid-template-columns: 1fr; gap: 4px; } }
+  .demo { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  .spec-list { font-size: 13px; color: var(--ink-2); margin: 12px 0 0; padding-left: 18px; }
+  .spec-list li { margin: 3px 0; }
+  .radius-demo { display: flex; flex-wrap: wrap; gap: 16px; }
+  .radius-demo div { width: 88px; height: 64px; background: var(--blue-soft); border: 2px solid var(--blue); display: grid; place-items: center; font: 700 12px var(--mono); color: var(--blue-text); }
+  .space-demo div { display: flex; align-items: center; gap: 12px; font: 500 13px var(--mono); margin: 6px 0; }
+  .space-demo span { height: 14px; background: var(--blue); border-radius: 3px; }
+  .shadow-demo { display: flex; flex-wrap: wrap; gap: 24px; }
+  .shadow-demo div { width: 150px; height: 90px; border-radius: 14px; background: var(--card); display: grid; place-items: center; font-size: 13px; font-weight: 600; text-align: center; }
+  .dodont { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+  .dodont .card { border-top: 5px solid var(--green); }
+  .dodont .card.no { border-top-color: var(--danger); }
+  .dodont ul { margin: 8px 0 0; padding-left: 18px; font-size: 14px; color: var(--ink-2); }
+  .dodont li { margin: 6px 0; }
+  .icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; }
+  .icons div { display: grid; justify-items: center; gap: 6px; padding: 12px 6px; border-radius: 12px; border: 1px solid var(--hair); font-size: 11px; color: var(--ink-2); }
+  .icons svg.i { width: 24px; height: 24px; }
+  .board-fonts div { padding: 12px 0; border-bottom: 1px solid var(--hair); display: grid; grid-template-columns: 150px 1fr; gap: 16px; align-items: baseline; }
+  @media (max-width: 600px) { .board-fonts div { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <p class="pillnote">Design planning · 2 of 4</p>
+    <h1>The <em>Metro Map</em> design system</h1>
+    <p>Shareboard is drawn as a small transit system: the board is the city, everything around it is signage.
+      This page lists every token and component of the interface. Source of truth in code:
+      <code>mobile/src/constants/theme.ts</code>, <code>web/src/index.css</code>, <code>web/src/lib/theme.ts</code>
+      and the root <code>DESIGN.md</code>. See them in context in the <a href="mockups.html">mockups</a>.</p>
+    <div class="toc">
+      <a href="#principles">Principles</a><a href="#colour">Colour</a><a href="#board-colour">Board palette</a><a href="#type">Typography</a>
+      <a href="#space">Spacing &amp; shape</a><a href="#elevation">Elevation</a><a href="#icons">Icons</a><a href="#buttons">Buttons</a>
+      <a href="#controls">Controls</a><a href="#fields">Fields</a><a href="#sheets">Sheets &amp; rows</a><a href="#signature">Signature pieces</a>
+      <a href="#feedback">Feedback</a><a href="#motion">Motion</a><a href="#rules">Do / Don't</a>
+    </div>
+  </section>
+
+  <h2 id="principles"><span class="stop"></span>Principles</h2>
+  <div class="grid g4">
+    <div class="card"><b>Board first</b><p class="note">The canvas runs edge to edge; chrome is compact and floats on top.</p></div>
+    <div class="card"><b>One colour, one job</b><p class="note">Blue acts and selects, green finishes, orange warns, violet marks app-wide places.</p></div>
+    <div class="card"><b>Solid signage</b><p class="note">Opaque panels with full-contrast text over any drawing. No glass, no blur.</p></div>
+    <div class="card"><b>Two worlds</b><p class="note">UI chrome and board content have separate fonts and palettes and never borrow from each other.</p></div>
+  </div>
+
+  <!-- COLOUR -->
+  <h2 id="colour"><span class="stop"></span>Interface colour</h2>
+  <p class="lede">A white-and-ink signage ground carrying four saturated transit lines. A screen shows only the lines it needs.</p>
+  <h3>Lines (accents)</h3>
+  <div class="grid g4">
+    <div class="sw"><div class="chip" style="background:#0072CE;color:#fff">#0072CE</div><div class="meta"><b>Line Blue</b><code>accent</code><p>Primary action and every selected state: Share, active tool, focused field, code badge. Pressed → <code>#005AA3</code>. As text <code>#0063B4</code>.</p></div></div>
+    <div class="sw"><div class="chip" style="background:#00843D;color:#fff">#00843D</div><div class="meta"><b>Line Green</b><code>go</code><p>The step that finishes a flow (Continue, Sign in, Add to board) and the "online" status. Pressed → <code>#006B31</code>.</p></div></div>
+    <div class="sw"><div class="chip" style="background:#E06F00;color:#0F1B2D">#E06F00</div><div class="meta"><b>Line Orange</b><code>lineOrange</code><p>Attention and "connecting" status. Never fills a button.</p></div></div>
+    <div class="sw"><div class="chip" style="background:#6E4BD8;color:#fff">#6E4BD8</div><div class="meta"><b>Line Violet</b><code>lineViolet</code><p>App-wide places: the App section of the menu (settings, shortcuts). Never fills a button.</p></div></div>
+  </div>
+  <h3>Neutrals and semantic</h3>
+  <div class="grid g4">
+    <div class="sw"><div class="chip" style="background:#0F1B2D;color:#fff">#0F1B2D</div><div class="meta"><b>Signage Ink</b><code>text</code><p>Primary text, icon-button rings, sheet top rule, "on" segment, tooltip, shadow hue.</p></div></div>
+    <div class="sw"><div class="chip" style="background:#FFFFFF;color:#0F1B2D;border-bottom:1px solid var(--hair)">#FFFFFF</div><div class="meta"><b>Signage White</b><code>background</code><p>Screen, canvas and panel ground.</p></div></div>
+    <div class="sw"><div class="chip" style="background:#EEF1F5;color:#0F1B2D">#EEF1F5</div><div class="meta"><b>Platform Grey</b><code>surface</code><p>Flat cards, hover. Selected → <code>#E1E6ED</code>.</p></div></div>
+    <div class="sw"><div class="chip" style="background:#4A566B;color:#fff">#4A566B</div><div class="meta"><b>Ink Secondary</b><code>textSecondary</code><p>Supporting text, labels, inactive segments.</p></div></div>
+    <div class="sw"><div class="chip" style="background:#6B7689;color:#fff">#6B7689</div><div class="meta"><b>Ink Tertiary</b><code>textTertiary</code><p>Hints, chevrons, watermarks.</p></div></div>
+    <div class="sw"><div class="chip" style="background:#8A94A4;color:#0F1B2D">#8A94A4</div><div class="meta"><b>Field Edge</b><code>borderField</code><p>2 px border of text fields; offline status dot.</p></div></div>
+    <div class="sw"><div class="chip" style="background:#C8102E;color:#fff">#C8102E</div><div class="meta"><b>Danger</b><code>danger</code><p>Destructive confirm only. Bright <code>#E5283C</code> for error edges.</p></div></div>
+    <div class="sw"><div class="chip" style="background:#B45300;color:#fff">#B45300</div><div class="meta"><b>Warn</b><code>warn</code><p>Reversible confirmation (clear board), warnings.</p></div></div>
+  </div>
+  <h3>Transparent tokens</h3>
+  <div class="tablewrap card"><table>
+    <tr><th>Token</th><th>Value</th><th>Use</th></tr>
+    <tr><td><code>accentSoft</code></td><td><code>rgba(0,114,206,.11)</code></td><td>Selected row tint, focus halo</td></tr>
+    <tr><td><code>hairline</code></td><td><code>rgba(15,27,45,.10)</code></td><td>Dividers</td></tr>
+    <tr><td><code>hairlineStrong</code></td><td><code>rgba(15,27,45,.16)</code></td><td>Row edges, step-stop bars</td></tr>
+    <tr><td><code>hairlineDashed</code></td><td><code>rgba(15,27,45,.28)</code></td><td>Drop targets, "add" slots</td></tr>
+    <tr><td><code>dangerSoft</code> / <code>warnSoft</code></td><td><code>rgba(229,40,60,.08)</code> / <code>rgba(224,111,0,.12)</code></td><td>Error halo, warning banner</td></tr>
+    <tr><td><code>scrim</code></td><td><code>rgba(15,27,45,.28)</code></td><td>Behind sheets and dialogs</td></tr>
+  </table></div>
+  <h3>Dark theme</h3>
+  <p class="lede">Chosen in Settings (<i>Dark board</i>) and kept per device. The same lines stay; ground and ink invert. The app currently ships a pure black night (below); <code>DESIGN.md</code> also documents a navy variant (<code>#0B1424</code>) used by these documentation pages.</p>
+  <div class="mini">
+    <div><span style="background:#000000"></span>#000000<br>ground</div>
+    <div><span style="background:#141414"></span>#141414<br>surface</div>
+    <div><span style="background:#262626"></span>#262626<br>selected</div>
+    <div><span style="background:#FFFFFF"></span>#FFFFFF<br>ink</div>
+    <div><span style="background:#A3A3A3"></span>#A3A3A3<br>ink 2</div>
+    <div><span style="background:#8A8A8A"></span>#8A8A8A<br>ink 3</div>
+    <div><span style="background:#5AAEFF"></span>#5AAEFF<br>blue text</div>
+    <div><span style="background:#FF5A5F"></span>#FF5A5F<br>danger</div>
+  </div>
+  <p class="note">The default board ink (<code>#1B2030</code>) is <b>painted</b> white on the dark board without changing the stored data, so a light-theme viewer still sees it dark.</p>
+
+  <h2 id="board-colour"><span class="stop g"></span>Board palette (content world)</h2>
+  <p class="lede">What people draw with. Vivid, friendly and separate from the UI lines: chrome never uses these, and these never style chrome.</p>
+  <h3>Drawing colours</h3>
+  <div class="mini">
+    <div><span style="background:#1B2030"></span>#1B2030<br>ink</div><div><span style="background:#E5484D"></span>#E5484D<br>red</div>
+    <div><span style="background:#F76808"></span>#F76808<br>orange</div><div><span style="background:#FFB224"></span>#FFB224<br>amber</div>
+    <div><span style="background:#30A46C"></span>#30A46C<br>green</div><div><span style="background:#0091FF"></span>#0091FF<br>blue</div>
+    <div><span style="background:#8E4EC6"></span>#8E4EC6<br>purple</div><div><span style="background:#FF8FAB"></span>#FF8FAB<br>pink</div>
+    <div><span style="background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"></span>HEX<br>custom</div>
+  </div>
+  <h3>Sticky note papers</h3>
+  <div class="mini">
+    <div><span style="background:#FFE58A"></span>#FFE58A</div><div><span style="background:#FFC2D1"></span>#FFC2D1</div><div><span style="background:#B8E2FF"></span>#B8E2FF</div>
+    <div><span style="background:#C6F0C2"></span>#C6F0C2</div><div><span style="background:#E3D3FF"></span>#E3D3FF</div><div><span style="background:#FFD3A8"></span>#FFD3A8</div>
+  </div>
+  <p class="note">Papers are pale enough that the dark sticky ink (<code>#1B2030</code>) reads on them on either board theme.</p>
+  <h3>Identity icons</h3>
+  <p class="note">16 animal and object icons, each carrying its own presence colour (cursor tag, avatar ring): 🦊 🐼 🐸 🐙 🦄 🐝 🦋 🐢 🐬 🦉 🐨 🐯 🦁 🐧 🦕 🚀</p>
+  <h3>Stroke widths</h3>
+  <div class="demo">
+    <svg width="320" height="60" viewBox="0 0 320 60" aria-hidden="true" style="color:var(--ink)"><g stroke="currentColor" stroke-linecap="round"><path d="M10 30h50" stroke-width="2"/><path d="M90 30h50" stroke-width="5"/><path d="M170 30h50" stroke-width="10"/><path d="M250 30h50" stroke-width="20"/></g></svg>
+    <span class="note"><code>2 · 5 · 10 · 20</code> px</span>
+  </div>
+
+  <!-- TYPE -->
+  <h2 id="type"><span class="stop"></span>Typography</h2>
+  <p class="lede"><b>Onest</b> for every UI word; <b>JetBrains Mono</b> for anything read character by character (codes, PINs, zoom level, sizes).</p>
+  <div class="card">
+    <div class="type-row"><span class="spec">Display · 52/1.05 · 800 · −1.5px<br>(landing only)</span><span style="font:800 44px/1.05 var(--sans);letter-spacing:-1.5px">Draw together.</span></div>
+    <div class="type-row"><span class="spec">Headline · 20 · 800 · −0.4px</span><span style="font:800 20px/1.2 var(--sans);letter-spacing:-.4px">Share board</span></div>
+    <div class="type-row"><span class="spec">Title · 15 · 700 · −0.1px</span><span style="font:700 15px/1.2 var(--sans)">Biology — cell diagram</span></div>
+    <div class="type-row"><span class="spec">Row · 15 · 500</span><span style="font:500 15px/1.2 var(--sans)">My whiteboards</span></div>
+    <div class="type-row"><span class="spec">Body · 14 · 400 · 1.4</span><span style="font:400 14px/1.4 var(--sans)">Your name shows next to your cursor on the board.</span></div>
+    <div class="type-row"><span class="spec">Label · 13 · 700</span><span style="font:700 13px/1.2 var(--sans)">Who can edit</span></div>
+    <div class="type-row"><span class="spec">Hint · 12 · 400 · 1.35</span><span style="font:400 12px/1.35 var(--sans);color:var(--ink-3)">6 characters. Private boards will ask for a PIN.</span></div>
+    <div class="type-row"><span class="spec">Code · Mono 20 · 700 · 1.5px</span><span style="font:700 20px var(--mono);letter-spacing:1.5px">K7M·Q2R</span></div>
+    <div class="type-row"><span class="spec">Code field · Mono 15 · 700 · 1.5px</span><span style="font:700 15px var(--mono);letter-spacing:1.5px">4817</span></div>
+  </div>
+  <h3>Board typefaces (content only)</h3>
+  <div class="card board-fonts">
+    <div><span class="spec note">Rounded · Nunito</span><span style="font:400 22px Nunito, sans-serif">The quick idea jumps over the board</span></div>
+    <div><span class="spec note">Serif · Lora</span><span style="font:400 22px Lora, serif">The quick idea jumps over the board</span></div>
+    <div><span class="spec note">Monospace · JetBrains Mono</span><span style="font:500 20px var(--mono)">The quick idea jumps</span></div>
+    <div style="border:0"><span class="spec note">Handwritten · Caveat</span><span style="font:600 28px Caveat, cursive">The quick idea jumps over the board</span></div>
+  </div>
+  <p class="note">Text sizes on the board: Small, Medium, Large, Extra large. Bold, italic, underline and left/centre/right alignment.</p>
+
+  <!-- SPACE & SHAPE -->
+  <h2 id="space"><span class="stop"></span>Spacing and shape</h2>
+  <div class="grid g2">
+    <div class="card space-demo"><b>Spacing</b>
+      <div><span style="width:6px"></span>hairgap · 6px</div>
+      <div><span style="width:12px"></span>gap · row-x · 12px</div>
+      <div><span style="width:10px"></span>row-y · 10px</div>
+      <div><span style="width:18px"></span>sheet-x · 18px</div>
+      <div><span style="width:20px"></span>button-x · 20px</div>
+      <div><span style="width:44px"></span>touch target · 44px</div>
+    </div>
+    <div class="card"><b>Radii</b>
+      <div class="radius-demo" style="margin-top:12px">
+        <div style="border-radius:6px">sm 6</div><div style="border-radius:10px">md 10</div><div style="border-radius:14px">lg 14</div>
+        <div style="border-radius:18px">xl 18</div><div style="border-radius:20px">sheet 20</div><div style="border-radius:999px">pill</div>
+      </div>
+      <p class="note">Three silhouettes carry the world: the <b>pill</b> (buttons, segments, badges), the <b>circle</b> (icon buttons, stations) and the gently <b>rounded panel</b> (fields 10, rows 10–16, sheets 20). Borders are 2 px and mean something: ink rings = tappable, grey = field, dashed = drop target.</p>
+    </div>
+  </div>
+
+  <h2 id="elevation"><span class="stop"></span>Elevation</h2>
+  <p class="lede">Solid panels with soft, ink-tinted shadows. Elevation is subtle everywhere.</p>
+  <div class="shadow-demo">
+    <div style="box-shadow:0 12px 24px rgba(15,27,45,.16)">Panel<br><span class="note">0 12 24 · 16%</span></div>
+    <div style="box-shadow:0 8px 20px rgba(15,27,45,.10)">Card<br><span class="note">0 8 20 · 10%</span></div>
+    <div style="background:var(--blue);color:#fff;box-shadow:0 1px 2px rgba(15,27,45,.30)">Enamel (buttons)<br>0 1 2 · 30%</div>
+    <div style="background:var(--scrim);color:#fff">Scrim<br>ink 28%</div>
+  </div>
+
+  <h2 id="icons"><span class="stop"></span>Iconography</h2>
+  <p class="lede">Phosphor icons, regular weight, 18 px in controls (16 in compact, 24 in illustrations). Every icon-only control names itself in a tooltip and an accessible label.</p>
+  <div class="icons">
+    <div><i data-i="cursor"></i>Cursor V</div><div><i data-i="hand"></i>Hand H</div><div><i data-i="pencil"></i>Pencil P</div><div><i data-i="eraser"></i>Eraser E</div>
+    <div><i data-i="rect"></i>Rectangle R</div><div><i data-i="circle"></i>Circle O</div><div><i data-i="tri"></i>Triangle Y</div><div><i data-i="hex"></i>Polygon G</div>
+    <div><i data-i="line"></i>Line L</div><div><i data-i="arrow"></i>Arrow A</div><div><i data-i="note"></i>Sticky N</div><div><i data-i="text"></i>Text T</div>
+    <div><i data-i="bucket"></i>Fill F</div><div><i data-i="shapes"></i>Shapes (phone)</div><div><i data-i="share"></i>Share</div><div><i data-i="dots"></i>Menu</div>
+    <div><i data-i="undo"></i>Undo</div><div><i data-i="redo"></i>Redo</div><div><i data-i="smile"></i>Reactions</div><div><i data-i="timer"></i>Timer</div>
+    <div><i data-i="lock"></i>Access / Lock</div><div><i data-i="link"></i>Link</div><div><i data-i="sparkle"></i>AI</div><div><i data-i="tpl"></i>Templates</div>
+  </div>
+
+  <!-- BUTTONS -->
+  <h2 id="buttons"><span class="stop"></span>Buttons</h2>
+  <p class="lede">Enamel pills: flat line colour, bold 15 px label, tight low shadow. 48 px tall (40 compact), 20 px side padding, optional 18 px icon.</p>
+  <div class="card">
+    <div class="demo">
+      <button class="btn primary"><i data-i="share"></i>Share</button>
+      <button class="btn go">Continue →</button>
+      <button class="btn danger">Delete</button>
+      <button class="btn secondary">Try again</button>
+      <button class="btn ghost">Not now</button>
+      <button class="btn dashed"><i data-i="plus"></i>Add an image</button>
+    </div>
+    <div class="demo" style="margin-top:14px">
+      <button class="btn primary sm">Compact 40</button>
+      <button class="btn primary xs">Extra small 32</button>
+      <button class="btn primary" disabled>Disabled</button>
+      <button class="btn secondary" style="outline:2px solid var(--blue);outline-offset:2px">Focus ring</button>
+    </div>
+    <div class="tablewrap" style="margin-top:16px"><table>
+      <tr><th>Variant</th><th>When</th><th>Rest</th><th>Hover / pressed</th></tr>
+      <tr><td>Primary</td><td>The main action of a screen; select</td><td>Line Blue, white</td><td>Line Blue Deep</td></tr>
+      <tr><td>Go</td><td>The step that finishes a flow</td><td>Line Green, white</td><td>Line Green Deep</td></tr>
+      <tr><td>Danger</td><td>Destructive confirm only</td><td>Danger, white</td><td>darker fill</td></tr>
+      <tr><td>Secondary</td><td>Alternative action</td><td>2 px ink outline</td><td>Platform Grey</td></tr>
+      <tr><td>Ghost</td><td>Dismiss / low emphasis</td><td>Ink Secondary text</td><td>faint ink wash</td></tr>
+      <tr><td>Dashed</td><td>Drop target, "add" slot</td><td>2 px dashed hairline, 14 px corners</td><td>Platform Grey</td></tr>
+    </table></div>
+    <p class="note">States: pressed scales to 0.985 · disabled 55 % opacity · focus 2 px Line Blue outline offset 2 px.</p>
+  </div>
+
+  <!-- CONTROLS -->
+  <h2 id="controls"><span class="stop"></span>Controls</h2>
+  <div class="grid g3">
+    <div class="card"><b>Icon buttons</b>
+      <div class="demo" style="margin-top:12px"><span class="ibtn"><i data-i="dots"></i></span><span class="ibtn on"><i data-i="pencil"></i></span><span class="ibtn s32"><i data-i="close"></i></span></div>
+      <ul class="spec-list"><li>40 px circle, 2 px ink ring (85 %), white face</li><li>Active: Line Blue fill, white icon</li><li>32 px for sheet close, 26 px steppers</li><li>Tooltip after 0.35 s hover/focus</li></ul>
+      <div style="margin-top:8px"><span class="tooltip">Pencil · P</span></div>
+    </div>
+    <div class="card"><b>Segmented switch</b>
+      <div class="demo" style="margin-top:12px"><span class="seg"><span class="on">PNG</span><span>JPG</span><span>SVG</span></span><span class="seg"><span>ES</span><span class="on">EN</span></span></div>
+      <ul class="spec-list"><li>Pill track, 2 px ink ring, 2 px inset</li><li>On: Signage Ink fill, white 13 px bold</li><li>Off: Ink Secondary; grey on hover</li></ul>
+    </div>
+    <div class="card"><b>Toggle</b>
+      <div class="demo" style="margin-top:12px"><span class="toggle on"></span><span class="toggle"></span></div>
+      <ul class="spec-list"><li>Settings switches (grid, cursors, dark board…)</li><li>On: Line Blue track, white knob</li><li>Applied immediately, no save</li></ul>
+    </div>
+    <div class="card"><b>Colour swatches</b>
+      <div class="demo" style="margin-top:12px"><span class="swatch" style="background:#1B2030"></span><span class="swatch on" style="background:#0091FF"></span><span class="swatch" style="background:#E5484D"></span><span class="swatch" style="background:#FFB224"></span><span class="swatch" style="background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"></span></div>
+      <ul class="spec-list"><li>28 px circle, selected = 2 px blue ring with gap</li><li>Last swatch opens the full picker with HEX</li></ul>
+    </div>
+    <div class="card"><b>Avatars</b>
+      <div class="demo" style="margin-top:12px"><span class="avatar" style="background:#FFE7D6">🦊</span><span class="avatar" style="background:#DDF3E4">🐸</span><span class="avatar" style="background:var(--blue)">M</span></div>
+      <ul class="spec-list"><li>Identity icon in the person's colour</li><li>Header, people list, cursor tags</li></ul>
+    </div>
+    <div class="card"><b>Toolbar</b>
+      <div class="demo" style="margin-top:12px;background:var(--white);border-radius:14px;padding:6px;box-shadow:var(--shadow);gap:4px"><span class="ibtn on" style="border-color:transparent"><i data-i="cursor"></i></span><span class="ibtn plain"><i data-i="hand"></i></span><span class="ibtn plain"><i data-i="pencil"></i></span><span class="ibtn plain"><i data-i="eraser"></i></span></div>
+      <ul class="spec-list"><li>Vertical on desktop, bottom row on phones</li><li>Unringed buttons inside one solid panel</li></ul>
+    </div>
+  </div>
+
+  <!-- FIELDS -->
+  <h2 id="fields"><span class="stop"></span>Fields</h2>
+  <div class="grid g4">
+    <div class="field"><label>Your name</label><div class="in ph">Your name</div><span class="hint">Default</span></div>
+    <div class="field"><label>Username</label><div class="in focus">marta.r</div><span class="hint">Focus: blue edge + 3 px soft halo</span></div>
+    <div class="field"><label>Password</label><div class="in err">••••</div><span class="errmsg">Use at least 8 characters.</span></div>
+    <div class="field"><label>Board code</label><div class="in code">K7M·Q2R</div><span class="hint">Code field: JetBrains Mono</span></div>
+  </div>
+  <p class="note">44 px tall, 10 px corners, 2 px Field Edge border, 15–16 px text. Label above (13 px semibold), hint below (12 px); an error replaces the hint.</p>
+
+  <!-- SHEETS -->
+  <h2 id="sheets"><span class="stop"></span>Sheets, rows and dialogs</h2>
+  <div class="grid g2">
+    <div class="sheet">
+      <div class="sheet-h"><b>Settings</b><span class="ibtn s32"><i data-i="close"></i></span></div>
+      <div class="row"><i data-i="grid"></i><span class="grow"><span class="t">Dot grid</span><span class="d">Visual guide on the canvas.</span></span><span class="toggle on"></span></div>
+      <div class="row sel"><i data-i="users"></i><span class="grow"><span class="t">Selected people</span><span class="d">Only the people you pick.</span></span><i data-i="check"></i></div>
+      <div class="row"><i data-i="image"></i><span class="grow">Export</span><i data-i="chev"></i></div>
+    </div>
+    <div class="card">
+      <ul class="spec-list" style="margin:0">
+        <li><b>Top rule:</b> 5 px Signage Ink, like the head of a sign panel.</li>
+        <li><b>Corners:</b> 20 px on top for phones (bottom sheet), all four on the desktop card (max 480 px wide, centred).</li>
+        <li><b>Header:</b> 20 px extrabold title, 32 px ringed close; 36 × 4 px grab handle on phones; drag down to dismiss.</li>
+        <li><b>Stacking:</b> a sheet opened from another shows a back arrow; Back returns one level.</li>
+        <li><b>Rows:</b> white, Hairline Strong edge, 14 px semibold title over 12 px description, grey on hover; selected = blue soft tint + blue edge.</li>
+        <li><b>Dialog:</b> same sheet, two buttons right-aligned: ghost cancel + danger/warn confirm.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- SIGNATURE -->
+  <h2 id="signature"><span class="stop g"></span>Signature pieces</h2>
+  <div class="grid g3">
+    <div class="card"><b>Line diagram</b><p class="note">Menu sections drawn as metro lines.</p>
+      <div class="line-sec" style="--c:var(--blue)"><div class="st">Whiteboards</div><div class="row">My whiteboards</div></div>
+      <div class="line-sec" style="--c:var(--green)"><div class="st">This board</div><div class="row">Export</div></div>
+      <div class="line-sec" style="--c:var(--violet)"><div class="st">App</div><div class="row">Settings</div></div>
+    </div>
+    <div class="card"><b>Code badge</b><p class="note">The share code as a line badge; tap copies.</p>
+      <span class="badge"><span class="ring"></span>K7M·Q2R</span>
+      <p class="note">48 px Line Blue pill · 20 px white station ring · Mono 20 bold · 1.5 px tracking. Six characters with no look-alikes (no 0/O, 1/I/L).</p>
+    </div>
+    <div class="card"><b>Step stops</b><p class="note">Multi-step flows as stops on one line.</p>
+      <div class="steps"><span class="stop-pill cur"><i>1</i>Name</span><span class="stop-bar"></span><span class="stop-pill"><i>2</i>Board</span><span class="stop-bar"></span><span class="stop-pill"><i>3</i>Share</span></div>
+      <p class="note">Current: 24 px green pill with white numbered disc. Next: outlined pill with grey disc. 3 px bar between.</p>
+    </div>
+  </div>
+
+  <!-- FEEDBACK -->
+  <h2 id="feedback"><span class="stop o"></span>Feedback and status</h2>
+  <div class="grid g3">
+    <div class="card"><b>Status dots</b><div style="display:grid;gap:8px;margin-top:10px;font-size:14px">
+      <span><i class="dot" style="background:#00843D"></i> 3 online</span><span><i class="dot" style="background:#E06F00"></i> Connecting… / Reconnecting…</span><span><i class="dot" style="background:#8A94A4"></i> Offline · Only on this device</span></div>
+      <p class="note">Colour always paired with words.</p></div>
+    <div class="card"><b>Toast</b><div style="margin-top:10px"><span class="toast"><i data-i="check"></i>Link copied</span></div><p class="note">Ink pill at the bottom, auto-dismiss ~2 s. Success and short errors.</p></div>
+    <div class="card"><b>Cursor tag</b><div style="margin-top:10px;display:flex;align-items:flex-start;gap:2px"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M3 2l17 8-7 2-3 8z" fill="#8E4EC6"/></svg><span style="font:700 11px var(--sans);color:#fff;background:#8E4EC6;padding:2px 8px;border-radius:999px;margin-top:10px">Ana</span></div><p class="note">Pointer + name pill in the person's colour.</p></div>
+  </div>
+
+  <h2 id="motion"><span class="stop o"></span>Motion</h2>
+  <div class="card tablewrap"><table>
+    <tr><th>Moment</th><th>Behaviour</th></tr>
+    <tr><td>Press</td><td>Scale 0.985, fill darkens; ~120 ms</td></tr>
+    <tr><td>Sheet open / close</td><td>Slide up from bottom (phone) or fade + rise (desktop); scrim fades</td></tr>
+    <tr><td>Eraser</td><td>Erased elements fade until the finger lifts</td></tr>
+    <tr><td>Laser pointer</td><td>Red trail fades in ~1 s</td></tr>
+    <tr><td>Reactions</td><td>Emoji floats up and fades</td></tr>
+    <tr><td>Wrong PIN</td><td>Dots shake, then clear</td></tr>
+    <tr><td>Haptics (Android)</td><td>Light tick on tool change, "thud" on create/clear (can be turned off)</td></tr>
+  </table><p class="note">Motion is short and functional; nothing essential is shown only by animation.</p></div>
+
+  <h2 id="rules"><span class="stop v"></span>Do and don't</h2>
+  <div class="dodont">
+    <div class="card"><b>Do</b><ul>
+      <li>Give each line colour one job.</li>
+      <li>Cap every sheet with the 5 px ink rule; draw sections as stations on a coloured line.</li>
+      <li>Ring tappable circular controls in a 2 px ink border; keep targets ≥ 44 px on touch.</li>
+      <li>Set codes, PINs and numbers in JetBrains Mono with 1.5 px tracking.</li>
+      <li>Keep panels opaque with soft ink-tinted shadows.</li>
+      <li>Land every token change in mobile <code>theme.ts</code>, web <code>index.css</code> and <code>theme.ts</code> together.</li>
+    </ul></div>
+    <div class="card no"><b>Don't</b><ul>
+      <li>Use translucent or blurred glass panels.</li>
+      <li>Use board fonts (Nunito, Lora, Caveat) or the drawing palette in UI chrome.</li>
+      <li>Fill a button with orange or violet.</li>
+      <li>Introduce a second blue or a system face.</li>
+      <li>Rely on colour alone for status.</li>
+    </ul></div>
+  </div>
+</main>
+<footer class="site"><a href="mockups.html">← Mockups</a> · Shareboard design planning · <a href="navigation-flow.html">Navigation flow →</a></footer>
+<script src="shared.js"></script>
+</body>
+</html>

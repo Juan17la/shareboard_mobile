@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shareboard Product Vision</title>
+<meta name="description" content="Shareboard's objective, the visual style that characterises it, and the audience it is designed for.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Caveat:wght@600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .statement { font-size: clamp(22px, 3vw, 30px); line-height: 1.3; letter-spacing: -.5px; font-weight: 700; max-width: 900px; margin: 0; }
+  .statement em { font-style: normal; color: var(--blue-text); }
+  .big-num { font: 800 40px/1 var(--sans); letter-spacing: -1px; color: var(--blue-text); }
+  .persona { display: grid; gap: 10px; align-content: start; }
+  .persona header { display: flex; gap: 12px; align-items: center; }
+  .persona .avatar { width: 52px; height: 52px; font-size: 26px; }
+  .persona h3 { margin: 0; }
+  .persona .role { font-size: 13px; color: var(--ink-3); }
+  .persona dl { margin: 0; font-size: 14px; display: grid; gap: 8px; }
+  .persona dt { font: 700 12px var(--sans); text-transform: uppercase; letter-spacing: .6px; color: var(--ink-3); }
+  .persona dd { margin: 0; color: var(--ink-2); }
+  .trait { border-left: 5px solid var(--c, var(--blue)); }
+  .trait b { display: block; font-size: 17px; margin-bottom: 4px; }
+  .trait p { margin: 0; color: var(--ink-2); font-size: 14px; }
+  .vs td:first-child { font-weight: 700; }
+  .yes { color: var(--ink); font-weight: 700; }
+  .yes::before { content: "✓ "; color: var(--green); }
+  .journey { display: grid; grid-template-columns: repeat(4, 1fr); position: relative; gap: 12px; }
+  .journey::before { content: ""; position: absolute; left: 12px; right: 12px; top: 11px; height: 5px; border-radius: 3px; background: linear-gradient(90deg, var(--orange) 0 25%, var(--blue) 25% 75%, var(--green) 75%); }
+  .journey div { position: relative; padding-top: 36px; font-size: 14px; color: var(--ink-2); }
+  .journey div::before { content: ""; position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%; background: var(--card); border: 5px solid var(--c); box-sizing: border-box; }
+  .journey b { display: block; color: var(--ink); font-size: 16px; }
+  @media (max-width: 720px) { .journey { grid-template-columns: 1fr 1fr; } .journey::before { display: none; } }
+  .voice { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .voice div { padding: 10px 12px; border-bottom: 1px solid var(--hair); font-size: 14px; }
+  .voice .h { font: 700 12px var(--sans); text-transform: uppercase; letter-spacing: .6px; color: var(--ink-3); }
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <p class="pillnote">Design planning · 4 of 4</p>
+    <h1>Draw together. <em>Share a code.</em></h1>
+    <p>Why Shareboard exists, who it is for and what makes it look and feel the way it does. This page sets the
+      direction that the <a href="design-system.html">design system</a>, the <a href="navigation-flow.html">navigation</a>
+      and the <a href="mockups.html">mockups</a> follow.</p>
+    <div class="toc"><a href="#objective">Objective</a><a href="#audience">Audience</a><a href="#style">Style</a><a href="#principles">Principles</a><a href="#position">Positioning</a><a href="#voice">Voice</a><a href="#success">Success</a></div>
+  </section>
+
+  <h2 id="objective"><span class="stop"></span>Objective</h2>
+  <div class="card">
+    <p class="statement">Let anyone go from <em>nothing</em> to <em>drawing together</em> in seconds: open the app, draw, press Share, read out six characters.</p>
+    <p class="lede" style="margin-top:16px">Most collaborative boards ask for an account, a workspace and a tour before the first stroke. In a classroom, a study group or a quick call that cost is bigger than the drawing itself. Shareboard removes it: the app opens already on a board that works offline, and sharing turns it into a live board everyone can join from a phone or a browser.</p>
+  </div>
+  <div class="grid g3" style="margin-top:20px">
+    <div class="card"><div class="big-num">0</div><b>steps before the first stroke</b><p class="note">No home page, no sign-up, no workspace. The board is the first screen.</p></div>
+    <div class="card"><div class="big-num">6</div><b>characters to share</b><p class="note">A code without look-alikes, easy to say aloud or write on a whiteboard: <span class="mono">K7M·Q2R</span>.</p></div>
+    <div class="card"><div class="big-num">2</div><b>platforms, one mental model</b><p class="note">Web and Android with the same tools in the same places, drawing on the same board live.</p></div>
+  </div>
+  <h3>Goals</h3>
+  <div class="grid g2">
+    <div class="card"><b>For users</b><ul class="note" style="padding-left:18px;margin:8px 0 0">
+      <li>Sketch, diagram and brainstorm with others in real time, on whatever device is at hand.</li>
+      <li>Never lose work: an offline board that is always there, and reconnection that keeps strokes safe.</li>
+      <li>Control who sees and who edits, without learning a permissions system.</li>
+      <li>Take results anywhere: images that can be re-opened as editable boards.</li>
+    </ul></div>
+    <div class="card"><b>For the project</b><ul class="note" style="padding-left:18px;margin:8px 0 0">
+      <li>Demonstrate interface design decisions measured against a clear success criterion.</li>
+      <li>Keep web and Android at feature parity with a shared visual language.</li>
+      <li>Stay light to run: one server, optional database, free AI providers.</li>
+    </ul></div>
+  </div>
+
+  <h2 id="audience"><span class="stop g"></span>Target audience</h2>
+  <p class="lede">Primary: <b>students and class groups</b> who sketch, diagram and brainstorm together, mostly on Android phones and laptops, in sessions of a few minutes started from a shared code. Secondary: <b>teachers and facilitators</b> who run activities, and <b>developers</b> who draw quick diagrams. Ages range from children to older teachers, so nothing may depend on jargon or prior tool knowledge.</p>
+  <div class="grid g3">
+    <article class="card persona">
+      <header><span class="avatar" style="background:#FFE7D6">🦊</span><div><h3>Valentina, 19</h3><span class="role">University student · Android phone</span></div></header>
+      <dl>
+        <dt>Context</dt><dd>Group project in a café; four classmates, two phones and two laptops.</dd>
+        <dt>Needs</dt><dd>Start a diagram now, have everyone add to it, export it for the report.</dd>
+        <dt>Frustrations</dt><dd>Tools that force everyone to sign up; tiny buttons on a phone.</dd>
+        <dt>Shareboard gives</dt><dd>A board on launch, Share → code in the group chat, editable PNG export.</dd>
+      </dl>
+    </article>
+    <article class="card persona">
+      <header><span class="avatar" style="background:#EDE3FA">🦉</span><div><h3>Marta, 52</h3><span class="role">Secondary-school teacher · classroom laptop</span></div></header>
+      <dl>
+        <dt>Context</dt><dd>Runs a 10-minute brainstorm with 25 students on phones.</dd>
+        <dt>Needs</dt><dd>Write a code on the blackboard, keep control of who edits, a visible timer.</dd>
+        <dt>Frustrations</dt><dd>Accounts for minors, complex admin panels, jargon.</dd>
+        <dt>Shareboard gives</dt><dd>Templates, a shared timer, vote dots, <i>Only me</i> / <i>Selected people</i> editing, a PIN.</dd>
+      </dl>
+    </article>
+    <article class="card persona">
+      <header><span class="avatar" style="background:#DDF3E4">🐸</span><div><h3>Andrés, 27</h3><span class="role">Junior developer · desktop browser</span></div></header>
+      <dl>
+        <dt>Context</dt><dd>Explaining a database schema on a call.</dd>
+        <dt>Needs</dt><dd>Boxes and arrows that stay connected, keyboard shortcuts, crow's-foot ends.</dd>
+        <dt>Frustrations</dt><dd>Arrows that detach when a box moves; slow, heavy tools.</dd>
+        <dt>Shareboard gives</dt><dd>Attached elbow arrows, cardinality markers, single-key tools, Draw with AI.</dd>
+      </dl>
+    </article>
+  </div>
+
+  <h3>The journey we design for</h3>
+  <div class="journey card" style="margin-top:12px">
+    <div style="--c:var(--orange)"><b>Open</b>Lands on <i>My board</i>, offline, no questions.</div>
+    <div style="--c:var(--blue)"><b>Draw</b>Pencil, shapes, hold-to-shape, notes, text.</div>
+    <div style="--c:var(--blue)"><b>Share</b>Account only now; code, link or QR.</div>
+    <div style="--c:var(--green)"><b>Together</b>Named cursors, live strokes, export the result.</div>
+  </div>
+
+  <h2 id="style"><span class="stop o"></span>The style: "The Metro Map"</h2>
+  <p class="lede">Shareboard is drawn as a small transit system. <b>The board is the city; everything around it is signage.</b> Each place in the app is a station, each flow is a line, and the share code is a line badge you read out loud. The interface is solid, flat and high-contrast, like enamel signs.</p>
+  <div class="grid g2">
+    <div class="card trait" style="--c:var(--ink)"><b>Wayfinding, not decoration</b><p>The style borrows from transit signage because its job is the same: tell people where they are and where to go, at a glance, for anyone. Menus are drawn as lines with stations; multi-step flows as stops.</p></div>
+    <div class="card trait" style="--c:var(--blue)"><b>Colour with a job</b><p>Four saturated lines, one meaning each: blue acts and selects, green finishes, orange warns, violet marks app-wide places. A screen shows only the lines it needs.</p></div>
+    <div class="card trait" style="--c:var(--green)"><b>Solid and readable</b><p>Opaque white panels, signage ink text, 2 px rings on tappable circles, pill buttons. No glass, no blur: text stays readable over any drawing.</p></div>
+    <div class="card trait" style="--c:var(--violet)"><b>Compact and quiet</b><p>Chrome stays small and out of the way so the drawing gets the space. Rarely used actions hide in the menu; the options strip shows only what the tool in hand needs.</p></div>
+    <div class="card trait" style="--c:var(--orange)"><b>Two worlds</b><p>The UI speaks Onest and JetBrains Mono in signage colours. The board speaks its own language: friendly fonts (Nunito, Lora, Caveat) and a vivid drawing palette. They never mix.</p></div>
+    <div class="card trait" style="--c:var(--danger)"><b>Friendly, not childish</b><p>Animal identity icons, sticky notes and handwriting on the board keep it warm; the chrome stays sober so teachers and developers take it seriously.</p></div>
+  </div>
+  <h3>Mood keywords</h3>
+  <div style="display:flex;flex-wrap:wrap;gap:8px">
+    <span class="btn xs secondary">Wayfinding</span><span class="btn xs secondary">Enamel signage</span><span class="btn xs secondary">Flat</span><span class="btn xs secondary">High contrast</span><span class="btn xs secondary">Compact</span><span class="btn xs secondary">Immediate</span><span class="btn xs secondary">Playful content</span><span class="btn xs secondary">Sober chrome</span>
+  </div>
+
+  <h2 id="principles"><span class="stop"></span>Product principles</h2>
+  <div class="grid g2">
+    <div class="card"><b>1 · Be drawing in seconds</b><p class="note">Nothing blocks the first stroke: no home, no login, no tour unless asked.</p></div>
+    <div class="card"><b>2 · Ask only when it unlocks something</b><p class="note">An account is requested at the moment of sharing, and the app says why.</p></div>
+    <div class="card"><b>3 · Every menu is reachable, dismissable and predictable</b><p class="note">By touch and by keyboard, with the same close gestures everywhere.</p></div>
+    <div class="card"><b>4 · One mental model across platforms</b><p class="note">Web and Android put the same things in the same places with the same names.</p></div>
+  </div>
+
+  <h2 id="position"><span class="stop"></span>Positioning</h2>
+  <p class="lede">Shareboard does not try to be a full workspace. It competes on the first minute.</p>
+  <div class="card tablewrap"><table class="vs">
+    <tr><th></th><th>Shareboard</th><th>Excalidraw</th><th>Miro / FigJam</th><th>Microsoft Whiteboard</th></tr>
+    <tr><td>Draw without an account</td><td class="yes">Yes, offline too</td><td>Yes</td><td>No</td><td>No</td></tr>
+    <tr><td>Join with a short spoken code</td><td class="yes">6 chars + QR</td><td>Long link</td><td>Invite / link</td><td>Invite</td></tr>
+    <tr><td>Native Android app</td><td class="yes">Yes</td><td>Web only</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td>PIN + per-person editing</td><td class="yes">Yes</td><td>No</td><td>Paid plans</td><td>Org accounts</td></tr>
+    <tr><td>Editable image export</td><td class="yes">PNG/JPG carry the board</td><td>PNG with scene</td><td>No</td><td>No</td></tr>
+    <tr><td>Learning curve</td><td class="yes">Minutes</td><td>Minutes</td><td>Hours</td><td>Minutes</td></tr>
+  </table></div>
+  <p class="note">Comparison reflects the board audit of 2026-10-22 (<code>docs/research/</code>) and is meant for direction, not marketing.</p>
+
+  <h2 id="voice"><span class="stop g"></span>Voice and tone</h2>
+  <div class="card">
+    <p class="lede">Short, plain, warm. Talk to a person, not a user. Say what happened and what to do next. Bilingual: Spanish first, English equal.</p>
+    <div class="voice">
+      <div class="h">We say</div><div class="h">We avoid</div>
+      <div>What should we call you?</div><div>Enter display name</div>
+      <div>Wrong PIN. Give it another go.</div><div>Error 401: PIN_INVALID</div>
+      <div>Sharing a board needs an account: it stays yours.</div><div>Please log in to continue</div>
+      <div>Taking longer than usual. The server may be waking up.</div><div>Request timeout</div>
+      <div>Delete the board? Its code will stop working.</div><div>Are you sure?</div>
+    </div>
+  </div>
+
+  <h2 id="success"><span class="stop v"></span>How we measure success</h2>
+  <div class="grid g3">
+    <div class="card"><b>Primary</b><p class="note">A first-time user draws, then shares a board, <b>without help</b>.</p></div>
+    <div class="card"><b>Time to first stroke</b><p class="note">Under 2 seconds from launch, even offline.</p></div>
+    <div class="card"><b>Time to join</b><p class="note">A second person joins from a spoken code in under 30 seconds.</p></div>
+    <div class="card"><b>Parity</b><p class="note">Every feature exists on web and Android with the same name and place.</p></div>
+    <div class="card"><b>Comprehension</b><p class="note">In usability tests, participants find Share, Access and Export without hints.</p></div>
+    <div class="card"><b>Accessibility</b><p class="note">44 px touch targets, AA contrast in both themes, full keyboard use on web.</p></div>
+  </div>
+  <p class="note" style="margin-top:16px">No usage analytics are collected today; these are checked through moderated tests and the performance kit.</p>
+</main>
+<footer class="site"><a href="navigation-flow.html">← Navigation flow</a> · Shareboard design planning · Back to <a href="mockups.html">Mockups</a></footer>
+<script src="shared.js"></script>
+</body>
+</html>

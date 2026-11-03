@@ -48,11 +48,32 @@ invitado, pero **crear una pizarra en vivo (compartir) exige una cuenta**.
   permisos. Un invitado usa un UUID v4 generado en el dispositivo (`guestId`,
   guardado en `AsyncStorage`, `src/features/session/store.ts`). Con sesión
   iniciada es el id de la cuenta, `usr_…`; al cerrar sesión vuelve al `guestId`.
-* **Cuenta** — usuario (3-24 de `a-z 0-9 . _`, sin distinguir mayúsculas) y
-  contraseña (8-128, guardada con scrypt). `POST /auth/register` y
-  `POST /auth/login` devuelven `{ token, account }`.
+* **Cuenta** — usuario (3-24 de `a-z 0-9 . _`, sin distinguir mayúsculas),
+  correo (único) y contraseña (8-128, ni común ni igual al usuario o correo;
+  guardada con scrypt N=2^14 r=8 p=5, asíncrono). `POST /auth/register` y
+  `POST /auth/login` (con usuario **o** correo en `login`) devuelven
+  `{ token, account }`; `account` lleva `email` (null en cuentas anteriores a
+  los correos) y `emailVerified`.
+* **Correo verificado** — solo con `REQUIRE_EMAIL_VERIFICATION=true` (por ahora
+  apagado: una cuenta comparte en cuanto se crea, y no se envía código).
+  Encendido, **compartir (crear o importar una pizarra en vivo) exige un correo
+  verificado** (`403 EMAIL_UNVERIFIED`); `account.verificationRequired` le dice a
+  las apps si mostrar el paso del código. Al registrarse, o al
+  añadir/cambiar el correo (`POST /me/email`, pide la contraseña), llega un
+  código de 6 dígitos que se envía a `POST /me/email/verify`. Los códigos
+  (verificación y restablecimiento) caducan a los 15 minutos, mueren tras 5
+  intentos fallidos, se guardan como HMAC y se envían como máximo uno por
+  minuto y 6 por hora por cuenta. Correo: SMTP, por defecto Gmail con una
+  contraseña de aplicación (`SMTP_USER`, `SMTP_PASS`; ver server/README);
+  sin clave, fuera de producción, se imprimen en el log del servidor.
+* **Contraseña olvidada** — `POST /auth/password/forgot` responde `202` exista
+  o no la cuenta (no revela qué correos están registrados);
+  `POST /auth/password/reset` con el código y la contraseña nueva inicia sesión.
 * **`sessionToken`** — token firmado (HMAC, 30 días) que prueba la cuenta. Va
   como `Authorization: Bearer` en toda petición que no lleve un `boardToken`.
+  Lleva la `tokenVersion` de la cuenta: cambiar o restablecer la contraseña la
+  incrementa y **cierra todas las demás sesiones** (el dispositivo que la
+  cambió recibe un token nuevo).
   El servidor **rechaza cualquier `userId` `usr_…` sin su `sessionToken`**
   (`AUTH_REQUIRED`): sin eso, cualquiera podría entrar como el creador y saltarse
   el PIN. Un `userId` de invitado no prueba nada, como antes.
@@ -86,12 +107,18 @@ Rutas relativas a `API_BASE_URL`. Una función por endpoint en
 | Acción | Método y ruta | Cuerpo | Respuesta | Quién |
 |---|---|---|---|---|
 | Salud | `GET /health` | — | `{ ok: true }` | público |
-| Registrarse | `POST /auth/register` | `{ username, password, nickname, avatar?, deviceId? }` | `201 { token, account }` | cualquiera |
-| Iniciar sesión | `POST /auth/login` | `{ username, password, deviceId? }` | `200 { token, account }` | cualquiera |
-| Mi cuenta | `GET /me` | — | `200 { id, username, nickname, avatar? }` | cuenta |
+| Registrarse | `POST /auth/register` | `{ username, email, password, nickname, avatar?, deviceId? }` | `201 { token, account }` | cualquiera |
+| Iniciar sesión | `POST /auth/login` | `{ login, password, deviceId? }` (`login`: usuario o correo; las apps hasta 1.8.0 mandan `username`) | `200 { token, account }` | cualquiera |
+| Olvidé la contraseña | `POST /auth/password/forgot` | `{ email }` | `202` siempre | cualquiera |
+| Restablecer contraseña | `POST /auth/password/reset` | `{ email, code, password }` | `200 { token, account }` | cualquiera |
+| Mi cuenta | `GET /me` | — | `200 { id, username, nickname, avatar?, email, emailVerified }` | cuenta |
+| Añadir/cambiar correo | `POST /me/email` | `{ email, password }` | `200 account` (envía código) | cuenta |
+| Reenviar código | `POST /me/email/resend` | — | `204` | cuenta |
+| Verificar correo | `POST /me/email/verify` | `{ code }` | `200 account` | cuenta |
+| Cambiar contraseña | `POST /me/password` | `{ password, newPassword }` | `200 { token, account }` | cuenta |
 | Mis pizarras | `GET /me/boards` | — | `200 { boards: MyBoard[] }` | cuenta |
 | Quitar de mis pizarras | `DELETE /me/boards/:id` | — | `204` (no la propia: esa se elimina) | cuenta |
-| Crear pizarra | `POST /boards` | `CreateBoardRequest` | `201 BoardMeta` | cuenta (`creatorId` = la cuenta) |
+| Crear pizarra | `POST /boards` | `CreateBoardRequest` | `201 BoardMeta` | cuenta con correo verificado (`creatorId` = la cuenta) |
 | Obtener pizarra | `GET /boards/:id` | — | `200 BoardMeta` | cualquiera |
 | Resolver código | `GET /boards/code/:code` | — | `200 { boardId }` | cualquiera |
 | Entrar (join) | `POST /boards/:id/join` | `JoinBoardRequest` | `200 JoinBoardResponse` | cualquiera |
@@ -233,7 +260,13 @@ SNAPSHOT      GET   /boards/:id/snapshot
 IMPORT        POST  /boards/import
 REGISTER      POST  /auth/register
 LOGIN         POST  /auth/login
+FORGOT        POST  /auth/password/forgot
+RESET         POST  /auth/password/reset
 ME            GET   /me
+SET_EMAIL     POST  /me/email
+RESEND_CODE   POST  /me/email/resend
+VERIFY_EMAIL  POST  /me/email/verify
+PASSWORD      POST  /me/password
 MY_BOARDS     GET   /me/boards
 FORGET_BOARD  DELETE /me/boards/:id
 ```
