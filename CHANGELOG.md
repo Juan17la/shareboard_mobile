@@ -7,6 +7,8 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.9.0-beta] - 2026-11-03
+
 ### Added
 
 - Sign up asks for an email; sign in takes the username or the email.
