@@ -44,6 +44,7 @@ import {
   endAngles,
   elementsIn,
   followLinks,
+  headsOf,
   linkEndpoints,
   linkPoint,
   markerPaths,
@@ -73,8 +74,8 @@ const A = box('A', 0, 0, 100, 100, 1);
 const B = box('B', 300, 0, 100, 100, 2);
 
 // --- linking ---------------------------------------------------------------
-// Centre to centre: each end faces the other box.
-let r = linkEndpoints([A, B], { x: 50, y: 50 }, { x: 350, y: 50 }, 18);
+// Just outside each box's facing side: each end binds to that side.
+let r = linkEndpoints([A, B], { x: 110, y: 50 }, { x: 290, y: 50 }, 18);
 assert.deepEqual(r.from, { x: 100, y: 50 });
 assert.deepEqual(r.to, { x: 300, y: 50 });
 assert.deepEqual(r.fromLink, { id: 'A', u: 1, v: 0.5 });
@@ -85,6 +86,14 @@ assert.deepEqual(r.from, { x: 20, y: 100 });
 assert.deepEqual(r.fromLink, { id: 'A', u: 0.2, v: 1 });
 assert.equal(r.toLink, null);
 assert.deepEqual(r.to, { x: 500, y: 500 });
+
+// Well inside a figure nothing snaps, near the centre or not: the line is drawn in there.
+const inside = linkEndpoints([A, B], { x: 30, y: 30 }, { x: 50, y: 50 }, 18);
+assert.deepEqual([inside.from, inside.to, inside.fromLink, inside.toLink], [{ x: 30, y: 30 }, { x: 50, y: 50 }, null, null]);
+// Hard against the inside of the outline it still holds on; as far in as the reach outside, it does not.
+assert.equal(linkEndpoints([A], { x: 4, y: 50 }, { x: 500, y: 500 }, 18).fromLink?.id, 'A');
+assert.equal(linkEndpoints([A], { x: 15, y: 50 }, { x: 500, y: 500 }, 18).fromLink, null);
+assert.equal(linkEndpoints([A], { x: -15, y: 50 }, { x: 500, y: 500 }, 18).fromLink?.id, 'A');
 
 // --- following -------------------------------------------------------------
 const arrow = { ...box('L', 100, 50, 200, 0, 3), shape: 'arrow', fromLink: r.fromLink, toLink: { id: 'B', u: 0, v: 0.5 } };
@@ -118,8 +127,15 @@ assert.equal(patches.find((p) => p.id === 'L').patch.toLink, undefined);
 
 // --- marquee ---------------------------------------------------------------
 assert.deepEqual(elementsIn([A, B], { x: -10, y: -10, width: 200, height: 200 }).map((e) => e.id), ['A']);
-// Touching counts: a band that clips B's corner takes B too.
-assert.deepEqual(elementsIn([A, B], { x: 50, y: 50, width: 260, height: 100 }).map((e) => e.id), ['A', 'B']);
+// Only what it fully encloses: a band that clips a corner takes nothing.
+assert.deepEqual(elementsIn([A, B], { x: 50, y: 50, width: 260, height: 100 }).map((e) => e.id), []);
+assert.deepEqual(elementsIn([A, B], { x: -10, y: -10, width: 420, height: 200 }).map((e) => e.id), ['A', 'B']);
+{
+  // A curve bowing out of the box of its two ends is not enclosed by a band around those ends.
+  const bow = { ...A, id: 'BOW', shape: 'arrow', from: { x: 0, y: 0 }, to: { x: 100, y: 0 }, route: 'curved', fill: null, strokeWidth: 1 };
+  assert.deepEqual(elementsIn([bow], { x: -5, y: -5, width: 110, height: 10 }), []);
+  assert.deepEqual(elementsIn([bow], { x: -5, y: -200, width: 110, height: 400 }).map((e) => e.id), ['BOW']);
+}
 
 // --- taps ------------------------------------------------------------------
 // The arrow A -> B: a tap inside A but off the arrow's route is A, on the route it is the arrow.
@@ -742,9 +758,9 @@ assert.equal(polygonPoints({ x: 0, y: 0, width: 10, height: 10 }, 40).length, 12
 
 // An image is a link target: an arrow dropped on it binds, and follows it.
 const IMG = { ...base('I', 4), kind: 'image', at: { x: 300, y: 0 }, width: 100, height: 50, uri: 'data:,' };
-r = linkEndpoints([A, IMG], { x: 50, y: 50 }, { x: 350, y: 25 }, 18);
+r = linkEndpoints([A, IMG], { x: 110, y: 50 }, { x: 295, y: 25 }, 18);
 assert.equal(r.toLink.id, 'I');
-assert.equal(r.toLink.u, 0, 'on its left edge, facing A');
+assert.equal(r.toLink.u, 0, 'on its left edge');
 follow = followLinks(
   [A, { ...IMG, at: { x: 310, y: 10 } }, { ...arrow, fromLink: r.fromLink, toLink: r.toLink }],
   ['I'],
@@ -932,25 +948,24 @@ assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rec
   const circle = { ...base('C', 1), kind: 'shape', shape: 'ellipse', from: { x: 0, y: 0 }, to: { x: 200, y: 100 }, stroke: '#000000', strokeWidth: 2, fill: null };
   const hex = { ...circle, id: 'H', shape: 'polygon', sides: 6 };
   const tri = { ...circle, id: 'T', shape: 'triangle' };
-  assert.equal(anchorsOf(circle).length, 1 + 8, 'an ellipse: its centre and eight on the outline');
-  assert.equal(anchorsOf(hex).length, 1 + 12, 'a hexagon: its centre, six corners and six middles');
-  assert.equal(anchorsOf(tri).length, 1 + 6, 'a triangle: its centre, three corners and three middles');
-  for (const p of anchorsOf(circle).slice(1)) on(p, circle, 'an ellipse anchor');
+  assert.equal(anchorsOf(circle).length, 8, 'an ellipse: eight on the outline');
+  assert.equal(anchorsOf(hex).length, 12, 'a hexagon: six corners and six middles');
+  assert.equal(anchorsOf(tri).length, 6, 'a triangle: three corners and three middles');
+  for (const p of anchorsOf(circle)) on(p, circle, 'an ellipse anchor');
   // Only the three nearest the pointer show, nearest first.
   const shown = nearestAnchors(circle, { x: 210, y: 50 });
-  assert.equal(shown.length, 3, 'three of the nine');
+  assert.equal(shown.length, 3, 'three of the eight');
   near2(shown[0], { x: 200, y: 50 });
   assert.ok(shown.every((p) => p.x > 100), 'all on the side the pointer is on');
   // A line end dropped near the outline of an ellipse lands on it, not on its box.
-  const r = linkEndpoints([circle], { x: 160, y: 20 }, { x: 600, y: 600 }, 18);
+  const r = linkEndpoints([circle], { x: 170, y: 5 }, { x: 600, y: 600 }, 18);
   on(r.from, circle, 'a free end pinned to an ellipse');
   assert.ok(r.fromLink, 'and bound to it');
   // Near one of the eight, it takes that one exactly.
   const snap = linkEndpoints([circle], { x: 100, y: 4 }, { x: 600, y: 600 }, 18);
   near2(snap.from, { x: 100, y: 0 });
-  // Aimed at another shape, it leaves by the outline towards it.
-  const aim = linkEndpoints([circle], { x: 100, y: 50 }, { x: 600, y: 50 }, 18);
-  near2(aim.from, { x: 200, y: 50 });
+  // Well inside it, it stays free: a line drawn in there.
+  assert.equal(linkEndpoints([circle], { x: 100, y: 50 }, { x: 600, y: 50 }, 18).fromLink, null);
   // Resize the shape: the bound end stays on the outline.
   const bound = { ...base('L2', 2), kind: 'shape', shape: 'arrow', from: r.from, to: { x: 600, y: 600 }, stroke: '#000000', strokeWidth: 2, fill: null, fromLink: r.fromLink, toLink: null };
   const bigger = { ...circle, to: { x: 400, y: 300 } };
@@ -1180,22 +1195,22 @@ assert.doesNotMatch(toSvg([box('t', 0, 0, 10, 10)], { background: null }), /<rec
   const N = { ...base('N', 2), kind: 'text', at: { x: 400, y: 0 }, text: 'note', color: '#000000', fontSize: 20 };
   const all = [A, N];
   // Starts on a figure, ends on a text: both ends bound.
-  let r = linkEndpoints(all, { x: 50, y: 50 }, { x: 410, y: 10 }, 14);
+  let r = linkEndpoints(all, { x: 100, y: 50 }, { x: 395, y: 10 }, 14);
   assert.deepEqual([r.fromLink?.id, r.toLink?.id], ['A', 'N'], 'figure to text');
   // Starts on empty board, ends on a figure: the tail stays free.
-  r = linkEndpoints(all, { x: 250, y: 300 }, { x: 50, y: 50 }, 14);
+  r = linkEndpoints(all, { x: 250, y: 300 }, { x: 100, y: 50 }, 14);
   assert.deepEqual([r.fromLink, r.toLink?.id], [null, 'A'], 'free tail, bound head');
   assert.deepEqual(r.from, { x: 250, y: 300 }, 'the free tail stays where it started');
   // Starts on a figure, let go on empty board: only the tail binds.
-  r = linkEndpoints(all, { x: 50, y: 50 }, { x: 250, y: 300 }, 14);
+  r = linkEndpoints(all, { x: 100, y: 50 }, { x: 250, y: 300 }, 14);
   assert.deepEqual([r.fromLink?.id, r.toLink], ['A', null], 'bound tail, free head');
   // Let go on the figure it started from: no arrow from it to itself.
-  r = linkEndpoints(all, { x: 20, y: 20 }, { x: 80, y: 80 }, 14);
+  r = linkEndpoints(all, { x: 0, y: 20 }, { x: 100, y: 80 }, 14);
   assert.deepEqual([r.fromLink?.id, r.toLink], ['A', null], 'not linked back to itself');
   // A stroke and another line are never targets.
   assert.equal(isLinkTarget({ ...base('S', 3), kind: 'stroke', points: [0, 0, 10, 10], color: '#000000', width: 2 }), false);
   assert.equal(isLinkTarget({ ...A, id: 'L', shape: 'arrow' }), false);
-  assert.equal(anchorsOf(N).length, 1 + 8, 'a text has the box\'s anchors');
+  assert.equal(anchorsOf(N).length, 8, 'a text has the box\'s anchors');
   // Moving the text carries the end bound to it.
   const arrow = { ...A, id: 'R', shape: 'arrow', from: { x: 0, y: 0 }, to: { x: 400, y: 0 }, toLink: { id: 'N', u: 0, v: 0 } };
   const moved = { ...N, at: { x: 500, y: 50 } };
@@ -1387,5 +1402,52 @@ assert.equal(customMs('', '45'), 45_000);
 assert.equal(customMs('60', '0'), 3_600_000);
 assert.equal(customMs('180', '0'), 3 * 3_600_000, 'a three-hour class');
 for (const [m, sec] of [['0', '0'], ['180', '1'], ['181', '0'], ['1', '60'], ['1.5', '0'], ['-1', '10'], ['a', '1']]) assert.equal(customMs(m, sec), null, `${m}:${sec}`);
+
+
+// --- options: lines, arrows and text keep their own; a border is not its label -----------
+{
+  const st = () => useBoardStore.getState();
+  const fig = { ...base('F', 1), kind: 'shape', shape: 'rectangle', from: { x: 0, y: 0 }, to: { x: 100, y: 100 }, stroke: '#000000', strokeWidth: 2, fill: null, text: 'hi' };
+  const lin = { ...base('LN', 2), kind: 'shape', shape: 'line', from: { x: 0, y: 200 }, to: { x: 100, y: 200 }, stroke: '#000000', strokeWidth: 2, fill: null };
+  const arr = { ...lin, id: 'AR', shape: 'arrow', z: 3 };
+  st().hydrate({ meta, elements: [fig, lin, arr], participants: [you], you, seq: 0 });
+  st().setConnection('online');
+
+  // What is set for an arrow stays with arrows.
+  st().pickTool('shape', 'arrow');
+  st().setConfig({ color: '#FF0000', route: 'curved', headStart: 'dot' });
+  st().pickTool('shape', 'line');
+  assert.notEqual(st().config.color, '#FF0000', 'a line does not take the arrow\'s colour');
+  assert.equal(shapeElement('line', { from: { x: 0, y: 0 }, to: { x: 9, y: 9 } }, { ...st().config, route: 'curved', headEnd: 'arrow', headStart: 'dot' }, base('N1', 9)).route, 'straight', 'a line is drawn straight');
+  assert.deepEqual(headsOf(shapeElement('line', { from: { x: 0, y: 0 }, to: { x: 9, y: 9 } }, { ...st().config, headEnd: 'arrow' }, base('N2', 9))), ['none', 'none'], 'and bare');
+  st().pickTool('text');
+  assert.notEqual(st().config.color, '#FF0000', 'nor does text');
+  st().setConfig({ color: '#123456' });
+  st().setTool('select');
+  const typed = st().addText({ x: 500, y: 500 });
+  assert.equal(st().elements[typed].color, '#123456', 'text made with the cursor takes text\'s colour');
+  st().pickTool('shape', 'arrow');
+  assert.deepEqual([st().config.color, st().config.route, st().config.headStart], ['#FF0000', 'curved', 'dot'], 'the arrow remembers');
+
+  // Line and arrow selected together: an arrow's option reaches the arrow alone.
+  st().setTool('select');
+  st().select(['LN', 'AR']);
+  st().setConfig({ route: 'elbow', headEnd: 'dot', dash: 'dashed' });
+  assert.equal(st().elements.LN.route, undefined, 'the line keeps its route');
+  assert.equal(st().elements.LN.headEnd, undefined, 'and its markers');
+  assert.equal(st().elements.AR.route, 'elbow');
+  assert.equal(st().elements.AR.headEnd, 'dot');
+  assert.deepEqual([st().elements.LN.dash, st().elements.AR.dash], ['dashed', 'dashed'], 'what both have reaches both');
+
+  // Recolouring a border leaves its label; the label has its own.
+  st().select('F');
+  st().setConfig({ color: '#00FF00' });
+  assert.deepEqual([st().elements.F.stroke, st().elements.F.textColor], ['#00FF00', '#000000'], 'the label keeps the colour it had');
+  st().setConfig({ textColor: '#0000FF' });
+  assert.deepEqual([st().elements.F.stroke, st().elements.F.textColor], ['#00FF00', '#0000FF'], 'and changes on its own');
+  st().setConfig({ color: '#FF00FF' });
+  assert.equal(st().elements.F.textColor, '#0000FF', 'whatever the border does next');
+  st().select(null);
+}
 
 console.log('geometry: ok');

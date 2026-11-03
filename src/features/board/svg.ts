@@ -168,7 +168,7 @@ function labelSvg(el: ShapeElement): string {
   return lines
     .map(
       (line, i) =>
-        `<text x="${r(at.x)}" y="${r(at.y + i * step)}" text-anchor="${ANCHOR[at.align]}" dominant-baseline="central" ${fontAttrs(el.font, fontSize, false, false)} fill="${el.stroke}">${esc(line)}</text>`,
+        `<text x="${r(at.x)}" y="${r(at.y + i * step)}" text-anchor="${ANCHOR[at.align]}" dominant-baseline="central" ${fontAttrs(el.font, fontSize, false, false)} fill="${el.textColor ?? el.stroke}">${esc(line)}</text>`,
     )
     .join('');
 }

@@ -17,6 +17,12 @@ export interface AccountProfile {
   username: string;
   nickname: string;
   avatar?: string;
+  /** Null on accounts from before emails, until one is added. */
+  email: string | null;
+  /** Sharing a board needs it, when `verificationRequired`. */
+  emailVerified: boolean;
+  /** The server's REQUIRE_EMAIL_VERIFICATION: off, accounts share without verifying. */
+  verificationRequired: boolean;
 }
 
 export interface SignedIn {

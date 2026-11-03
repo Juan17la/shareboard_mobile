@@ -99,6 +99,8 @@ export const HIGHLIGHTER_SCALE = 4;
 
 export interface ToolConfig {
   color: string;
+  /** A figure's or a line's label; its own colour, not the border's. */
+  textColor: string;
   width: number;
   pen: PenKind;
   /** The paper of new sticky notes (`StickyColors`). */
@@ -266,6 +268,7 @@ export function shapeElement(
     from: ends.from,
     to: ends.to,
     stroke: config.color,
+    textColor: config.textColor,
     strokeWidth: clampWidth(config.width),
     fill: isFillable(shape) ? fillWith(config.fillColor ?? config.color, config.fillOpacity) : null,
     ...(shape === 'polygon' ? { sides: config.sides } : null),
@@ -274,11 +277,12 @@ export function shapeElement(
     ...(config.rounded && canRound(shape) ? { rounded: true } : null),
     ...(shape === 'line' || shape === 'arrow'
       ? {
-          headStart: config.headStart,
-          headEnd: config.headEnd,
-          route: config.route,
-          ...(config.startAxis ? { startAxis: config.startAxis } : null),
-          ...(config.endAxis ? { endAxis: config.endAxis } : null),
+          // Markers and routes are an arrow's; a line is always bare and straight.
+          headStart: shape === 'arrow' ? config.headStart : 'none',
+          headEnd: shape === 'arrow' ? config.headEnd : 'none',
+          route: shape === 'arrow' ? config.route : 'straight',
+          ...(shape === 'arrow' && config.startAxis ? { startAxis: config.startAxis } : null),
+          ...(shape === 'arrow' && config.endAxis ? { endAxis: config.endAxis } : null),
           fromLink: ends.fromLink ?? null,
           toLink: ends.toLink ?? null,
         }
@@ -303,6 +307,7 @@ export function sketchElement(sketch: Sketch, config: ToolConfig, base: ElementB
     from: sketch.from,
     to: sketch.to,
     stroke: config.color,
+    textColor: config.textColor,
     strokeWidth: clampWidth(config.width),
     fill: null,
     ...(line
@@ -362,6 +367,8 @@ interface BoardState {
   // interaction
   tool: ToolType;
   config: ToolConfig;
+  /** What each `StyleKey` was last set to; `config` is the one of the tool in hand. */
+  styles: Partial<Record<StyleKey, Partial<ToolConfig>>>;
   camera: Camera;
   /**
    * Whether the tool rail's options column is open. Store state rather than
@@ -581,6 +588,7 @@ interface BoardState {
 
 const DEFAULT_CONFIG: ToolConfig = {
   color: DrawingPalette[0],
+  textColor: DrawingPalette[0],
   width: StrokeSizes[1],
   pen: 'pen',
   stickyColor: StickyColors[0],
@@ -606,6 +614,24 @@ const DEFAULT_CONFIG: ToolConfig = {
   startAxis: null,
   endAxis: null,
 };
+
+/**
+ * Who remembers an option: lines, arrows and text each keep their own, so
+ * restyling one never changes the next of another; the other tools share a set.
+ */
+type StyleKey = 'line' | 'arrow' | 'text' | 'other';
+
+const toolStyleKey = (tool: ToolType, shape: ShapeKind): StyleKey =>
+  tool === 'text' ? 'text' : tool === 'shape' && (shape === 'line' || shape === 'arrow') ? shape : 'other';
+
+const elementStyleKey = (el: BoardElement): StyleKey =>
+  el.kind === 'text' ? 'text' : el.kind === 'shape' && (el.shape === 'line' || el.shape === 'arrow') ? el.shape : 'other';
+
+const configFor = (styles: Partial<Record<StyleKey, Partial<ToolConfig>>>, tool: ToolType, shape: ShapeKind): ToolConfig => ({
+  ...DEFAULT_CONFIG,
+  ...styles[toolStyleKey(tool, shape)],
+  shape,
+});
 
 const DEFAULT_CAMERA: Camera = { x: 0, y: 0, scale: 1 };
 
@@ -778,6 +804,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     // look around, pick things up and move the board, and does no harm.
     tool: 'select',
     config: DEFAULT_CONFIG,
+    styles: {},
     camera: DEFAULT_CAMERA,
     railOpen: false,
     selectedIds: [],
@@ -931,7 +958,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
     finishCreate(ids) {
       if (!ids.length) return;
-      set({ tool: 'select', selectedIds: ids, railOpen: true });
+      set((s) => ({ tool: 'select', selectedIds: ids, railOpen: true, config: configFor(s.styles, 'select', s.config.shape) }));
     },
 
     pickTool(tool, shape) {
@@ -943,11 +970,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
       // Picking a tool is about the next thing drawn: whatever was selected is
       // let go first, so a new kind never converts it.
       s.select(null);
-      s.setTool(tool);
       if (shape) set((st) => ({ config: { ...st.config, shape } }));
-      // A line starts bare and an arrow with a head: the kind's own default.
-      if (shape === 'line') set((st) => ({ config: { ...st.config, headStart: 'none', headEnd: 'none' } }));
-      if (shape === 'arrow') set((st) => ({ config: { ...st.config, headStart: 'none', headEnd: 'arrow' } }));
+      s.setTool(tool);
       // The hand has nothing to configure; an empty strip would just be noise.
       set({ railOpen: tool !== 'hand' });
     },
@@ -955,11 +979,18 @@ export const useBoardStore = create<BoardState>((set, get) => {
     setTool(tool) {
       // The selection belongs to the cursor and shape tools; any other drops it.
       const keeps = tool === 'select' || tool === 'shape';
-      set((s) => ({ tool, selectedIds: keeps ? s.selectedIds : [] }));
+      set((s) => ({ tool, selectedIds: keeps ? s.selectedIds : [], config: configFor(s.styles, tool, s.config.shape) }));
     },
 
     setConfig(patch) {
-      set((s) => ({ config: { ...s.config, ...patch } }));
+      // Remembered by what it edits: the selection's kinds, else the tool in hand.
+      const selected = get().selectedElements();
+      set((s) => {
+        const keys = selected.length ? selected.map(elementStyleKey) : [toolStyleKey(s.tool, s.config.shape)];
+        const styles = { ...s.styles };
+        for (const key of keys) styles[key] = { ...styles[key], ...patch };
+        return { styles, config: configFor(styles, s.tool, patch.shape ?? s.config.shape) };
+      });
       // With something selected the options strip edits *it*, not just the
       // next thing drawn.
       get().restyle(patch);
@@ -992,8 +1023,13 @@ export const useBoardStore = create<BoardState>((set, get) => {
             if (shape === 'line') Object.assign(p, { headStart: 'none', headEnd: 'none' });
             if (shape === 'arrow' && headsOf(el).every((h) => h === 'none')) p.headEnd = 'arrow';
           }
-          // The border only: the fill has a colour of its own, whatever the border is recoloured to.
-          if (patch.color !== undefined) p.stroke = patch.color;
+          // The border only: the fill and the label have colours of their own. A label
+          // that was still following the border keeps the colour it had.
+          if (patch.color !== undefined) {
+            p.stroke = patch.color;
+            if (!el.textColor) p.textColor = el.stroke;
+          }
+          if (patch.textColor !== undefined) p.textColor = patch.textColor;
           if (patch.width !== undefined) p.strokeWidth = clampWidth(patch.width);
           if (patch.fillColor !== undefined || patch.fillOpacity !== undefined) {
             // The shape's own colour unless one was chosen: a red box gets a red wash.
@@ -1016,13 +1052,17 @@ export const useBoardStore = create<BoardState>((set, get) => {
           if (patch.valign !== undefined) p.valign = patch.valign;
           if (patch.rounded !== undefined && canRound(shape)) p.rounded = patch.rounded || null;
           if (patch.opacity !== undefined) p.opacity = patch.opacity >= 100 ? null : patch.opacity / 100;
-          for (const k of ['headStart', 'headEnd', 'route', 'dash', 'startAxis', 'endAxis'] as const) {
-            if (patch[k] !== undefined) p[k] = patch[k];
+          if (patch.dash !== undefined) p.dash = patch.dash;
+          // An arrow's options, even when a line or a figure is selected along with it.
+          if (shape === 'arrow') {
+            for (const k of ['headStart', 'headEnd', 'route', 'startAxis', 'endAxis'] as const) {
+              if (patch[k] !== undefined) p[k] = patch[k];
+            }
           }
           // A custom fold is only meaningful for the route it was dragged on
           // (board-unit offset for a curve, an axis fraction for an elbow):
           // switching route drops it back to that route's default look.
-          if (patch.route !== undefined && patch.route !== el.route) {
+          if (shape === 'arrow' && patch.route !== undefined && patch.route !== el.route) {
             p.bend = null;
             // The same goes for what shapes each route: a curve's handles, an elbow's axes.
             if (patch.startAxis === undefined) p.startAxis = null;
@@ -1398,7 +1438,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
     /** Returns the new id so the caller can open the text editor on it. */
     addText(at) {
       if (!get().canEditNow()) return null;
-      const { config } = get();
+      // A double click makes text with any tool in hand: it still takes text's own options.
+      const config = configFor(get().styles, 'text', get().config.shape);
       const el: TextElement = {
         ...baseFields(),
         kind: 'text',

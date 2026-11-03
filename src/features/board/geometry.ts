@@ -806,24 +806,25 @@ export function roundedPolygonPath(pts: Point[], r: number): string {
   return `${d}Z`;
 }
 
-/** Elements whose box lies entirely inside `b` — the marquee's pick. */
+/** Elements wholly inside `b` — the marquee's pick: a band that only clips one leaves it out. */
 export function elementsIn(elements: BoardElement[], b: Bounds): BoardElement[] {
-  // Anything the band touches, not only what it encloses: a finger cannot
-  // frame a stroke to the pixel, and a stroke's padding made it fail anyway.
+  const within = (p: Point) => inBox(p, b, 0);
   return elements.filter((el) => {
     const e = elementBounds(el);
-    return e.x <= b.x + b.width && e.x + e.width >= b.x && e.y <= b.y + b.height && e.y + e.height >= b.y;
+    if (!within(e) || !within({ x: e.x + e.width, y: e.y + e.height })) return false;
+    // A curve or an elbow can stray outside the box of its two ends.
+    return !(el.kind === 'shape' && isLineLike(el)) || routePoints(el).every(within);
   });
 }
 
 // --- connection points -----------------------------------------------------
-// A line's end dropped on an enclosed shape binds to it: the point is kept as
-// a fraction (u, v) of the shape's box, so it follows the shape when it moves
-// or resizes (`followLinks`). What a shape offers is on its real outline — an
-// ellipse's eight, a triangle's and a polygon's corners and the middle of each
-// side, a rectangle's corners and sides' middles — plus its centre: dropping
-// there aims at the other end instead of pinning a spot. Near none of them, the
-// end pins the nearest point of the outline.
+// A line's end dropped close to an enclosed shape's outline binds to it: the
+// point is kept as a fraction (u, v) of the shape's box, so it follows the shape
+// when it moves or resizes (`followLinks`). What a shape offers is on its real
+// outline — an ellipse's eight, a triangle's and a polygon's corners and the
+// middle of each side, a rectangle's corners and sides' middles. Near none of
+// them, the end pins the nearest point of the outline. Well inside a shape it
+// binds to nothing: a line drawn in there stays where it was drawn.
 
 /** What an arrow end can bind to: an enclosed shape, a text or an image — never a stroke or another line. */
 export const isLinkTarget = (el: BoardElement): boolean =>
@@ -859,10 +860,10 @@ function localAnchors(el: BoardElement): Point[] {
   return out;
 }
 
-/** The connection points of a link target on the board: its centre, then the ones on its outline. */
+/** The connection points of a link target on the board. */
 export function anchorsOf(el: BoardElement): Point[] {
   if (!isLinkTarget(el)) return [];
-  return [centreOf(boxOf(el)), ...localAnchors(el).map((p) => toWorld(el, p))];
+  return localAnchors(el).map((p) => toWorld(el, p));
 }
 
 /**
@@ -929,59 +930,10 @@ function outlinePoint(el: BoardElement, p: Point): Point {
   return best;
 }
 
-/** Where the ray from the box centre towards `target` leaves the box. */
-function rayToBox(target: Point, b: Bounds): Point {
-  const c = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
-  const dx = target.x - c.x;
-  const dy = target.y - c.y;
-  if (!dx && !dy) return edgePoint(c, b);
-  const t = Math.min(
-    dx ? b.width / 2 / Math.abs(dx) : Infinity,
-    dy ? b.height / 2 / Math.abs(dy) : Infinity,
-  );
-  return { x: c.x + dx * t, y: c.y + dy * t };
-}
-
-/** Where the ray from a link target's centre towards `target` leaves its real outline (unturned frame). */
-function rayToOutline(el: BoardElement, target: Point): Point {
-  const o = outlineOf(el);
-  const b = boxOf(el);
-  if (!('ellipse' in o) && o.poly.length === 4 && (el.kind === 'image' || (el.kind === 'shape' && el.shape === 'rectangle'))) {
-    return rayToBox(target, b);
-  }
-  const c = centreOf(b);
-  const dx = target.x - c.x;
-  const dy = target.y - c.y;
-  if (!dx && !dy) return outlinePoint(el, c);
-  if ('ellipse' in o) {
-    const k = 1 / Math.hypot(dx / (b.width / 2 || 1), dy / (b.height / 2 || 1));
-    return { x: c.x + dx * k, y: c.y + dy * k };
-  }
-  // The nearest crossing of the ray with a side.
-  let best: Point | null = null;
-  let bestT = Infinity;
-  for (let i = 0; i < o.poly.length; i++) {
-    const a = o.poly[i];
-    const e = o.poly[(i + 1) % o.poly.length];
-    const sx = e.x - a.x;
-    const sy = e.y - a.y;
-    const den = dx * sy - dy * sx;
-    if (!den) continue;
-    const t = ((a.x - c.x) * sy - (a.y - c.y) * sx) / den;
-    const s = ((a.x - c.x) * dy - (a.y - c.y) * dx) / den;
-    if (t > 0 && s >= 0 && s <= 1 && t < bestT) {
-      bestT = t;
-      best = { x: c.x + dx * t, y: c.y + dy * t };
-    }
-  }
-  return best ?? outlinePoint(el, c);
-}
-
 /**
- * Where the two ends of a line land, and what they bind to. An end within
- * `radius` of an enclosed shape binds: near the centre dot it faces the other
- * end (so an arrow dragged from box A to box B links the two without aiming),
- * elsewhere it pins the nearest point of the outline.
+ * Where the two ends of a line land, and what they bind to. An end close to an
+ * enclosed shape's outline (`snapTarget`) binds, to the nearest connection point
+ * within `radius` or else the nearest point of the outline.
  */
 export function linkEndpoints(
   elements: BoardElement[],
@@ -990,22 +942,17 @@ export function linkEndpoints(
   radius: number,
 ): { from: Point; to: Point; fromLink: Link | null; toLink: Link | null } {
   const enclosed = elements.filter(isLinkTarget);
-  const centre = (el: BoardElement) => centreOf(boxOf(el));
   // Worked out in the target's unturned frame, then turned back onto the board.
-  const bind = (el: BoardElement | null, p: Point, other: Point) => {
+  const bind = (el: BoardElement | null, p: Point) => {
     if (!el) return { p, link: null };
     const b = boxOf(el);
-    const c = centre(el);
     const lp = toLocal(el, p);
     // The nearest connection point, when the end is within reach of one.
     let near: Point | null = null;
     for (const a of localAnchors(el)) {
       if (Math.hypot(a.x - lp.x, a.y - lp.y) <= radius && (!near || dist(a, lp) < dist(near, lp))) near = a;
     }
-    const at =
-      Math.hypot(lp.x - c.x, lp.y - c.y) <= radius
-        ? rayToOutline(el, toLocal(el, other))
-        : (near ?? outlinePoint(el, lp));
+    const at = near ?? outlinePoint(el, lp);
     return {
       p: toWorld(el, at),
       link: {
@@ -1015,15 +962,13 @@ export function linkEndpoints(
       },
     };
   };
-  const a = targetAt(enclosed, from, radius);
+  const a = snapTarget(enclosed, from, radius);
   // An end let go on the element the other end started from stays free: a
   // short drag inside one figure is not an arrow from it to itself.
-  const over = targetAt(enclosed, to, radius);
+  const over = snapTarget(enclosed, to, radius);
   const b = over === a ? null : over;
-  // Both ends bound: face the other shape's centre, so the ends stay put while
-  // the finger wanders inside its box.
-  const f = bind(a, from, b && b !== a ? centre(b) : to);
-  const t = bind(b, to, a && a !== b ? centre(a) : f.p);
+  const f = bind(a, from);
+  const t = bind(b, to);
   return { from: f.p, to: t.p, fromLink: f.link, toLink: t.link };
 }
 
@@ -1064,11 +1009,16 @@ export function shapeAt(elements: BoardElement[], at: Point, pad: number): Shape
   return null;
 }
 
-/** The topmost link target (shape or image) under `at`. */
-function targetAt(elements: BoardElement[], at: Point, pad: number): BoardElement | null {
+/** How far inside a figure an end still holds on to its outline, as a share of the reach outside it. */
+const INSIDE_REACH = 1 / 3;
+
+/** The topmost link target whose outline `at` is close to; being well inside one is not. */
+function snapTarget(elements: BoardElement[], at: Point, radius: number): BoardElement | null {
   for (let i = elements.length - 1; i >= 0; i--) {
     const el = elements[i];
-    if (el.kind === 'shape' ? shapeHit(el, at, pad) : inBox(toLocal(el, at), boxOf(el), pad)) return el;
+    const p = toLocal(el, at);
+    const outline = outlinePoints(el);
+    if (outlineDistance(p, outline) <= (insidePolygon(p, outline) ? radius * INSIDE_REACH : radius)) return el;
   }
   return null;
 }
@@ -1101,7 +1051,7 @@ export function shapeHit(el: ShapeElement, at: Point, pad: number): boolean {
 }
 
 /** A figure's outline (`outlineOf`) as points: an ellipse as a many-sided polygon. */
-function outlinePoints(el: ShapeElement): Point[] {
+function outlinePoints(el: BoardElement): Point[] {
   const o = outlineOf(el);
   if (!('ellipse' in o)) return o.poly;
   const { x, y, width, height } = o.ellipse;
