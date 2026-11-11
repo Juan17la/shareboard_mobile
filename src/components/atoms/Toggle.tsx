@@ -1,9 +1,9 @@
 /**
- * The pill switch from the design's settings and export sheets.
+ * The switch in the settings and export sheets: green when on, as a switch is
+ * on a phone, so "on" never reads as "this is the primary action".
  *
- * Not `react-native`'s `Switch`: that renders the platform control, which is
- * blue on iOS and Material-green on Android and would be the only element on
- * screen not wearing the app's accent.
+ * Not `react-native`'s `Switch`: that renders the platform control, which
+ * looks different on every platform; this one matches the web app's.
  */
 import { useEffect, useState } from 'react';
 import { Animated, Pressable } from 'react-native';
@@ -44,7 +44,7 @@ export function Toggle({
       accessibilityState={{ checked: value, disabled: !!disabled }}
       disabled={disabled}
       onPress={() => onChange(!value)}
-      hitSlop={8}
+      hitSlop={9}
       style={{ opacity: disabled ? 0.45 : 1 }}
     >
       <Animated.View
@@ -54,23 +54,23 @@ export function Toggle({
           borderRadius: 99,
           backgroundColor: progress.interpolate({
             inputRange: [0, 1],
-            outputRange: [c.borderStrong, c.accent],
+            outputRange: [c.fillStrong, c.switchOn],
           }),
         }}
       >
         <Animated.View
           style={{
             position: 'absolute',
-            top: 3,
-            left: progress.interpolate({ inputRange: [0, 1], outputRange: [3, 21] }),
-            width: 20,
-            height: 20,
-            borderRadius: 10,
+            top: 2,
+            left: progress.interpolate({ inputRange: [0, 1], outputRange: [2, 20] }),
+            width: 22,
+            height: 22,
+            borderRadius: 11,
             backgroundColor: '#FFFFFF',
             shadowColor: '#000',
-            shadowOpacity: 0.25,
-            shadowRadius: 3,
-            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.2,
+            shadowRadius: 4,
+            shadowOffset: { width: 0, height: 2 },
             elevation: 2,
           }}
         />

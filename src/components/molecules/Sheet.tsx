@@ -3,7 +3,7 @@
  *
  * The old build put these on `(modals)` routes, which pushed a whole screen and
  * hid the board behind it. The design keeps the board visible under a scrim and
- * slides a solid panel up over it — you can still see the drawing you are
+ * slides a solid grouped-grey panel up over it — you can still see the drawing you are
  * granting someone access to. Sheets are therefore components rendered by the
  * screen that owns them, not routes.
  *
@@ -27,14 +27,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Glass, Radius, lineColor, type Line } from '@/constants/theme';
+import { Glass, Radius } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 
 import { useT } from '@/features/i18n/store';
 
 import { MirrorScene } from './BoardMirror';
-import { GlassPanel, NoGlassScene } from '../atoms/Glass';
+import { NoGlassScene } from '../atoms/Glass';
 import { IconButton } from '../atoms/Button';
+import { Icon } from '../atoms/Icon';
 import { Txt } from '../atoms/Text';
 import { ToastHost } from './Toast';
 import { SheetBack } from './sheet-back';
@@ -63,7 +64,7 @@ export function Sheet({
    * body and scroll themselves (a chat, with its input pinned at the bottom).
    */
   full?: boolean;
-  /** The title set big, for a sheet that is one task (sign in). */
+  /** The title set big and to the left, for a sheet that is one task (sign in). */
   large?: boolean;
 }) {
   const onBack = useContext(SheetBack);
@@ -162,68 +163,74 @@ export function Sheet({
               ...(full ? { height: fit } : null),
             }}
           >
-            <GlassPanel
-              level="panel"
-              radius={Radius.xl}
-              border={null}
+            <View
               style={{
                 // The panel gives way to the wrapper's maximum height, and its
                 // scroll view with it; unshrunk, the bottom of a tall sheet
                 // (Settings' delete button) ran past the edge, out of reach.
                 flexShrink: 1,
                 ...(full ? { flex: 1 } : null),
-                borderTopLeftRadius: Radius.lg + 2,
-                borderTopRightRadius: Radius.lg + 2,
-                borderBottomLeftRadius: 0,
-                borderBottomRightRadius: 0,
+                overflow: 'hidden',
+                backgroundColor: c.sheet,
+                borderTopLeftRadius: Radius.xl,
+                borderTopRightRadius: Radius.xl,
                 // A hairline edge: on the black board the shadow has nothing to fall on.
                 borderTopWidth: 1,
-                borderTopColor: c.borderStrong,
-                shadowColor: '#0F1B2D',
+                borderTopColor: c.border,
+                shadowColor: '#000000',
                 shadowOpacity: 0.18,
                 shadowRadius: 40,
-                shadowOffset: { width: 0, height: -12 },
+                shadowOffset: { width: 0, height: -8 },
                 elevation: 24,
               }}
             >
               <NoGlassScene>
               <View {...pan.panHandlers}>
-              <View style={{ alignItems: 'center', paddingTop: 6 }}>
-                <View
-                  style={{
-                    width: 36,
-                    height: 4,
-                    borderRadius: 99,
-                    backgroundColor: c.borderStrong,
-                  }}
-                />
+              <View style={{ alignItems: 'center', paddingTop: 5 }}>
+                <View style={{ width: 36, height: 5, borderRadius: 99, backgroundColor: c.borderStrong }} />
               </View>
 
+              {/* The title sits between two equal slots, so it stays centred
+                  whether or not there is a back button. A large title gets a
+                  row of its own under the buttons. */}
               <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 10,
-                  paddingHorizontal: 16,
-                  paddingTop: 4,
-                  paddingBottom: 10,
-                  borderBottomWidth: 1,
-                  borderBottomColor: c.border,
+                  gap: 8,
+                  paddingHorizontal: 12,
+                  paddingTop: 6,
+                  paddingBottom: 8,
                 }}
               >
-                {onBack ? <IconButton icon="back" label={t.back} onPress={onBack} size={32} iconSize={15} /> : null}
+                <View style={{ width: 30 }}>
+                  {onBack ? <IconButton icon="back" label={t.back} onPress={onBack} size={30} iconSize={14} /> : null}
+                </View>
+                <Txt
+                  weight="semibold"
+                  size={16}
+                  leading={1.25}
+                  tracking={-0.2}
+                  numberOfLines={1}
+                  accessibilityRole="header"
+                  style={{ flex: 1, textAlign: 'center' }}
+                >
+                  {large ? '' : title}
+                </Txt>
+                <IconButton icon="close" label={closeLabel} onPress={onClose} size={30} iconSize={13} />
+              </View>
+              {large ? (
                 <Txt
                   weight="bold"
-                  size={large ? 28 : 18}
+                  size={24}
                   leading={1.2}
-                  tracking={large ? -0.6 : -0.3}
-                  style={{ flex: 1 }}
+                  tracking={-0.5}
+                  accessibilityRole="header"
+                  style={{ paddingHorizontal: 28, paddingBottom: 8 }}
                 >
                   {title}
                 </Txt>
-                <IconButton icon="close" label={closeLabel} onPress={onClose} size={32} iconSize={15} />
-              </View>
+              ) : null}
               </View>
 
               {full ? (
@@ -231,7 +238,7 @@ export function Sheet({
                   style={{
                     flex: 1,
                     paddingHorizontal: 16,
-                    paddingTop: 12,
+                    paddingTop: 6,
                     paddingBottom: (lift ? 12 : Math.max(insets.bottom, 12)) + 10,
                   }}
                 >
@@ -241,7 +248,7 @@ export function Sheet({
                 <ScrollView
                   contentContainerStyle={{
                     paddingHorizontal: 16,
-                    paddingTop: 14,
+                    paddingTop: 6,
                     paddingBottom: (lift ? 12 : Math.max(insets.bottom, 12)) + 16,
                   }}
                   keyboardShouldPersistTaps="handled"
@@ -251,7 +258,7 @@ export function Sheet({
                 </ScrollView>
               )}
               </NoGlassScene>
-            </GlassPanel>
+            </View>
           </Animated.View>
 
           {/* Lives inside the sheet's own window so a toast raised by something
@@ -267,34 +274,31 @@ export function Sheet({
 const InGroup = createContext(false);
 
 /**
- * A titled list of rows in one card, divided by hairlines — the settings
- * shape. Each group sits on its own line, like the menu's sections.
- * Mirrors web `SheetGroup`.
+ * A titled list of rows in one white card on the grouped ground, parted by
+ * hairlines that start at the text, not at the card's edge: the settings
+ * shape. Mirrors web `SheetGroup`.
  */
-export function SheetGroup({ title, line, children }: { title?: string; line?: Line; children: ReactNode }) {
+export function SheetGroup({ title, footer, children }: { title?: string; footer?: string; children: ReactNode }) {
   const c = useColors();
   const rows = Children.toArray(children);
   return (
     <View accessibilityLabel={title} style={{ gap: 6 }}>
-      {title ? <SectionLabel line={line}>{title}</SectionLabel> : null}
-      <View
-        style={{
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: c.borderStrong,
-          backgroundColor: c.background,
-          overflow: 'hidden',
-        }}
-      >
+      {title ? <SectionLabel>{title}</SectionLabel> : null}
+      <View style={{ borderRadius: Radius.lg, backgroundColor: c.glassTintSolid, overflow: 'hidden' }}>
         <InGroup.Provider value>
           {rows.map((row, i) => (
             <Fragment key={i}>
-              {i > 0 ? <View style={{ height: 1, backgroundColor: c.border }} /> : null}
+              {i > 0 ? <View style={{ height: 1, marginLeft: 12, backgroundColor: c.border }} /> : null}
               {row}
             </Fragment>
           ))}
         </InGroup.Provider>
       </View>
+      {footer ? (
+        <Txt size={12} leading={1.35} tone="secondary" style={{ paddingHorizontal: 12 }}>
+          {footer}
+        </Txt>
+      ) : null}
     </View>
   );
 }
@@ -303,32 +307,48 @@ export function SheetGroup({ title, line, children }: { title?: string; line?: L
 export function SheetRow({
   title,
   description,
+  left,
   right,
   onPress,
   accessibilityLabel,
   tone = 'default',
+  checked,
+  disabled,
 }: {
   title: string;
-  description?: string;
+  description?: ReactNode;
+  /** An icon or avatar before the text. */
+  left?: ReactNode;
   right?: ReactNode;
   onPress?: () => void;
   accessibilityLabel?: string;
-  /** `danger` for the destructive rows at the end of a group. */
-  tone?: 'default' | 'danger';
+  /** `danger` for the destructive rows at the end of a group; `accent` for a row that is a link. */
+  tone?: 'default' | 'danger' | 'accent';
+  /** Set on the rows of a one-of-many list: the row is announced as a radio. */
+  checked?: boolean;
+  disabled?: boolean;
 }) {
   const c = useColors();
   const grouped = useContext(InGroup);
   const body = (
     <>
+      {left}
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-        <Txt weight="semibold" size={14} leading={1.2} tone={tone === 'danger' ? 'danger' : 'default'}>
+        <Txt
+          size={16}
+          leading={1.25}
+          numberOfLines={1}
+          color={tone === 'danger' ? c.danger : tone === 'accent' ? c.accentText : c.text}
+        >
           {title}
         </Txt>
-        {description ? (
-          <Txt size={12} leading={1.3} tone="secondary">
+        {typeof description === 'string' ? (
+          <Txt size={12} leading={1.35} tone="secondary">
             {description}
           </Txt>
-        ) : null}
+        ) : (
+          description ?? null
+        )}
       </View>
       {right}
     </>
@@ -339,17 +359,19 @@ export function SheetRow({
     alignItems: 'center' as const,
     justifyContent: 'space-between' as const,
     gap: 12,
-    minHeight: 50,
+    minHeight: 44,
     paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingVertical: 7,
   };
 
   const content = onPress ? (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={checked === undefined ? 'button' : 'radio'}
       accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityState={{ disabled: !!disabled, ...(checked === undefined ? null : { checked }) }}
+      disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [style, pressed ? { backgroundColor: c.surfaceSelected } : null]}
+      style={({ pressed }) => [style, pressed ? { backgroundColor: c.fill } : null]}
     >
       {body}
     </Pressable>
@@ -360,33 +382,21 @@ export function SheetRow({
   return grouped ? (
     content
   ) : (
-    <GlassPanel level="row" radius={12} border={c.borderStrong}>
-      {content}
-    </GlassPanel>
+    <View style={{ borderRadius: Radius.lg, backgroundColor: c.glassTintSolid, overflow: 'hidden' }}>{content}</View>
   );
 }
 
-/**
- * A section heading inside sheets and screens, set like a station on a line
- * map: a ringed stop in the section's line colour, then the name.
- */
-export function SectionLabel({ children, line = 'ink' }: { children: ReactNode; line?: Line }) {
-  const c = useColors();
+/** The small grey heading over a group or a field, lined up with the text under it. */
+export function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-      <View
-        style={{
-          width: 12,
-          height: 12,
-          borderRadius: 6,
-          borderWidth: 3,
-          borderColor: lineColor(c, line),
-          backgroundColor: c.background,
-        }}
-      />
-      <Txt weight="bold" size={13}>
-        {children}
-      </Txt>
-    </View>
+    <Txt weight="medium" size={13} tone="secondary" style={{ paddingHorizontal: 12 }}>
+      {children}
+    </Txt>
   );
+}
+
+/** The chevron at the end of a row that leads somewhere. */
+export function RowChevron() {
+  const c = useColors();
+  return <Icon name="chevron" size={13} color={c.textTertiary} />;
 }

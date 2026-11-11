@@ -6,7 +6,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { Radius, Shadow, type Palette } from '@/constants/theme';
+import { Radius, type Palette } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
 
 import { Icon, type IconName } from './Icon';
@@ -14,11 +14,12 @@ import { tip } from '../molecules/Toast';
 import { Txt } from './Text';
 
 /**
- * Pills, like the line badges on a transit sign. `primary` (blue), `go`
- * (green: the step that finishes a flow) and `danger` are filled flat;
- * `secondary` is outlined in ink. Mirrors web `ui/Button.tsx`.
+ * Rounded rectangles, flat. `primary` is the one filled blue button a surface
+ * gets; `secondary` is a grey fill, `ghost` is plain tinted text, `danger` is
+ * a red tint for the answer that destroys something, `dashed` a drop target.
+ * 44pt tall, 36 when `compact`. Mirrors web `atoms/Button.tsx`.
  */
-export type ButtonVariant = 'primary' | 'go' | 'secondary' | 'ghost' | 'danger' | 'dashed';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dashed';
 
 export interface ButtonProps extends Omit<PressableProps, 'children' | 'style'> {
   label: string;
@@ -28,8 +29,6 @@ export interface ButtonProps extends Omit<PressableProps, 'children' | 'style'> 
   fullWidth?: boolean;
   /** Compact height for inline use next to an input. */
   compact?: boolean;
-  /** The icon after the label (a "go on" arrow) instead of before it. */
-  iconAfter?: boolean;
   style?: ViewStyle;
 }
 
@@ -39,7 +38,9 @@ function foreground(c: Palette, variant: ButtonVariant): string {
     case 'secondary':
       return c.text;
     case 'ghost':
-      return c.textSecondary;
+      return c.accentText;
+    case 'danger':
+      return c.danger;
     case 'dashed':
       return c.textSecondary;
     default:
@@ -47,52 +48,19 @@ function foreground(c: Palette, variant: ButtonVariant): string {
   }
 }
 
-function container(
-  c: Palette,
-  variant: ButtonVariant,
-  disabled: boolean,
-  pressed: boolean,
-): ViewStyle {
-  const base: ViewStyle = {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderRadius: Radius.pill,
-    opacity: disabled ? 0.55 : 1,
-  };
-  // Filled like signage: the flat line colour, flat as enamel, a soft low
-  // shadow, and the deeper shade while the finger is on it.
-  const filled = (fill: string, deep: string, shadow: ViewStyle): ViewStyle => ({
-    ...base,
-    backgroundColor: pressed ? deep : fill,
-    ...(disabled ? null : shadow),
-  });
+/** The fill at rest and under the finger: pressing darkens it, nothing moves. */
+function fills(c: Palette, variant: ButtonVariant): [rest: string, pressed: string] {
   switch (variant) {
     case 'primary':
-      return filled(c.accent, c.accentDeep, Shadow.accent);
-    case 'go':
-      return filled(c.go, c.goDeep, Shadow.accent);
-    case 'danger':
-      return filled(c.danger, '#A00D25', Shadow.danger);
-    // Outlined in ink: clearly a button, never competing with a filled one.
+      return [c.accent, c.accentDeep];
     case 'secondary':
-      return {
-        ...base,
-        backgroundColor: pressed ? c.surfaceSelected : 'transparent',
-        borderWidth: 2,
-        borderColor: c.text,
-      };
-    case 'dashed':
-      return {
-        ...base,
-        borderWidth: 2,
-        borderStyle: 'dashed',
-        borderColor: c.borderDashed,
-        borderRadius: Radius.lg,
-      };
+      return [c.fill, c.fillStrong];
+    case 'danger':
+      return [c.dangerSoft, c.fillStrong];
+    case 'ghost':
+      return ['transparent', c.accentSofter];
     default:
-      return { ...base, backgroundColor: pressed ? c.surfaceSelected : 'transparent' };
+      return ['transparent', c.fill];
   }
 }
 
@@ -103,7 +71,6 @@ export function Button({
   loading = false,
   fullWidth = false,
   compact = false,
-  iconAfter = false,
   disabled,
   style,
   ...rest
@@ -111,33 +78,43 @@ export function Button({
   const off = !!disabled || loading;
   const c = useColors();
   const fg = foreground(c, variant);
+  const [fill, pressedFill] = fills(c, variant);
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled: off }}
+      accessibilityState={{ disabled: off, busy: loading }}
       disabled={off}
+      // The compact size is drawn at 36 and still reaches 44 under a finger.
+      hitSlop={compact ? 4 : 0}
       style={({ pressed }) => [
-        container(c, variant, off, pressed),
         {
-          minHeight: compact ? 40 : 48,
-          paddingVertical: compact ? 8 : 12,
-          paddingHorizontal: compact ? 16 : 20,
-          flexDirection: iconAfter ? 'row-reverse' : 'row',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          minHeight: compact ? 36 : 44,
+          paddingVertical: compact ? 6 : 10,
+          paddingHorizontal: compact ? 12 : 16,
+          borderRadius: compact ? Radius.md : Radius.lg,
+          backgroundColor: pressed ? pressedFill : fill,
+          opacity: off ? 0.45 : 1,
           width: fullWidth ? '100%' : undefined,
-          transform: [{ scale: pressed && !off ? 0.985 : 1 }],
+          ...(variant === 'dashed'
+            ? { borderWidth: 1.5, borderStyle: 'dashed', borderColor: c.borderDashed }
+            : null),
         },
         style,
       ]}
       {...rest}
     >
       {loading ? (
-        <ActivityIndicator color={fg} />
+        <ActivityIndicator color={fg} size="small" />
       ) : (
         <>
-          {icon ? <Icon name={icon} size={compact ? 16 : 18} color={fg} /> : null}
-          <Txt weight="bold" size={compact ? 14 : 15} tracking={-0.1} color={fg}>
+          {icon ? <Icon name={icon} size={compact ? 15 : 17} color={fg} /> : null}
+          <Txt weight="semibold" size={compact ? 14 : 16} color={fg}>
             {label}
           </Txt>
         </>
@@ -146,12 +123,12 @@ export function Button({
   );
 }
 
-/** Round icon button ringed in ink, like a station marker — the header's back / menu affordances. */
+/** Round icon button on a grey fill: the sheet's close and back, the header's menu. */
 export function IconButton({
   icon,
   label,
   onPress,
-  size = 40,
+  size = 36,
   iconSize = 18,
   color: tint,
   disabled,
@@ -170,7 +147,7 @@ export function IconButton({
 }) {
   const c = useColors();
   const color = tint ?? c.text;
-  const background = fill ?? c.background;
+  const background = fill ?? c.fill;
   return (
     <Pressable
       accessibilityRole="button"
@@ -188,9 +165,7 @@ export function IconButton({
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: radius ?? size / 2,
-        borderWidth: 2,
-        borderColor: c.text,
-        backgroundColor: pressed ? c.surfaceSelected : background,
+        backgroundColor: pressed ? c.fillStrong : background,
         opacity: disabled ? 0.4 : 1,
       })}
     >
@@ -223,9 +198,7 @@ export function StepperButton({
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 13,
-        borderWidth: 2,
-        borderColor: c.text,
-        backgroundColor: pressed ? c.surfaceSelected : c.background,
+        backgroundColor: pressed ? c.fillStrong : c.fill,
       })}
     >
       <Icon name={icon} size={14} color={c.text} />

@@ -13,8 +13,7 @@ import { useColors } from '@/features/session/store';
 
 import { MirrorScene } from './BoardMirror';
 import { Button } from '../atoms/Button';
-import { GlassPanel, NoGlassScene } from '../atoms/Glass';
-import { Icon } from '../atoms/Icon';
+import { NoGlassScene } from '../atoms/Glass';
 import { Txt } from '../atoms/Text';
 
 export type ConfirmTone = 'warn' | 'danger';
@@ -41,8 +40,6 @@ export function ConfirmDialog({
   onCancel: () => void;
 }) {
   const c = useColors();
-  const isDanger = tone === 'danger';
-  const accent = isDanger ? c.danger : c.warn;
 
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
@@ -64,54 +61,45 @@ export function ConfirmDialog({
               backgroundColor: Glass.scrimStrong,
             }}
           />
-          {/* Left-aligned like the sheets: what happens, why it matters, then the
-              two answers, the safe one first and the consequence on the right.
-              Mirrors web `ConfirmDialog`. */}
-          <View style={{ width: '100%', maxWidth: 380 }}>
-            <GlassPanel
-              level="panel"
-              radius={16}
-              border={null}
-              style={{
-                borderWidth: 1,
-                borderColor: c.borderStrong,
-                shadowColor: '#0F1B2D',
-                shadowOpacity: 0.26,
-                shadowRadius: 40,
-                shadowOffset: { width: 0, height: 16 },
-                elevation: 24,
-              }}
-            >
-              <NoGlassScene>
-                <View style={{ gap: 12, padding: 18 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <View
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 16,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: isDanger ? c.dangerSoft : c.warnSoft,
-                      }}
-                    >
-                      <Icon name="warning" size={18} color={accent} />
-                    </View>
-                    <Txt weight="bold" size={17} leading={1.25} tracking={-0.2} style={{ flex: 1 }}>
-                      {title}
-                    </Txt>
-                  </View>
-                  <Txt size={14} leading={1.4} tone="secondary">
-                    {body}
-                  </Txt>
-                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-                    <Button label={cancelLabel} variant="secondary" compact disabled={busy} onPress={onCancel} />
-                    {/* Both uses (clear, delete) destroy work: the answer is always red. */}
-                    <Button label={confirmLabel} variant="danger" compact loading={busy} onPress={onConfirm} />
-                  </View>
+          {/* An alert: what happens, why it matters, then the two answers side
+              by side, the safe one first. Mirrors web `ConfirmDialog`. */}
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 300,
+              borderRadius: 14,
+              backgroundColor: c.sheet,
+              borderWidth: 1,
+              borderColor: c.border,
+              shadowColor: '#000000',
+              shadowOpacity: 0.28,
+              shadowRadius: 40,
+              shadowOffset: { width: 0, height: 16 },
+              elevation: 24,
+            }}
+          >
+            <NoGlassScene>
+              <View style={{ gap: 6, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 16 }}>
+                <Txt
+                  weight="semibold"
+                  size={17}
+                  leading={1.25}
+                  tracking={-0.2}
+                  accessibilityRole="header"
+                  style={{ textAlign: 'center' }}
+                >
+                  {title}
+                </Txt>
+                <Txt size={13} leading={1.4} tone="secondary" style={{ textAlign: 'center' }}>
+                  {body}
+                </Txt>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                  <Button label={cancelLabel} variant="secondary" disabled={busy} onPress={onCancel} style={{ flex: 1 }} />
+                  {/* Both uses (clear, delete) destroy work: the answer is always red. */}
+                  <Button label={confirmLabel} variant="danger" loading={busy} onPress={onConfirm} style={{ flex: 1 }} />
                 </View>
-              </NoGlassScene>
-            </GlassPanel>
+              </View>
+            </NoGlassScene>
           </View>
         </View>
       </MirrorScene>

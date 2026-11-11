@@ -20,7 +20,6 @@ import { useT, useTf } from '@/features/i18n/store';
 import { useBoardStore } from '@/features/board/store';
 
 import { Avatar, AvatarOverflow } from '../../atoms/Avatar';
-import { IconButton } from '../../atoms/Button';
 import { tourRef } from '../board/Tutorial';
 import { Icon } from '../../atoms/Icon';
 import { Txt } from '../../atoms/Text';
@@ -77,19 +76,17 @@ function BoardTile({ name, status, live }: { name: string; status: string; live:
   const c = useColors();
   const initial = Array.from(name.trim())[0]?.toUpperCase() ?? '·';
   return (
-    <View style={{ width: 36, height: 36 }}>
+    <View style={{ width: 30, height: 30 }}>
       <View
         style={{
           flex: 1,
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: 18,
+          borderRadius: 8,
           backgroundColor: c.accentSoft,
-          borderWidth: 2,
-          borderColor: c.accent,
         }}
       >
-        <Txt weight="extrabold" size={17} color={c.accentText}>
+        <Txt weight="semibold" size={15} color={c.accentText}>
           {initial}
         </Txt>
       </View>
@@ -166,19 +163,19 @@ export function BoardHeader({
     <>
       <BoardTile name={name} status={statusColor} live={online} />
       <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-        <Txt weight="extrabold" size={15} leading={1.2} tracking={-0.2} numberOfLines={1}>
+        <Txt weight="semibold" size={15} leading={1.2} tracking={-0.2} numberOfLines={1}>
           {name}
         </Txt>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-          <Txt weight="semibold" size={11} tone="secondary" numberOfLines={1} style={{ flexShrink: 1 }}>
+          <Txt size={11} tone="secondary" numberOfLines={1} style={{ flexShrink: 1 }}>
             {statusLabel}
           </Txt>
           {!canEdit && meta ? (
             <>
-              <Txt weight="semibold" size={11} tone="tertiary">
+              <Txt size={11} tone="tertiary">
                 ·
               </Txt>
-              <Txt weight="bold" size={11} tone="tertiary">
+              <Txt weight="medium" size={11} tone="tertiary">
                 {t.viewOnly}
               </Txt>
             </>
@@ -201,18 +198,18 @@ export function BoardHeader({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    height: 44,
-    paddingLeft: 4,
-    paddingRight: 14,
-    borderRadius: 22,
+    height: 40,
+    paddingLeft: 5,
+    paddingRight: 12,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: c.borderStrong,
-    backgroundColor: c.background,
-    shadowColor: '#0F1B2D',
+    borderColor: c.glassRim,
+    backgroundColor: c.glassFlat,
+    shadowColor: '#000000',
     shadowOpacity: 0.1,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   } as const;
 
   return (
@@ -262,24 +259,50 @@ export function BoardHeader({
         accessibilityLabel={t.share}
         onPress={onOpenShare}
         onLongPress={() => tip(t.share)}
+        hitSlop={2}
         style={({ pressed }) => ({
           flexDirection: 'row',
           alignItems: 'center',
           gap: 6,
-          height: 44,
-          paddingLeft: 13,
-          paddingRight: 16,
-          borderRadius: 22,
+          height: 40,
+          paddingLeft: 12,
+          paddingRight: 14,
+          borderRadius: 12,
           // Flat, no elevation: Android draws it as a grey box behind the pill.
           backgroundColor: pressed ? c.accentDeep : c.accent,
         })}
       >
         <Icon name="share" size={17} color="#FFFFFF" />
-        <Txt weight="bold" size={14} tone="inverse" numberOfLines={1}>
+        <Txt weight="semibold" size={15} tone="inverse" numberOfLines={1}>
           {t.share}
         </Txt>
       </Pressable>
-      <IconButton icon="more" label={t.boardMenu} onPress={onOpenMenu} size={44} iconSize={19} />
+      {/* Over the board a translucent fill would show the drawing through: a
+          solid chip, the same shape as the two beside it. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t.boardMenu}
+        onPress={onOpenMenu}
+        onLongPress={() => tip(t.boardMenu)}
+        hitSlop={2}
+        style={({ pressed }) => ({
+          width: 40,
+          height: 40,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: c.glassRim,
+          backgroundColor: pressed ? c.surfaceSelected : c.glassFlat,
+          shadowColor: '#000000',
+          shadowOpacity: 0.1,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 2 },
+          elevation: 3,
+        })}
+      >
+        <Icon name="more" size={19} color={c.text} />
+      </Pressable>
     </View>
   );
 }

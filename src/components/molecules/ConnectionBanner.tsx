@@ -38,31 +38,34 @@ export function ConnectionBanner({ top, onRetry }: { top: number; onRetry: () =>
           flexDirection: 'row',
           alignItems: 'center',
           gap: 10,
-          paddingVertical: 8,
-          paddingHorizontal: 14,
+          paddingVertical: 6,
+          paddingLeft: 12,
+          paddingRight: offline ? 6 : 12,
           borderRadius: 999,
           borderWidth: 1,
-          borderColor: offline ? 'rgba(196,53,58,0.25)' : c.border,
+          borderColor: offline ? c.dangerSoft : c.border,
           backgroundColor: c.glassFlat,
           ...Shadow.panel,
         }}
       >
         <Icon name={offline ? 'warning' : 'link'} size={15} color={color} />
-        <Txt weight="bold" size={12.5} color={color}>
+        <Txt weight="medium" size={13} color={color}>
           {offline ? t.offlineHint : t.reconnecting}
         </Txt>
         {offline ? (
           <Pressable
             accessibilityRole="button"
             onPress={onRetry}
+            hitSlop={8}
             style={{
-              paddingVertical: 5,
+              minHeight: 28,
+              justifyContent: 'center',
               paddingHorizontal: 12,
               borderRadius: 999,
-              backgroundColor: c.danger,
+              backgroundColor: c.dangerSoft,
             }}
           >
-            <Txt weight="extrabold" size={12} tone="inverse">
+            <Txt weight="semibold" size={13} tone="danger">
               {t.retry}
             </Txt>
           </Pressable>

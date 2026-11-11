@@ -13,7 +13,6 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 
-import { Radius } from '@/constants/theme';
 import { relativeTime, useT } from '@/features/i18n/store';
 import { useColors, useSessionStore } from '@/features/session/store';
 import { formatShortCode } from '@/utils/short-code';
@@ -22,9 +21,8 @@ import { forgetMyBoard, getMyBoards } from '@/services/api/boards';
 import type { MyBoard } from '@/services/api/types';
 
 import { Avatar } from '../../atoms/Avatar';
-import { GlassPanel } from '../../atoms/Glass';
 import { Icon } from '../../atoms/Icon';
-import { Sheet } from '../../molecules/Sheet';
+import { Sheet, SheetGroup } from '../../molecules/Sheet';
 import { Txt } from '../../atoms/Text';
 import { toast } from '../../molecules/Toast';
 
@@ -82,8 +80,8 @@ export function BoardsSheet({
 
   return (
     <Sheet open={open} title={t.myWhiteboards} onClose={onClose} closeLabel={t.close}>
-      <View style={{ gap: 8, paddingBottom: 8 }}>
-        <GlassPanel level="row" radius={Radius.lg} border={c.border}>
+      <View style={{ gap: 16, paddingBottom: 8 }}>
+        <SheetGroup>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t.localBoardName}
@@ -92,26 +90,26 @@ export function BoardsSheet({
               onClose();
               if (!onLocal) router.replace('/');
             }}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, paddingVertical: 12 }}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: pressed ? c.fill : 'transparent' })}
           >
             <View
-              style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceSelected }}
+              style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: c.fill }}
             >
-              <Icon name="pencil" size={18} color={c.text} />
+              <Icon name="pencil" size={17} color={c.text} />
             </View>
             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-              <Txt weight="bold" size={13.5} leading={1.2} numberOfLines={1}>
+              <Txt size={16} leading={1.25} numberOfLines={1}>
                 {t.localBoardName}
               </Txt>
-              <Txt size={11} tone="secondary" numberOfLines={1}>
+              <Txt size={12} tone="secondary" numberOfLines={1}>
                 {t.localRow}
               </Txt>
             </View>
-            {onLocal ? <Icon name="check" size={16} color={c.accent} /> : null}
+            {onLocal ? <Icon name="check" size={18} color={c.accentText} /> : null}
           </Pressable>
-        </GlassPanel>
+        </SheetGroup>
         {!live || (signedIn && mineFailed && mine === null) ? (
-          <Txt size={12.5} leading={1.4} tone="secondary" style={{ textAlign: 'center', paddingVertical: 24 }}>
+          <Txt size={13} leading={1.4} tone="secondary" style={{ textAlign: 'center', paddingVertical: 24 }}>
             {t.liveHidden}
           </Txt>
         ) : signedIn && mine === null ? (
@@ -120,7 +118,7 @@ export function BoardsSheet({
           </View>
         ) : rows.length === 0 ? (
           <Txt
-            size={12.5}
+            size={13}
             leading={1.4}
             tone="secondary"
             style={{ textAlign: 'center', paddingVertical: 24 }}
@@ -128,11 +126,11 @@ export function BoardsSheet({
             {signedIn ? t.myBoardsEmpty : t.noRecent}
           </Txt>
         ) : (
-          rows.map((board) => {
+          <SheetGroup>
+          {rows.map((board) => {
             const here = board.id === currentId;
             return (
-              <GlassPanel key={board.id} level="row" radius={Radius.lg} border={c.border}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View key={board.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`${board.name}, ${board.shortCode}`}
@@ -141,19 +139,21 @@ export function BoardsSheet({
                       onClose();
                       if (!here) router.setParams({ id: board.id });
                     }}
-                    style={{
+                    style={({ pressed }) => ({
                       flex: 1,
                       minWidth: 0,
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 11,
-                      paddingHorizontal: 13,
-                      paddingVertical: 12,
-                    }}
+                      gap: 12,
+                      minHeight: 52,
+                      paddingHorizontal: 12,
+                      paddingVertical: 7,
+                      backgroundColor: pressed ? c.fill : 'transparent',
+                    })}
                   >
-                    <Avatar name={board.name} color={nickColor} size={38} />
+                    <Avatar name={board.name} color={nickColor} size={34} />
                     <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                      <Txt weight="bold" size={13.5} leading={1.2} numberOfLines={1}>
+                      <Txt size={16} leading={1.25} numberOfLines={1}>
                         {board.name}
                       </Txt>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -162,8 +162,8 @@ export function BoardsSheet({
                             <Icon name="lock" size={11} color={c.textSecondary} />
                           </View>
                         ) : null}
-                        <Txt size={11} tone="secondary" numberOfLines={1} style={{ flexShrink: 1 }}>
-                          <Txt size={11} mono tone="secondary">
+                        <Txt size={12} tone="secondary" numberOfLines={1} style={{ flexShrink: 1 }}>
+                          <Txt size={12} mono tone="secondary">
                             {formatShortCode(board.shortCode)}
                           </Txt>
                           {` · ${relativeTime(t, board.at)}`}
@@ -171,7 +171,7 @@ export function BoardsSheet({
                         </Txt>
                       </View>
                     </View>
-                    {here ? <Icon name="check" size={16} color={c.accent} /> : null}
+                    {here ? <Icon name="check" size={18} color={c.accentText} /> : null}
                   </Pressable>
                   {/* The account's own boards are deleted from their settings, not forgotten. */}
                   {here || (signedIn && board.yours) ? null : (
@@ -186,9 +186,9 @@ export function BoardsSheet({
                     </Pressable>
                   )}
                 </View>
-              </GlassPanel>
             );
-          })
+          })}
+          </SheetGroup>
         )}
       </View>
     </Sheet>

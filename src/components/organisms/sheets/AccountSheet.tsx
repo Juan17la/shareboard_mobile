@@ -10,7 +10,7 @@ import { View } from 'react-native';
 import { Radius } from '@/constants/theme';
 import { fill } from '@/features/i18n/strings';
 import { useT } from '@/features/i18n/store';
-import { useColors, useSessionStore } from '@/features/session/store';
+import { useSessionStore } from '@/features/session/store';
 import { getMe } from '@/services/api/boards';
 import { ApiError } from '@/services/api/client';
 
@@ -33,7 +33,6 @@ export function AccountSheet({
   /** Called after signing in; closes the sheet by default. */
   onSignedIn?: () => void;
 }) {
-  const c = useColors();
   const t = useT();
   // Sign in first: most people opening this already have an account somewhere.
   const [mode, setMode] = useState<AuthMode>('login');
@@ -75,11 +74,11 @@ export function AccountSheet({
     >
       {account ? (
         <View style={{ gap: 12, paddingBottom: 8 }}>
-          <GlassPanel level="row" radius={Radius.lg} border={c.borderStrong}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 }}>
-              <Avatar name={nickname} color={nickColor} avatar={avatar} size={44} />
+          <GlassPanel level="row" radius={Radius.lg} border={null}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 10 }}>
+              <Avatar name={nickname} color={nickColor} avatar={avatar} size={40} />
               <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                <Txt weight="bold" size={15} leading={1.2} numberOfLines={1}>
+                <Txt weight="semibold" size={16} leading={1.25} numberOfLines={1}>
                   {nickname}
                 </Txt>
                 <Txt size={12} tone="secondary" numberOfLines={1}>
@@ -92,7 +91,7 @@ export function AccountSheet({
           <PasswordSection />
           <Button
             label={t.signOut}
-            variant="secondary"
+            variant="danger"
             fullWidth
             onPress={() => {
               useSessionStore.getState().signOut();

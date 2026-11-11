@@ -74,7 +74,7 @@ export default function Start() {
           padding: 28,
         }}
       >
-        <Txt weight="extrabold" size={20} leading={1.2} tracking={-0.4} style={{ textAlign: 'center' }}>
+        <Txt weight="semibold" size={20} leading={1.2} tracking={-0.3} style={{ textAlign: 'center' }}>
           {t.errCreate}
         </Txt>
         <Txt size={13} leading={1.45} tone="secondary" style={{ textAlign: 'center' }}>

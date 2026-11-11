@@ -99,18 +99,18 @@ export function ToastHost({
     >
       <View
         style={{
-          paddingHorizontal: 15,
-          paddingVertical: 9,
+          paddingHorizontal: 14,
+          paddingVertical: 8,
           borderRadius: Radius.pill,
-          backgroundColor: 'rgba(28,28,30,0.9)',
-          shadowColor: '#0F1B2D',
-          shadowOpacity: 0.28,
+          backgroundColor: 'rgba(44,44,46,0.94)',
+          shadowColor: '#000000',
+          shadowOpacity: 0.2,
           shadowRadius: 22,
           shadowOffset: { width: 0, height: 8 },
           elevation: 12,
         }}
       >
-        <Animated.Text style={{ fontFamily: Fonts.bold, fontSize: 12, color: '#FFFFFF' }}>
+        <Animated.Text style={{ fontFamily: Fonts.medium, fontSize: 13, color: '#FFFFFF' }}>
           {message}
         </Animated.Text>
       </View>

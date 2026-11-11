@@ -82,7 +82,7 @@ export function JoinSheet({
 
   return (
     <Sheet open={open} title={t.anotherWhiteboard} onClose={onClose} closeLabel={t.close}>
-      <View style={{ gap: 10, marginBottom: 22 }}>
+      <View style={{ gap: 8, marginBottom: 20 }}>
         <SectionLabel>{t.newWhiteboard}</SectionLabel>
         <Field
           value={name}
@@ -108,13 +108,13 @@ export function JoinSheet({
               key={i}
               style={{
                 flex: 1,
-                height: 48,
-                borderRadius: 12,
+                height: 44,
+                borderRadius: 10,
                 borderWidth: 1.5,
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderColor: code.length === i ? c.accent : c.borderField,
-                backgroundColor: code.length === i ? c.background : c.glassTintSolid,
+                borderColor: code.length === i ? c.accent : 'transparent',
+                backgroundColor: c.glassTintSolid,
               }}
             >
               <Txt mono weight="bold" size={18}>
@@ -144,12 +144,12 @@ export function JoinSheet({
             }}
           />
         </Pressable>
-        <Txt size={11} leading={1.4} tone="secondary">
+        <Txt size={12} leading={1.35} tone="secondary" style={{ paddingHorizontal: 12 }}>
           {t.joinCodeHint}
         </Txt>
         <Button
           label={t.enter}
-          icon="arrow"
+          variant="secondary"
           loading={busy}
           disabled={code.length < SHORT_CODE_LENGTH}
           fullWidth

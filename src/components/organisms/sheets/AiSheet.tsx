@@ -121,7 +121,7 @@ export function AiSheet({ open, onClose }: { open: boolean; onClose: () => void 
                 paddingHorizontal: 12,
                 paddingVertical: 8,
                 backgroundColor:
-                  m.from === 'you' ? c.accent : m.from === 'error' ? c.dangerSoft : c.surfaceSelected,
+                  m.from === 'you' ? c.accent : m.from === 'error' ? c.dangerSoft : c.glassTintSolid,
               }}
             >
               <Txt
