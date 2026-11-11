@@ -123,15 +123,15 @@ export function SettingsSheet({
     }
   }
 
-  const chevron = <Icon name="chevron" size={14} color={c.textTertiary} />;
+  const chevron = <Icon name="chevron" size={13} color={c.textTertiary} />;
   const inputRow = {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: 12,
-    minHeight: 50,
+    minHeight: 44,
     paddingHorizontal: 12,
   };
-  const inputText = { flex: 1, minWidth: 0, padding: 0, fontFamily: Fonts.medium, fontSize: 15, color: c.text };
+  const inputText = { flex: 1, minWidth: 0, padding: 0, fontFamily: Fonts.regular, fontSize: 16, color: c.text };
 
   return (
     <Sheet
@@ -145,7 +145,7 @@ export function SettingsSheet({
       tall
     >
       <View style={{ gap: 16, paddingBottom: 8 }}>
-        <SheetGroup title={t.setYou} line="blue">
+        <SheetGroup title={t.setYou}>
           <SheetRow
             title={account ? `@${account.username}` : t.accountGuest}
             description={account ? t.sheetAccount : t.accountGuestDesc}
@@ -158,7 +158,7 @@ export function SettingsSheet({
               account ? (
                 chevron
               ) : (
-                <Txt weight="bold" size={13} color={c.accentText}>
+                <Txt size={16} color={c.accentText}>
                   {t.signIn}
                 </Txt>
               )
@@ -173,7 +173,7 @@ export function SettingsSheet({
               onBlur={commitNick}
               onSubmitEditing={commitNick}
               placeholder={t.nickPlaceholder}
-              placeholderTextColor={c.textSecondary}
+              placeholderTextColor={c.textTertiary}
               maxLength={LIMITS.maxNicknameLength}
               autoComplete="nickname"
               accessibilityLabel={t.nickPlaceholder}
@@ -182,7 +182,7 @@ export function SettingsSheet({
             <Icon name="edit" size={15} color={c.textTertiary} />
           </View>
           <View style={{ gap: 8, paddingHorizontal: 12, paddingVertical: 10 }}>
-            <Txt weight="semibold" size={12} tone="secondary">
+            <Txt size={12} tone="secondary">
               {t.yourIcon}
             </Txt>
             <AvatarPicker name={nick} />
@@ -190,9 +190,9 @@ export function SettingsSheet({
         </SheetGroup>
 
         {meta ? (
-          <SheetGroup title={t.menuThisBoard} line="green">
+          <SheetGroup title={t.menuThisBoard}>
             <View style={inputRow}>
-              <Txt weight="semibold" size={13} tone="secondary" style={{ width: 64 }}>
+              <Txt size={16} style={{ width: 72 }}>
                 {t.boardName}
               </Txt>
               <TextInput
@@ -203,7 +203,7 @@ export function SettingsSheet({
                 editable={isCreator && !renaming}
                 maxLength={LIMITS.maxBoardNameLength}
                 accessibilityLabel={t.rename}
-                style={[inputText, { color: isCreator ? c.text : c.textSecondary }]}
+                style={[inputText, { color: c.textSecondary, textAlign: 'right' }]}
               />
               {isCreator ? <Icon name="edit" size={15} color={c.textTertiary} /> : null}
             </View>
@@ -227,7 +227,7 @@ export function SettingsSheet({
           </SheetGroup>
         ) : null}
 
-        <SheetGroup title={t.setDisplay} line="violet">
+        <SheetGroup title={t.setDisplay}>
           {rows.map((row) => (
             <SheetRow
               key={row.key}
@@ -244,7 +244,7 @@ export function SettingsSheet({
             }
           />
           <View style={[inputRow, { justifyContent: 'space-between' }]}>
-            <Txt weight="semibold" size={14}>
+            <Txt size={16}>
               {t.language}
             </Txt>
             <View style={{ width: 176 }}>
@@ -262,7 +262,7 @@ export function SettingsSheet({
           </View>
         </SheetGroup>
 
-        <SheetGroup title={t.setHelp} line="orange">
+        <SheetGroup title={t.setHelp}>
           <SheetRow
             title={t.tourReplay}
             description={t.tourReplayDesc}
@@ -274,7 +274,7 @@ export function SettingsSheet({
           />
           {/* One gesture per line, not one run-on sentence. */}
           <View style={{ gap: 6, paddingHorizontal: 12, paddingVertical: 10 }}>
-            <Txt weight="semibold" size={14}>
+            <Txt size={16}>
               {t.gestures}
             </Txt>
             {t.gesturesDesc.split(' · ').map((gesture) => (

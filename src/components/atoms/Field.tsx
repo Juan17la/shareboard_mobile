@@ -16,18 +16,22 @@ export interface FieldProps extends TextInputProps {
   ref?: Ref<TextInput>;
 }
 
+/**
+ * A borderless well on the sheet: white on the grouped grey, 44pt tall. The
+ * label and the hint line up with the text inside it. Mirrors web `atoms/Field.tsx`.
+ */
 export function Field({ label, hint, error, mono = false, style, onFocus, onBlur, ...rest }: FieldProps) {
   const c = useColors();
   const dark = useDark();
   const [focused, setFocused] = useState(false);
   return (
-    <View style={{ gap: 6 }}>
+    <View style={{ gap: 4 }}>
       {label ? (
-        <Txt weight="semibold" size={13}>
+        <Txt weight="medium" size={13} tone="secondary" style={{ paddingHorizontal: 12 }}>
           {label}
         </Txt>
       ) : null}
-      {/* The ring is a 3px border that is always there, transparent until focus
+      {/* The halo is a 3px border that is always there, transparent until focus
           or an error lights it: nothing shifts when it appears. */}
       <View
         style={{
@@ -42,8 +46,9 @@ export function Field({ label, hint, error, mono = false, style, onFocus, onBlur
           // when its colours change and drops the padding set on it, which
           // clipped the text (the nickname field in Settings).
           key={dark ? 'dark' : 'light'}
-          placeholderTextColor={c.textSecondary}
+          placeholderTextColor={c.textTertiary}
           underlineColorAndroid="transparent"
+          selectionColor={c.accent}
           onFocus={(e) => {
             setFocused(true);
             onFocus?.(e);
@@ -56,15 +61,14 @@ export function Field({ label, hint, error, mono = false, style, onFocus, onBlur
             {
               minHeight: 44,
               paddingHorizontal: 12,
-              paddingVertical: 9,
+              paddingVertical: 8,
               borderRadius: Radius.md,
-              borderWidth: 2,
-              borderColor: error ? c.dangerBright : focused ? c.accent : c.borderField,
-              // Paper-white on the panel (a well in dark mode): the edge is
-              // drawn by the border, the fill only says "type here".
-              backgroundColor: c.background,
+              // The edge is always 1.5px wide and only changes colour.
+              borderWidth: 1.5,
+              borderColor: error ? c.dangerBright : focused ? c.accent : 'transparent',
+              backgroundColor: c.glassTintSolid,
               color: c.text,
-              fontFamily: mono ? Fonts.monoBold : Fonts.medium,
+              fontFamily: mono ? Fonts.monoBold : Fonts.regular,
               fontSize: mono ? 15 : 16,
               ...(mono ? { letterSpacing: 1.5 } : null),
             },
@@ -74,16 +78,16 @@ export function Field({ label, hint, error, mono = false, style, onFocus, onBlur
         />
       </View>
       {error ? (
-        <Txt size={12} leading={1.4} weight="semibold" tone="danger" accessibilityRole="alert">
+        <Txt size={12} leading={1.4} weight="medium" tone="danger" accessibilityRole="alert" style={{ paddingHorizontal: 12 }}>
           {error}
         </Txt>
       ) : typeof hint === 'string' ? (
-        <Txt size={12} leading={1.4} tone="secondary">
+        <Txt size={12} leading={1.4} tone="secondary" style={{ paddingHorizontal: 12 }}>
           {hint}
         </Txt>
-      ) : (
-        hint ?? null
-      )}
+      ) : hint ? (
+        <View style={{ paddingHorizontal: 12 }}>{hint}</View>
+      ) : null}
     </View>
   );
 }

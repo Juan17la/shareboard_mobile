@@ -25,7 +25,7 @@ import { Button } from '../../atoms/Button';
 import { GlassPanel } from '../../atoms/Glass';
 import { Icon, type IconName } from '../../atoms/Icon';
 import { QRCode } from '../../atoms/QRCode';
-import { SectionLabel, Sheet } from '../../molecules/Sheet';
+import { Sheet, SheetGroup, SheetRow } from '../../molecules/Sheet';
 import { Txt } from '../../atoms/Text';
 import { toast } from '../../molecules/Toast';
 
@@ -86,62 +86,51 @@ export function ShareSheet({
 
   return (
     <Sheet open={open} title={t.sheetShare} onClose={onClose} closeLabel={t.close}>
-      <View style={{ gap: 13 }}>
-        <GlassPanel level="row" radius={18} border={c.border}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 15 }}>
-            <QRCode value={link} size={96} />
-            <View style={{ flex: 1, minWidth: 0, gap: 7 }}>
-              <SectionLabel>{t.code}</SectionLabel>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${t.code} ${code}`}
-                onPress={() => copy(code, t.toastCopied)}
-                style={({ pressed }) => ({
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  alignSelf: 'flex-start',
-                  gap: 8,
-                  height: 44,
-                  paddingLeft: 8,
-                  paddingRight: 14,
-                  borderRadius: 22,
-                  backgroundColor: pressed ? c.accentDeep : c.accent,
-                })}
-              >
-                {/* The code as a line badge: a station ring, then the code to read out. */}
-                <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 4, borderColor: '#FFFFFF' }} />
-                <Txt mono weight="bold" size={17} tracking={1.5} tone="inverse">
-                  {formatShortCode(code)}
-                </Txt>
-                <Icon name="copy" size={15} color="#FFFFFF" />
-              </Pressable>
-              <Txt size={11} leading={1.35} tone="secondary">
-                {t.qrHint}
-              </Txt>
-            </View>
-          </View>
-        </GlassPanel>
+      <View style={{ gap: 14 }}>
+        <View style={{ alignItems: 'center', gap: 8 }}>
+          <QRCode value={link} size={132} />
+          <Txt size={12} leading={1.35} tone="secondary" style={{ textAlign: 'center' }}>
+            {t.qrHint}
+          </Txt>
+        </View>
 
-        <GlassPanel level="row" radius={Radius.lg} border={c.border}>
+        {/* The code is what gets read out loud: big, mono, one tap to copy. */}
+        <SheetGroup title={t.code}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t.copyLink}
-            onPress={() => copy(link, t.toastLink)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 }}
+            accessibilityLabel={`${t.code} ${code}`}
+            onPress={() => copy(code, t.toastCopied)}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              minHeight: 52,
+              paddingHorizontal: 12,
+              backgroundColor: pressed ? c.fill : 'transparent',
+            })}
           >
-            <Icon name="link" size={18} color={c.text} />
-            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-              <Txt weight="bold" size={13.5} leading={1.2}>
-                {t.copyLink}
-              </Txt>
-              <Txt size={11} mono tone="secondary" numberOfLines={1}>
+            <Txt mono weight="bold" size={22} tracking={2}>
+              {formatShortCode(code)}
+            </Txt>
+            <Icon name="copy" size={18} color={c.accentText} />
+          </Pressable>
+        </SheetGroup>
+
+        <SheetGroup>
+          <SheetRow
+            title={t.copyLink}
+            description={
+              <Txt size={12} mono tone="secondary" numberOfLines={1}>
                 {link}
               </Txt>
-            </View>
-          </Pressable>
-        </GlassPanel>
+            }
+            left={<Icon name="link" size={20} color={c.accentText} />}
+            onPress={() => copy(link, t.toastLink)}
+          />
+        </SheetGroup>
 
-        <View style={{ flexDirection: 'row', gap: 7 }}>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
           <ShortcutTile icon="whatsapp" label={t.shareWhatsApp} onPress={sendWhatsApp} />
           <ShortcutTile icon="share" label={t.shareMore} onPress={sendMore} />
           <ShortcutTile icon="image" label={t.exportImage} onPress={onOpenExport} />
@@ -283,15 +272,22 @@ function ShortcutTile({
   const c = useColors();
   return (
     <View style={{ flex: 1 }}>
-      <GlassPanel level="row" radius={Radius.lg} border={c.border}>
+      <GlassPanel level="row" radius={Radius.lg} border={null}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={label}
           onPress={onPress}
-          style={{ alignItems: 'center', gap: 4, paddingVertical: 9, paddingHorizontal: 3 }}
+          style={({ pressed }) => ({
+            alignItems: 'center',
+            gap: 5,
+            minHeight: 56,
+            justifyContent: 'center',
+            paddingHorizontal: 3,
+            backgroundColor: pressed ? c.fill : 'transparent',
+          })}
         >
-          <Icon name={icon} size={17} color={c.text} />
-          <Txt weight="bold" size={10} numberOfLines={1}>
+          <Icon name={icon} size={20} color={c.accentText} />
+          <Txt weight="medium" size={11} numberOfLines={1}>
             {label}
           </Txt>
         </Pressable>

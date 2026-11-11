@@ -177,9 +177,6 @@ export function AuthForm({
       <FormError error={error} />
 
       <Button
-        variant="go"
-        icon="go"
-        iconAfter
         label={registering ? t.signUp : t.signIn}
         loading={busy}
         fullWidth
@@ -286,9 +283,6 @@ function ResetForm({ onBack, onDone }: { onBack: () => void; onDone: (res: Signe
       <FormError error={error} />
 
       <Button
-        variant="go"
-        icon="go"
-        iconAfter
         label={sent ? t.changePassword : t.sendCode}
         loading={busy}
         fullWidth
@@ -421,16 +415,16 @@ export function PasswordField({
         onSubmitEditing={onSubmitEditing}
         error={error}
         hint={hint}
-        style={{ paddingRight: 48 }}
+        style={{ paddingRight: 44 }}
       />
-      {/* Sits on the input row, under the 13pt label and its 6pt gap. */}
+      {/* Sits on the input row, under the 13pt label and its 4pt gap. */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={reveal ? t.hidePassword : t.showPassword}
         accessibilityState={{ selected: reveal }}
         onPress={() => setReveal((on) => !on)}
         hitSlop={4}
-        style={{ position: 'absolute', right: 2, top: 23, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+        style={{ position: 'absolute', right: 0, top: 21, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
       >
         <Icon name={reveal ? 'eye-slash' : 'eye'} size={19} color={c.textSecondary} />
       </Pressable>
@@ -440,7 +434,7 @@ export function PasswordField({
 
 export function FormError({ error }: { error: string | null }) {
   return error ? (
-    <Txt size={12.5} leading={1.4} weight="semibold" tone="danger" accessibilityRole="alert">
+    <Txt size={13} leading={1.4} weight="medium" tone="danger" accessibilityRole="alert" style={{ paddingHorizontal: 12 }}>
       {error}
     </Txt>
   ) : null;
@@ -453,9 +447,8 @@ export function TextLink({ bold = false, onPress, children }: { bold?: boolean; 
     <Pressable accessibilityRole="button" onPress={onPress} hitSlop={10} style={{ alignSelf: 'center' }}>
       <Txt
         size={bold ? 14 : 13}
-        weight={bold ? 'bold' : 'regular'}
-        color={bold ? c.accentText : c.textSecondary}
-        style={bold ? undefined : { textDecorationLine: 'underline' }}
+        weight={bold ? 'medium' : 'regular'}
+        color={c.accentText}
       >
         {children}
       </Txt>
@@ -482,7 +475,7 @@ export function Rule({ met, children }: { met: boolean; children: string }) {
       >
         {met ? <Icon name="check" size={9} color="#FFFFFF" /> : null}
       </View>
-      <Txt size={12} leading={1.4} weight={met ? 'semibold' : 'regular'} color={met ? c.go : c.textSecondary} style={{ flex: 1 }}>
+      <Txt size={12} leading={1.4} color={met ? c.go : c.textSecondary} style={{ flex: 1 }}>
         {children}
       </Txt>
     </View>

@@ -13,10 +13,10 @@ import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Avatars } from '@/constants/theme';
+import { Avatars, Radius } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
 import { LIMITS } from '@/features/board/model';
-import { useSessionStore } from '@/features/session/store';
+import { useColors, useSessionStore } from '@/features/session/store';
 import { useBackToClose } from '@/hooks/use-back-to-close';
 
 import { Avatar } from '../atoms/Avatar';
@@ -45,6 +45,7 @@ export function NicknameScreen({
   blank?: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const c = useColors();
   const t = useT();
   const storedNickname = useSessionStore((s) => s.nickname);
   const nickColor = useSessionStore((s) => s.nickColor);
@@ -69,29 +70,32 @@ export function NicknameScreen({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Animated.ScrollView
+          // The grouped ground of a sheet, full screen: the field and the icon
+          // card are white wells on it.
+          style={{ backgroundColor: c.sheet }}
           onScroll={onScroll}
           scrollEventThrottle={16}
           contentContainerStyle={{
             flexGrow: 1,
-            gap: 22,
+            gap: 18,
             paddingTop: insets.top + (landscape ? 16 : 56),
             paddingBottom: Math.max(insets.bottom, 16) + 24,
             paddingHorizontal: Math.max(insets.left, insets.right, landscape ? 46 : 24),
           }}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ gap: 7 }}>
-            <Txt weight="extrabold" size={24} leading={1.15} tracking={-0.5}>
+          <View style={{ gap: 4, paddingHorizontal: 12 }}>
+            <Txt weight="bold" size={26} leading={1.15} tracking={-0.5} accessibilityRole="header">
               {t.nickTitle}
             </Txt>
-            <Txt size={13.5} leading={1.45} tone="secondary">
+            <Txt size={15} leading={1.35} tone="secondary">
               {t.nickSub}
             </Txt>
           </View>
 
           {/* One field beside the icon it names: no card around it. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <Avatar name={draft || '?'} color={nickColor} avatar={avatar} size={46} />
+              <Avatar name={draft || '?'} color={nickColor} avatar={avatar} size={44} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Field
                   value={draft}
@@ -103,15 +107,16 @@ export function NicknameScreen({
                   autoFocus={blank || !storedNickname}
                   returnKeyType="go"
                   onSubmitEditing={() => ready && onContinue(draft.trim())}
-                  style={{ fontSize: 17 }}
                 />
               </View>
           </View>
 
-          <View style={{ gap: 9 }}>
+          <View style={{ gap: 6 }}>
             {/* One choice, not two: every icon brings its own colour. */}
             <SectionLabel>{t.yourIcon}</SectionLabel>
-            <AvatarPicker name={draft} />
+            <View style={{ padding: 8, borderRadius: Radius.lg, backgroundColor: c.glassTintSolid }}>
+              <AvatarPicker name={draft} />
+            </View>
           </View>
 
           <View style={{ flex: 1, minHeight: 16 }} />
@@ -123,7 +128,7 @@ export function NicknameScreen({
             fullWidth
           />
           {onCancel ? (
-            <Button label={t.cancel} variant="ghost" fullWidth compact onPress={onCancel} />
+            <Button label={t.cancel} variant="ghost" fullWidth onPress={onCancel} />
           ) : null}
         </Animated.ScrollView>
       </KeyboardAvoidingView>
@@ -136,7 +141,7 @@ export function AvatarPicker({ name }: { name: string }) {
   const avatar = useSessionStore((s) => s.avatar);
   const setAvatar = useSessionStore((s) => s.setAvatar);
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginLeft: -4 }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 2 }}>
       {Avatars.map(({ icon, color }) => {
         const active = avatar === icon;
         return (
@@ -147,16 +152,16 @@ export function AvatarPicker({ name }: { name: string }) {
             accessibilityState={{ selected: active }}
             onPress={() => setAvatar(icon)}
             style={{
-              width: 46,
-              height: 46,
-              borderRadius: 23,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
               alignItems: 'center',
               justifyContent: 'center',
               borderWidth: 2,
               borderColor: active ? color : 'transparent',
             }}
           >
-            <Avatar name={name || '?'} color={color} avatar={icon} size={36} />
+            <Avatar name={name || '?'} color={color} avatar={icon} size={34} />
           </Pressable>
         );
       })}

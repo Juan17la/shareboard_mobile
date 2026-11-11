@@ -11,7 +11,7 @@
  * their board on a second phone sees the masked form, because the PIN genuinely
  * is not recoverable from the server (docs/02-backend-connection).
  */
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Radius } from '@/constants/theme';
 import { useColors } from '@/features/session/store';
@@ -20,10 +20,10 @@ import type { EditPolicy } from '@/features/board/model';
 import { generatePin, useBoardPermissions } from '@/features/board/use-permissions';
 import { useBoardStore } from '@/features/board/store';
 
-import { GlassPanel } from '../../atoms/Glass';
 import { Icon } from '../../atoms/Icon';
 import { Segmented } from '../../atoms/Segmented';
-import { SectionLabel, Sheet } from '../../molecules/Sheet';
+import { RowChevron, SectionLabel, Sheet, SheetGroup, SheetRow } from '../../molecules/Sheet';
+import { Button } from '../../atoms/Button';
 import { Txt } from '../../atoms/Text';
 
 export function PrivacySheet({
@@ -72,137 +72,65 @@ export function PrivacySheet({
               { value: 'private', label: t.privateLabel },
             ]}
           />
-          <Txt size={11.5} leading={1.4} tone="secondary">
+          <Txt size={12} leading={1.35} tone="secondary" style={{ paddingHorizontal: 12 }}>
             {t.visibilityHint}
           </Txt>
         </View>
 
         {isPrivate ? (
-          <GlassPanel level="row" radius={Radius.lg} border={c.border}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13 }}>
-              <Icon name="lock" size={18} color={c.text} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Txt weight="bold" size={13} leading={1.2}>
-                  {t.pinLabel}
-                </Txt>
-                {!knownPin ? (
-                  <Txt size={11} leading={1.3} tone="secondary">
-                    {t.pinHidden}
-                  </Txt>
-                ) : null}
-              </View>
-              <Txt weight="bold" size={16} mono tracking={3}>
-                {knownPin ?? '••••'}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              minHeight: 48,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: Radius.lg,
+              backgroundColor: c.glassTintSolid,
+            }}
+          >
+            <Icon name="lock" size={20} color={c.accentText} />
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <Txt size={16} leading={1.25}>
+                {t.pinLabel}
               </Txt>
-              {isCreator ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={t.newPin}
-                  disabled={busy}
-                  onPress={() => void apply({ pin: generatePin() })}
-                  style={{
-                    paddingHorizontal: 9,
-                    paddingVertical: 7,
-                    borderRadius: 11,
-                    borderWidth: 1,
-                    borderColor: c.borderStrong,
-                    backgroundColor: c.surface,
-                  }}
-                >
-                  <Txt weight="extrabold" size={10.5} tone="secondary">
-                    {t.newPin}
-                  </Txt>
-                </Pressable>
+              {!knownPin ? (
+                <Txt size={12} leading={1.35} tone="secondary">
+                  {t.pinHidden}
+                </Txt>
               ) : null}
             </View>
-          </GlassPanel>
+            <Txt weight="bold" size={16} mono tracking={3}>
+              {knownPin ?? '••••'}
+            </Txt>
+            {isCreator ? (
+              <Button label={t.newPin} variant="secondary" compact disabled={busy} onPress={() => void apply({ pin: generatePin() })} />
+            ) : null}
+          </View>
         ) : null}
 
-        <View style={{ gap: 8 }}>
-          <SectionLabel>{t.whoEdits}</SectionLabel>
+        {/* One list, one tick: the row that is on carries the checkmark. */}
+        <SheetGroup title={t.whoEdits} footer={isCreator ? undefined : t.ownerOnlyHint}>
           {modes.map((mode) => {
             const active = meta.editPolicy === mode.id;
             return (
-              <Pressable
+              <SheetRow
                 key={mode.id}
-                accessibilityRole="radio"
+                checked={active}
                 accessibilityLabel={`${mode.label}. ${mode.desc}`}
-                accessibilityState={{ selected: active, disabled: !isCreator }}
+                title={mode.label}
+                description={mode.desc}
                 disabled={!isCreator || busy}
                 onPress={() => void apply({ editPolicy: mode.id })}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 11,
-                  paddingHorizontal: 13,
-                  paddingVertical: 12,
-                  borderRadius: 15,
-                  borderWidth: 1,
-                  borderColor: active ? c.accent : c.border,
-                  backgroundColor: active ? c.accentSofter : c.glassTintSolid,
-                  opacity: isCreator ? 1 : 0.75,
-                }}
-              >
-                {/* A hairline ring with a centred dot: a 5.5px ring reads as a fat blob on a
-                    light board. */}
-                <View
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 9,
-                    borderWidth: 1.5,
-                    borderColor: active ? c.accent : c.borderDashed,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {active ? (
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.accent }} />
-                  ) : null}
-                </View>
-                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                  <Txt weight="bold" size={13.5} leading={1.2}>
-                    {mode.label}
-                  </Txt>
-                  <Txt size={11.5} leading={1.35} tone="secondary">
-                    {mode.desc}
-                  </Txt>
-                </View>
-              </Pressable>
+                right={active ? <Icon name="check" size={18} color={c.accentText} /> : null}
+              />
             );
           })}
-
           {meta.editPolicy === 'selected' ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t.chooseEditors}
-              onPress={onOpenPeople}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 8,
-                paddingHorizontal: 13,
-                paddingVertical: 12,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: c.accent,
-                backgroundColor: c.accentSofter,
-              }}
-            >
-              <Txt weight="extrabold" size={12.5} tone="accent">
-                {t.chooseEditors}
-              </Txt>
-              <Icon name="chevron" size={15} color={c.accentText} />
-            </Pressable>
+            <SheetRow title={t.chooseEditors} tone="accent" right={<RowChevron />} onPress={onOpenPeople} />
           ) : null}
-
-          {!isCreator ? (
-            <Txt size={11.5} leading={1.4} tone="secondary">
-              {t.ownerOnlyHint}
-            </Txt>
-          ) : null}
-        </View>
+        </SheetGroup>
       </View>
     </Sheet>
   );

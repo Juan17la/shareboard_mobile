@@ -8,16 +8,14 @@
  * and this is where the others are reached from. Each thing has exactly one
  * entry here; the header carries only Share.
  */
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useBoardStore } from '@/features/board/store';
 import { useColors, useSessionStore } from '@/features/session/store';
 import { useT } from '@/features/i18n/store';
 
 import { Icon, type IconName } from '../../atoms/Icon';
-import { SectionLabel, Sheet } from '../../molecules/Sheet';
-import { lineColor, type Line } from '@/constants/theme';
-import { Txt } from '../../atoms/Text';
+import { RowChevron, Sheet, SheetGroup, SheetRow } from '../../molecules/Sheet';
 
 type Row = { icon: IconName; label: string; onPress: () => void };
 
@@ -51,10 +49,9 @@ export function MenuSheet({
   const canEdit = useBoardStore((s) => s.canEditNow());
   const local = useBoardStore((s) => s.connection === 'local');
 
-  const groups: { title: string; line: Line; rows: Row[] }[] = [
+  const groups: { title: string; rows: Row[] }[] = [
     {
       title: t.menuBoards,
-      line: 'blue',
       rows: [
         { icon: 'board', label: t.myWhiteboards, onPress: onOpenBoards },
         { icon: 'plus', label: t.createOrJoin, onPress: onOpenNew },
@@ -63,7 +60,6 @@ export function MenuSheet({
     },
     {
       title: t.menuThisBoard,
-      line: 'green',
       rows: [
         { icon: 'image', label: t.exportImage, onPress: onOpenExport },
         // The offline board has nobody else on it and no access to set.
@@ -83,7 +79,6 @@ export function MenuSheet({
     },
     {
       title: t.menuApp,
-      line: 'violet',
       rows: [
         { icon: 'settings', label: t.sheetSettings, onPress: onOpenSettings },
         // The tutorial only runs for editors, so a viewer has nothing to replay.
@@ -105,48 +100,19 @@ export function MenuSheet({
 
   return (
     <Sheet open={open} title={t.boardMenu} onClose={onClose} closeLabel={t.close}>
-      <View style={{ gap: 12, paddingBottom: 8 }}>
+      <View style={{ gap: 16, paddingBottom: 8 }}>
         {groups.map((group) => (
-          <View key={group.title} accessibilityRole="menu" accessibilityLabel={group.title}>
-            <SectionLabel line={group.line}>{group.title}</SectionLabel>
-            {/* The group's line runs down from its stop, past every row on it. */}
-            <View
-              style={{
-                position: 'absolute',
-                top: 12,
-                bottom: 8,
-                left: 4.5,
-                width: 3,
-                borderRadius: 2,
-                backgroundColor: lineColor(c, group.line),
-              }}
-            />
-            <View style={{ marginTop: 4, paddingLeft: 16 }}>
-              {group.rows.map((row) => (
-                <Pressable
-                  key={row.label}
-                  accessibilityRole="button"
-                  accessibilityLabel={row.label}
-                  onPress={row.onPress}
-                  style={({ pressed }) => ({
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 12,
-                    minHeight: 46,
-                    paddingHorizontal: 10,
-                    borderRadius: 10,
-                    backgroundColor: pressed ? c.surfaceSelected : 'transparent',
-                  })}
-                >
-                  <Icon name={row.icon} size={19} color={c.text} />
-                  <Txt weight="medium" size={15} leading={1.2} style={{ flex: 1 }}>
-                    {row.label}
-                  </Txt>
-                  <Icon name="chevron" size={14} color={c.textTertiary} />
-                </Pressable>
-              ))}
-            </View>
-          </View>
+          <SheetGroup key={group.title} title={group.title}>
+            {group.rows.map((row) => (
+              <SheetRow
+                key={row.label}
+                title={row.label}
+                left={<Icon name={row.icon} size={20} color={c.accentText} />}
+                right={<RowChevron />}
+                onPress={row.onPress}
+              />
+            ))}
+          </SheetGroup>
         ))}
       </View>
     </Sheet>

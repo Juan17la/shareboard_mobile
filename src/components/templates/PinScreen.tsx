@@ -69,12 +69,14 @@ export function PinScreen({
     });
   };
 
-  const keySize = landscape ? { width: 66, height: 42, radius: 14 } : { width: 74, height: 60, radius: 18 };
+  const keySize = landscape ? { width: 66, height: 42, radius: 21 } : { width: 68, height: 68, radius: 34 };
 
   return (
     <View style={{ flex: 1 }}>
       <Backdrop />
       <ScrollView
+        // The grouped ground of a sheet, full screen: the keys are white on it.
+        style={{ backgroundColor: c.sheet }}
         contentContainerStyle={{
           flexGrow: 1,
           alignItems: 'center',
@@ -86,24 +88,29 @@ export function PinScreen({
       >
         <View
           style={{
-            width: 46,
-            height: 46,
-            borderRadius: 15,
+            width: 44,
+            height: 44,
+            borderRadius: 22,
             alignItems: 'center',
             justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: c.border,
-            backgroundColor: c.glassTintSolid,
+            backgroundColor: c.accentSoft,
           }}
         >
-          <Icon name="lock" size={22} color={c.text} />
+          <Icon name="lock" size={21} color={c.accentText} />
         </View>
 
         <View style={{ alignItems: 'center', gap: 6 }}>
-          <Txt weight="extrabold" size={20} leading={1.2} tracking={-0.4}>
+          <Txt weight="semibold" size={20} leading={1.2} tracking={-0.3} accessibilityRole="header">
             {t.pinTitle}
           </Txt>
-          <Txt size={13} leading={1.4} color="#565D6C" style={{ textAlign: 'center' }}>
+          <Txt
+            size={14}
+            leading={1.4}
+            weight={error ? 'medium' : 'regular'}
+            color={error ? c.danger : c.textSecondary}
+            accessibilityRole={error ? 'alert' : undefined}
+            style={{ textAlign: 'center' }}
+          >
             {error ? t.pinWrong : t.pinSub}
           </Txt>
         </View>
@@ -118,11 +125,11 @@ export function PinScreen({
               <View
                 key={i}
                 style={{
-                  width: 14,
-                  height: 14,
+                  width: 13,
+                  height: 13,
                   borderRadius: 7,
                   backgroundColor: filled ? c.accent : 'transparent',
-                  borderWidth: filled ? 0 : 2,
+                  borderWidth: filled ? 0 : 1.5,
                   borderColor: c.borderDashed,
                 }}
               />
@@ -136,8 +143,9 @@ export function PinScreen({
           style={{
             flexDirection: 'row',
             flexWrap: 'wrap',
-            width: keySize.width * 3 + (landscape ? 16 : 24),
-            gap: landscape ? 8 : 12,
+            width: keySize.width * 3 + (landscape ? 16 : 40),
+            gap: landscape ? 8 : 20,
+            rowGap: landscape ? 8 : 12,
           }}
         >
           {KEYS.map((key, index) => (
@@ -153,28 +161,14 @@ export function PinScreen({
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderRadius: keySize.radius,
-                borderWidth: key ? 1 : 0,
-                borderColor: c.border,
-                backgroundColor: key
-                  ? pressed
-                    ? c.surfaceSelected
-                    : c.glassTintSolid
-                  : 'transparent',
-                ...(key
-                  ? {
-                      shadowColor: '#0F1B2D',
-                      shadowOpacity: 0.07,
-                      shadowRadius: 10,
-                      shadowOffset: { width: 0, height: 3 },
-                      elevation: 2,
-                    }
-                  : null),
+                // Digits are white keys; delete is a bare glyph, as on a phone's own keypad.
+                backgroundColor: !key ? 'transparent' : pressed ? c.fillStrong : key === 'back' ? 'transparent' : c.glassTintSolid,
               })}
             >
               {key === 'back' ? (
-                <Icon name="close" size={20} color={c.text} />
+                <Icon name="close" size={20} color={c.textSecondary} />
               ) : (
-                <Txt weight="bold" size={21}>
+                <Txt size={26}>
                   {key}
                 </Txt>
               )}

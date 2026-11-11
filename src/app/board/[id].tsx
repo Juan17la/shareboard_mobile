@@ -397,7 +397,7 @@ function BoardError({
     <View style={{ flex: 1 }}>
       <Backdrop />
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 28 }}>
-        <Txt weight="extrabold" size={20} leading={1.2} tracking={-0.4} style={{ textAlign: 'center' }}>
+        <Txt weight="semibold" size={20} leading={1.2} tracking={-0.3} style={{ textAlign: 'center' }}>
           {t.errOpen}
         </Txt>
         {message ? (
