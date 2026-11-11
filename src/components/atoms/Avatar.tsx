@@ -72,7 +72,7 @@ export function AvatarOverflow({ count, size = 26 }: { count: number; size?: num
         marginLeft: -8,
       }}
     >
-      <Txt weight="extrabold" size={Math.round(size * 0.4)} tone="inverse">
+      <Txt weight="semibold" size={Math.round(size * 0.4)} tone="inverse">
         +{count}
       </Txt>
     </View>

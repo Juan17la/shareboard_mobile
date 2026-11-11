@@ -88,7 +88,7 @@ export function LoadingScreen({ label }: { label?: string }) {
           <Dot key={i} index={i} still={still} />
         ))}
       </View>
-      <Txt weight="bold" size={14} tone="secondary" style={{ textAlign: 'center' }}>
+      <Txt weight="medium" size={14} tone="secondary" style={{ textAlign: 'center' }}>
         {label ?? t.loading}
       </Txt>
       {slow ? (

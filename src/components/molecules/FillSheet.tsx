@@ -62,10 +62,10 @@ export function FillSheet({
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: pressed ? c.surfaceSelected : c.surface,
+        backgroundColor: pressed ? c.fillStrong : c.fill,
       })}
     >
-      <Txt weight="bold" size={20}>
+      <Txt weight="medium" size={20}>
         {glyph}
       </Txt>
     </Pressable>
@@ -86,7 +86,7 @@ export function FillSheet({
             }}
           />
           <View style={{ flex: 1, gap: 6 }}>
-            <Txt weight="bold" size={13}>
+            <Txt weight="medium" size={13} tone="secondary">
               {t.hexCode}
             </Txt>
             <TextInput
@@ -104,10 +104,10 @@ export function FillSheet({
               }}
               style={{
                 height: 44,
-                borderRadius: 12,
+                borderRadius: 10,
                 borderWidth: 1.5,
-                borderColor: valid ? c.borderField : c.dangerBright,
-                backgroundColor: c.surface,
+                borderColor: valid ? 'transparent' : c.dangerBright,
+                backgroundColor: c.glassTintSolid,
                 color: c.text,
                 paddingHorizontal: 13,
                 fontFamily: Fonts.monoBold,
@@ -154,14 +154,14 @@ export function FillSheet({
               justifyContent: 'center',
             }}
           >
-            <Txt weight="bold" size={12.5} tone={custom ? 'secondary' : 'accent'}>
+            <Txt weight="semibold" size={13} tone={custom ? 'secondary' : 'accent'}>
               {t.sameAsLine}
             </Txt>
           </Pressable>
         </View>
 
         <View style={{ gap: 8 }}>
-          <Txt weight="bold" size={13}>
+          <Txt weight="medium" size={13} tone="secondary">
             {t.opacity}
           </Txt>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -184,10 +184,10 @@ export function FillSheet({
                   borderRadius: 10,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: opacity === p ? c.accent : c.surface,
+                  backgroundColor: opacity === p ? c.accent : c.fill,
                 }}
               >
-                <Txt weight="bold" size={12.5} tone={opacity === p ? 'inverse' : 'default'}>
+                <Txt weight="semibold" size={13} tone={opacity === p ? 'inverse' : 'default'}>
                   {`${p}%`}
                 </Txt>
               </Pressable>

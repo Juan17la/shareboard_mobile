@@ -112,7 +112,7 @@ export function ColorPickerSheet({
         ))}
 
         <View style={{ height: 6 }} />
-        <Txt weight="bold" size={13}>
+        <Txt weight="medium" size={13} tone="secondary">
           {t.custom}
         </Txt>
         <View style={{ flexDirection: 'row', gap: 6 }}>

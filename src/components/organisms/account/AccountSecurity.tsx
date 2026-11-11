@@ -49,17 +49,19 @@ export function EmailSection({ onVerified }: { onVerified?: () => void }) {
   if (!account.emailVerified && required) return <VerifyForm email={email} onChange={() => setEditing(true)} onVerified={onVerified} />;
 
   return (
-    <GlassPanel level="row" radius={Radius.lg}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 }}>
-        {account.emailVerified ? <Icon name="check" size={18} color={c.go} /> : null}
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Txt weight="bold" size={14} numberOfLines={1}>
+    <GlassPanel level="row" radius={Radius.lg} border={null}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48, paddingHorizontal: 12, paddingVertical: 6 }}>
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <Txt size={16} leading={1.25} numberOfLines={1}>
             {email}
           </Txt>
           {account.emailVerified ? (
-            <Txt size={12} weight="semibold" color={c.go}>
-              {t.emailVerified}
-            </Txt>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Icon name="check" size={12} color={c.go} />
+              <Txt size={12} weight="medium" color={c.go}>
+                {t.emailVerified}
+              </Txt>
+            </View>
           ) : null}
         </View>
         <Button label={t.changeEmail} variant="secondary" compact onPress={() => setEditing(true)} />
@@ -116,7 +118,7 @@ function EmailForm({
     <View style={{ gap: 12 }}>
       {current ? null : (
         <View style={{ gap: 4 }}>
-          <Txt weight="bold" size={15}>
+          <Txt weight="semibold" size={16}>
             {t.addEmailTitle}
           </Txt>
           <Txt size={13} leading={1.4} tone="secondary">
@@ -179,7 +181,7 @@ function VerifyForm({ email, onChange, onVerified }: { email: string; onChange: 
   return (
     <View style={{ gap: 12 }}>
       <View style={{ gap: 4 }}>
-        <Txt weight="bold" size={15}>
+        <Txt weight="semibold" size={16}>
           {t.verifyTitle}
         </Txt>
         <Txt size={13} leading={1.4} tone="secondary">
@@ -188,7 +190,7 @@ function VerifyForm({ email, onChange, onVerified }: { email: string; onChange: 
       </View>
       <CodeField value={code} onChange={setCode} onSubmitEditing={verify} error={null} />
       <FormError error={error} />
-      <Button variant="go" label={t.verifyCta} loading={busy} fullWidth onPress={verify} />
+      <Button label={t.verifyCta} loading={busy} fullWidth onPress={verify} />
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16 }}>
         <TextLink
           bold
@@ -247,7 +249,7 @@ export function PasswordSection() {
 
   return (
     <View style={{ gap: 12 }}>
-      <Txt weight="bold" size={15}>
+      <Txt weight="semibold" size={16}>
         {t.changePassword}
       </Txt>
       <PasswordField

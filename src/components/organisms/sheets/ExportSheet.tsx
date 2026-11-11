@@ -139,11 +139,9 @@ function ExportSheetBody({ onClose }: { onClose: () => void }) {
           justifyContent: 'center',
           minHeight: 130,
           borderRadius: Radius.lg,
-          borderWidth: 1,
-          borderColor: c.border,
           // The export is painted as on the light board, so a transparent one
-          // is previewed on a light well — dark ink on c.surface would vanish.
-          backgroundColor: paintBackground ? c.surface : '#F2F2F7',
+          // is previewed on a white well — dark ink on a dark card would vanish.
+          backgroundColor: paintBackground ? c.glassTintSolid : '#FFFFFF',
           overflow: 'hidden',
         }}
       >

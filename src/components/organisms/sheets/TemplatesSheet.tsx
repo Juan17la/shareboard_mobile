@@ -59,8 +59,9 @@ export function TemplatesSheet({ open, onClose }: { open: boolean; onClose: () =
               // Two to a row, the odd last one the same size as the rest.
               width: '48%',
               borderRadius: 12,
-              borderWidth: 1,
-              borderColor: pressed ? c.accent : c.borderStrong,
+              borderWidth: 1.5,
+              borderColor: pressed ? c.accent : 'transparent',
+              backgroundColor: c.glassTintSolid,
               overflow: 'hidden',
             })}
           >
@@ -75,7 +76,7 @@ export function TemplatesSheet({ open, onClose }: { open: boolean; onClose: () =
             >
               {previews[key] ? <SvgXml xml={previews[key]} width="100%" height="100%" /> : null}
             </View>
-            <Txt weight="semibold" size={14} style={{ paddingHorizontal: 12, paddingVertical: 9 }}>
+            <Txt weight="medium" size={14} style={{ paddingHorizontal: 12, paddingVertical: 9 }}>
               {t[label]}
             </Txt>
           </Pressable>

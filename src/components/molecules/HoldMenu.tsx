@@ -108,7 +108,7 @@ export function HoldMenu({
       />
       <GlassPanel
         level="panel"
-        radius={14}
+        radius={12}
         style={{ position: 'absolute', left, top, width: MENU_WIDTH, ...Shadow.panel }}
       >
         {rows.map((row) => (
@@ -123,14 +123,14 @@ export function HoldMenu({
             style={({ pressed }) => ({
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 10,
+              gap: 12,
               height: ROW_HEIGHT,
               paddingHorizontal: 14,
-              backgroundColor: pressed ? c.surfaceSelected : 'transparent',
+              backgroundColor: pressed ? c.fill : 'transparent',
             })}
           >
             <Icon name={row.icon} size={18} color={row.danger ? c.danger : c.text} />
-            <Txt weight="bold" size={14} color={row.danger ? c.danger : undefined}>
+            <Txt size={16} color={row.danger ? c.danger : undefined}>
               {t[row.label]}
             </Txt>
           </Pressable>
