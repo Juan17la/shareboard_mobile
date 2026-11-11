@@ -7,6 +7,8 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.10.0-beta] - 2026-11-11
+
 ### Changed
 
 - New look, matching the web app: near-black ink on white, grouped grey sheets holding white cards, and a single blue that acts and selects; green only says "done" or "on", never a button. The interface font is Inter, replacing Onest.
