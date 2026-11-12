@@ -7,6 +7,14 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- New logo: a whiteboard with its marker tray and two markers, replacing the S with the cursor. The launcher icon, the Android adaptive and themed icons, the splash and the favicon follow.
+
+### Docs
+
+- Sixty logo and icon directions with an HTML preview, in `docs/design-planning/logo-variants`.
+
 ## [1.10.0-beta] - 2026-11-11
 
 ### Changed
