@@ -7,6 +7,8 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.11.0-beta] - 2026-11-13
+
 ### Changed
 
 - New logo: three stacked boards and a cursor on a dark tile, replacing the S with the cursor. The launcher icon, the Android adaptive and themed icons, the splash and the favicon follow.
