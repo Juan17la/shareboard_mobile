@@ -7,6 +7,8 @@ All notable changes to the Shareboard mobile app. The format follows
 
 ## [Unreleased]
 
+## [1.11.1-beta] - 2026-11-15
+
 ### Fixed
 
 - Typing into a sticky note, a box or a text no longer shows the words twice on Android: the editor's own text was meant to be invisible (the board paints it), but Android read its transparent colour as "unset" and painted it in the default ink.
