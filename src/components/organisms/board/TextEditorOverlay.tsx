@@ -9,7 +9,7 @@
  * is left behind. No confirm button: return breaks the line, a tap outside is the finish.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Platform, Pressable, TextInput, View } from 'react-native';
+import { Keyboard, Platform, Pressable, TextInput, View, type ViewInstance } from 'react-native';
 
 import { inkFor, isLightPaper } from '@/constants/theme';
 import { useColors, useDark } from '@/features/session/store';
@@ -109,7 +109,7 @@ export function TextEditorOverlay({
   // Lift the board when the keyboard would cover the text: the text's bottom
   // (overlay coordinates) is read through a ref so a tween in flight is not
   // restarted by the camera moving under it.
-  const rootRef = useRef<View>(null);
+  const rootRef = useRef<ViewInstance>(null);
   const bottomRef = useRef(0);
   const bottom = box.y + Math.max(box.height, step);
   useEffect(() => {
@@ -213,7 +213,10 @@ export function TextEditorOverlay({
             (origin.y + origin.height / 2) * s + camera.y - box.y,
             0,
           ],
-          color: 'transparent',
+          // Not 'transparent': that is colour 0, which Android's Fabric reads as
+          // "unset" (UndefinedColor = 0) and paints in the default ink — the text
+          // then shows twice, over the board's own. Zero alpha, non-zero bits.
+          color: 'rgba(255,255,255,0)',
           fontFamily: FAMILIES[element.font ?? 'sans'][italic ? (bold ? 3 : 2) : bold ? 1 : 0],
           fontSize,
           lineHeight: step,
