@@ -10,7 +10,7 @@
  */
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Pressable, TextInput, View, type TextInputInstance } from 'react-native';
 
 import { Fonts } from '@/constants/theme';
 import { useT } from '@/features/i18n/store';
@@ -43,7 +43,7 @@ export function JoinSheet({
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const input = useRef<TextInput>(null);
+  const input = useRef<TextInputInstance>(null);
 
   // No `finally` and nothing conditional inside a `try` in here: the React
   // Compiler skips a component that has either.

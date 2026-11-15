@@ -12,7 +12,7 @@
  * window while the step is up, so a toolbar that moves or wraps is followed.
  */
 import { useEffect, useState } from 'react';
-import { Pressable, View, useWindowDimensions } from 'react-native';
+import { Pressable, View, useWindowDimensions, type ViewInstance } from 'react-native';
 
 import { useT } from '@/features/i18n/store';
 import { useBoardStore } from '@/features/board/store';
@@ -23,9 +23,9 @@ import { Txt } from '../../atoms/Text';
 
 type Target = 'pencil' | 'options' | 'settings' | 'select' | 'shapes' | 'share';
 
-const targets = new Map<Target, View>();
+const targets = new Map<Target, ViewInstance>();
 /** A ref for the view a step points at. */
-export const tourRef = (name: Target) => (view: View | null) => {
+export const tourRef = (name: Target) => (view: ViewInstance | null) => {
   if (view) targets.set(name, view);
   else targets.delete(name);
 };

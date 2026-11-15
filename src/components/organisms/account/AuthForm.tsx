@@ -14,7 +14,7 @@
  * email has an account, so this says "if it has one" rather than "sent".
  */
 import { useRef, useState, type ReactNode, type Ref } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Pressable, View, type TextInputInstance } from 'react-native';
 
 import { useT } from '@/features/i18n/store';
 import { LIMITS } from '@/features/board/model';
@@ -53,9 +53,9 @@ export function AuthForm({
   const [error, setError] = useState<string | null>(null);
   const [taken, setTaken] = useState<'username' | 'email' | null>(null);
   const [shown, setShown] = useState(false);
-  const userRef = useRef<TextInput>(null);
-  const emailRef = useRef<TextInput>(null);
-  const passRef = useRef<TextInput>(null);
+  const userRef = useRef<TextInputInstance>(null);
+  const emailRef = useRef<TextInputInstance>(null);
+  const passRef = useRef<TextInputInstance>(null);
 
   const registering = mode === 'register';
   const name = username.trim();
@@ -206,9 +206,9 @@ function ResetForm({ onBack, onDone }: { onBack: () => void; onDone: (res: Signe
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shown, setShown] = useState(false);
-  const emailRef = useRef<TextInput>(null);
-  const codeRef = useRef<TextInput>(null);
-  const passRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInputInstance>(null);
+  const codeRef = useRef<TextInputInstance>(null);
+  const passRef = useRef<TextInputInstance>(null);
 
   const mail = email.trim();
   const emailErr = !mail ? t.errEmailRequired : !EMAIL.test(mail) ? t.errEmailInvalid : null;
@@ -313,7 +313,7 @@ export function EmailField({
   onSubmitEditing,
   error,
 }: {
-  ref?: Ref<TextInput>;
+  ref?: Ref<TextInputInstance>;
   value: string;
   onChange: (email: string) => void;
   onSubmitEditing?: () => void;
@@ -348,7 +348,7 @@ export function CodeField({
   onSubmitEditing,
   error,
 }: {
-  ref?: Ref<TextInput>;
+  ref?: Ref<TextInputInstance>;
   value: string;
   onChange: (code: string) => void;
   onSubmitEditing?: () => void;
@@ -385,7 +385,7 @@ export function PasswordField({
   error,
   hint,
 }: {
-  ref?: Ref<TextInput>;
+  ref?: Ref<TextInputInstance>;
   label: string;
   value: string;
   onChange: (password: string) => void;

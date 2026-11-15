@@ -11,7 +11,7 @@
  */
 import { Canvas, Group, Rect } from '@shopify/react-native-skia';
 import { Component, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, type ScrollViewInstance } from 'react-native';
 
 import { fill } from '@/features/i18n/strings';
 import { useT } from '@/features/i18n/store';
@@ -49,7 +49,7 @@ export function AiSheet({ open, onClose }: { open: boolean; onClose: () => void 
   const addElements = useBoardStore((s) => s.addElements);
   const smooth = useSessionStore((s) => s.settings.smooth);
 
-  const list = useRef<ScrollView>(null);
+  const list = useRef<ScrollViewInstance>(null);
 
   const push = (msg: Message) => setLog((l) => [...l, msg].slice(-30));
 
