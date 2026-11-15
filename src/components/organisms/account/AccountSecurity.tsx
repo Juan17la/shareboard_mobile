@@ -10,7 +10,7 @@
  * not be enough to point the account's resets at someone else's inbox.
  */
 import { useRef, useState } from 'react';
-import { TextInput, View } from 'react-native';
+import { View, type TextInputInstance } from 'react-native';
 
 import { Radius } from '@/constants/theme';
 import { LIMITS } from '@/features/board/model';
@@ -88,8 +88,8 @@ function EmailForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shown, setShown] = useState(false);
-  const emailRef = useRef<TextInput>(null);
-  const passRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInputInstance>(null);
+  const passRef = useRef<TextInputInstance>(null);
 
   const mail = email.trim();
   const emailErr = !mail ? t.errEmailRequired : !EMAIL.test(mail) ? t.errEmailInvalid : null;
@@ -218,8 +218,8 @@ export function PasswordSection() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shown, setShown] = useState(false);
-  const currentRef = useRef<TextInput>(null);
-  const nextRef = useRef<TextInput>(null);
+  const currentRef = useRef<TextInputInstance>(null);
+  const nextRef = useRef<TextInputInstance>(null);
 
   if (!open) return <Button label={t.changePassword} variant="secondary" fullWidth onPress={() => setOpen(true)} />;
 

@@ -18,7 +18,7 @@
  * and the options wrap, so everything is visible at once on a narrow phone.
  */
 import { createContext, useContext, useState } from 'react';
-import { Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, View, useWindowDimensions, type ViewInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Circle, Path as SvgPath, Rect, Svg } from 'react-native-svg';
 import { useShallow } from 'zustand/shallow';
@@ -1076,7 +1076,7 @@ function ToolButton({
   radius,
   onPress,
 }: {
-  ref?: React.Ref<View>;
+  ref?: React.Ref<ViewInstance>;
   icon: IconName;
   label: string;
   active: boolean;
@@ -1166,7 +1166,7 @@ function MiniButton({
   compact = false,
   children,
 }: {
-  ref?: React.Ref<View>;
+  ref?: React.Ref<ViewInstance>;
   glyph?: string;
   glyphWeight?: 'bold' | 'extrabold';
   glyphItalic?: boolean;

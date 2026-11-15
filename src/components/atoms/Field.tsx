@@ -1,5 +1,5 @@
 import { useState, type ReactNode, type Ref } from 'react';
-import { TextInput, View, type TextInputProps } from 'react-native';
+import { TextInput, View, type TextInputProps, type TextInputInstance } from 'react-native';
 
 import { Fonts, Radius } from '@/constants/theme';
 import { useColors, useDark } from '@/features/session/store';
@@ -13,7 +13,7 @@ export interface FieldProps extends TextInputProps {
   error?: string | null;
   /** Codes and PINs are typed in JetBrains Mono, spaced out. */
   mono?: boolean;
-  ref?: Ref<TextInput>;
+  ref?: Ref<TextInputInstance>;
 }
 
 /**

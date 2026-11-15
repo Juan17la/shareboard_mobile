@@ -36,7 +36,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { Platform, View, type LayoutChangeEvent, type ViewStyle } from 'react-native';
+import { Platform, View, type LayoutChangeEvent, type ViewStyle, type ViewInstance } from 'react-native';
 import { useAnimatedReaction, useSharedValue, type SharedValue } from 'react-native-reanimated';
 
 import { Radius } from '@/constants/theme';
@@ -63,7 +63,7 @@ interface SceneValue {
   render: (size: SceneSize) => ReactNode;
   size: SceneSize;
   /** The scene's view — what panels measure their position against. */
-  host: RefObject<View | null>;
+  host: RefObject<ViewInstance | null>;
   /**
    * How far the content the panels sit in has scrolled, as a Skia transform
    * kept on the UI thread. Panels are measured unscrolled (`measureLayout`
@@ -90,7 +90,7 @@ export function GlassScene({
   children: ReactNode;
   style?: ViewStyle;
 }) {
-  const host = useRef<View>(null);
+  const host = useRef<ViewInstance>(null);
   const [size, setSize] = useState<SceneSize>({ width: 0, height: 0 });
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -136,7 +136,7 @@ export function NoGlassScene({ children }: { children: ReactNode }) {
  */
 function SceneBlur({ sigma }: { sigma: number }) {
   const scene = useContext(SceneContext);
-  const ref = useRef<View>(null);
+  const ref = useRef<ViewInstance>(null);
   // Position of this layer in the scene, unscrolled (see `SceneValue.shift`).
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
 
