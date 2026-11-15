@@ -65,7 +65,9 @@
           }
         }
       ],
-      "expo-image"
+      "expo-image",
+      "expo-font",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,
